@@ -1612,8 +1612,8 @@ body {
 }
 .track-step {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  gap: 2px;
   opacity: 0.35;
   transition: var(--transition);
 }
@@ -1625,10 +1625,9 @@ body {
   line-height: 1;
 }
 .track-step-label {
-  font-size: 0.55rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: var(--text-light);
-  margin-top: 1px;
 }
 .track-step.done .track-step-label {
   color: var(--success);
