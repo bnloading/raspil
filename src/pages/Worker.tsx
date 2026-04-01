@@ -133,7 +133,7 @@ export default function Worker() {
       <nav className="bottom-nav">
         <Link to="/worker" className="bottom-nav-item active">
           <span className="bottom-nav-icon">🔧</span>
-          <span className="bottom-nav-label">Тапсырма</span>
+          <span className="bottom-nav-label">Заказ</span>
         </Link>
         <Link to="/track" className="bottom-nav-item">
           <span className="bottom-nav-icon">📍</span>
@@ -166,7 +166,7 @@ function WorkerOrderList({
     <div className="orders-section" style={{ paddingBottom: 80 }}>
       <div className="section-title-row">
         <div className="section-title" style={{ marginBottom: 0 }}>
-          Сіздің тапсырмаларыңыз
+          Сіздің заказдарыңыз
         </div>
         <button
           className={`view-toggle${compact ? " active" : ""}`}

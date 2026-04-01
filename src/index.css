@@ -1543,6 +1543,63 @@ body {
   min-height: 100dvh;
 }
 
+/* ── Track Compact Cards ── */
+.track-card {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border-left: 3px solid var(--primary-light);
+  transition: var(--transition);
+}
+.track-card.done {
+  border-left-color: var(--success);
+  opacity: 0.6;
+}
+.track-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.track-card-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 18px;
+}
+.track-card-client {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+  flex: 1;
+}
+.track-card-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.track-card-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.track-card-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.track-card-desc {
+  flex: 1;
+  font-size: 0.78rem;
+}
+
 /* Safe area for pages with bottom nav */
 .orders-section:last-of-type {
   padding-bottom: 80px;

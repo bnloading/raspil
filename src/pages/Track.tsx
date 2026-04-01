@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useOrders, type Order } from "../hooks";
 import { ItemProgressSteps, Spinner } from "../components";
-import { formatDateTime } from "../utils";
 
 export default function Track() {
   const { orders, loading } = useOrders();
@@ -138,7 +137,7 @@ function TrackBottomNav() {
     <nav className="bottom-nav">
       <Link to="/worker" className="bottom-nav-item">
         <span className="bottom-nav-icon">🔧</span>
-        <span className="bottom-nav-label">Тапсырма</span>
+        <span className="bottom-nav-label">Заказ</span>
       </Link>
       <Link to="/track" className="bottom-nav-item active">
         <span className="bottom-nav-icon">📦</span>
@@ -163,33 +162,25 @@ function TrackOrderCard({ order, num }: { order: Order; num: number }) {
   }
 
   return (
-    <div className={`order-card${isDone ? " done" : ""}`}>
-      <div className="order-card-header">
-        <span className="order-number">
-          {num}. #{order.queue}
-        </span>
-        <span className={`order-status ${statusClass}`}>{statusText}</span>
+    <div className={`track-card${isDone ? " done" : ""}`}>
+      <div className="track-card-header">
+        <span className="track-card-num">{num}.</span>
+        <span className="track-card-client">{order.clientName}</span>
+        <span className={`track-card-status ${statusClass}`}>{statusText}</span>
       </div>
-      <div className="order-client">{order.clientName}</div>
-      <div className="order-items-list">
+      <div className="track-card-items">
         {order.items.map((item, i) => (
-          <div key={i} className="order-item-row">
-            <span className="order-item-num">{i + 1}.</span>
+          <div key={i} className="track-card-item">
             {item.material && (
               <span className={`material-tag material-${item.material}`}>
                 {item.material.toUpperCase()}
               </span>
             )}
-            <span className="order-item-desc">{item.description}</span>
+            <span className="track-card-desc">{item.description}</span>
             <ItemProgressSteps item={item} />
           </div>
         ))}
       </div>
-      {order.createdAt && (
-        <div className="order-date">
-          📅 {formatDateTime(order.createdAt.seconds)}
-        </div>
-      )}
     </div>
   );
 }
