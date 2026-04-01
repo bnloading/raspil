@@ -1599,6 +1599,11 @@ body {
   flex: 1;
   font-size: 0.78rem;
 }
+.track-card-date {
+  font-size: 0.7rem;
+  color: var(--text-light);
+  margin-top: 4px;
+}
 
 /* Safe area for pages with bottom nav */
 .orders-section:last-of-type {

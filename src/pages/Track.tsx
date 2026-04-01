@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useOrders, type Order } from "../hooks";
 import { ItemProgressSteps, Spinner } from "../components";
+import { formatDateTime } from "../utils";
 
 export default function Track() {
   const { orders, loading } = useOrders();
@@ -181,6 +182,9 @@ function TrackOrderCard({ order, num }: { order: Order; num: number }) {
           </div>
         ))}
       </div>
+      {order.createdAt && (
+        <div className="track-card-date">📅 {formatDateTime(order.createdAt.seconds)}</div>
+      )}
     </div>
   );
 }
