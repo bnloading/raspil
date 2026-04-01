@@ -183,22 +183,24 @@ function TrackOrderCard({ order, num }: { order: Order; num: number }) {
                 )}
                 <span className="track-card-desc">{item.description}</span>
               </div>
-              <div className="track-roadmap">
-                <div className={`track-step${item.raspilDone ? " done" : ""}`}>
-                  <span className="track-step-icon">🪚</span>
-                  <span className="track-step-label">Распил</span>
+              <div className="track-stepper">
+                <div className={`track-stepper-step${item.raspilDone ? " done" : ""}`}>
+                  <div className="track-stepper-circle">{item.raspilDone ? "✓" : "1"}</div>
+                  <span className="track-stepper-label">Распил</span>
                 </div>
                 {hasPvh && (
-                  <div className={`track-step${item.pvhDone ? " done" : ""}`}>
-                    <span className="track-step-icon">🪟</span>
-                    <span className="track-step-label">ПВХ</span>
-                  </div>
+                  <>
+                    <div className={`track-stepper-line${item.raspilDone ? " done" : ""}`} />
+                    <div className={`track-stepper-step${item.pvhDone ? " done" : ""}`}>
+                      <div className="track-stepper-circle">{item.pvhDone ? "✓" : "2"}</div>
+                      <span className="track-stepper-label">ПВХ</span>
+                    </div>
+                  </>
                 )}
-                <div className={`track-step${itemDone ? " done" : ""}`}>
-                  <span className="track-step-icon">
-                    {itemDone ? "✅" : "🏁"}
-                  </span>
-                  <span className="track-step-label">Дайын</span>
+                <div className={`track-stepper-line${hasPvh ? (item.pvhDone ? " done" : "") : (item.raspilDone ? " done" : "")}`} />
+                <div className={`track-stepper-step${itemDone ? " done" : ""}`}>
+                  <div className="track-stepper-circle">{itemDone ? "✓" : (hasPvh ? "3" : "2")}</div>
+                  <span className="track-stepper-label">Дайын</span>
                 </div>
               </div>
             </div>
