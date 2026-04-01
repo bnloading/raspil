@@ -1604,6 +1604,35 @@ body {
   color: var(--text-light);
   margin-top: 4px;
 }
+.track-roadmap {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.track-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0.35;
+  transition: var(--transition);
+}
+.track-step.done {
+  opacity: 1;
+}
+.track-step-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.track-step-label {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-top: 1px;
+}
+.track-step.done .track-step-label {
+  color: var(--success);
+}
 
 /* Safe area for pages with bottom nav */
 .orders-section:last-of-type {

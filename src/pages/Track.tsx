@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
-import { useOrders, type Order } from "../hooks";
-import { ItemProgressSteps, Spinner } from "../components";
+import { useOrders, type Order, needsPvh } from "../hooks";
+import { Spinner } from "../components";
 import { formatDateTime } from "../utils";
 
 export default function Track() {
@@ -170,20 +170,43 @@ function TrackOrderCard({ order, num }: { order: Order; num: number }) {
         <span className={`track-card-status ${statusClass}`}>{statusText}</span>
       </div>
       <div className="track-card-items">
-        {order.items.map((item, i) => (
-          <div key={i} className="track-card-item">
-            {item.material && (
-              <span className={`material-tag material-${item.material}`}>
-                {item.material.toUpperCase()}
-              </span>
-            )}
-            <span className="track-card-desc">{item.description}</span>
-            <ItemProgressSteps item={item} />
-          </div>
-        ))}
+        {order.items.map((item, i) => {
+          const hasPvh = needsPvh(item.material);
+          const itemDone = item.raspilDone && (hasPvh ? item.pvhDone : true);
+          return (
+            <div key={i} className="track-card-item">
+              {item.material && (
+                <span className={`material-tag material-${item.material}`}>
+                  {item.material.toUpperCase()}
+                </span>
+              )}
+              <span className="track-card-desc">{item.description}</span>
+              <div className="track-roadmap">
+                <div className={`track-step${item.raspilDone ? " done" : ""}`}>
+                  <span className="track-step-icon">🪚</span>
+                  <span className="track-step-label">Распил</span>
+                </div>
+                {hasPvh && (
+                  <div className={`track-step${item.pvhDone ? " done" : ""}`}>
+                    <span className="track-step-icon">🪟</span>
+                    <span className="track-step-label">ПВХ</span>
+                  </div>
+                )}
+                <div className={`track-step${itemDone ? " done" : ""}`}>
+                  <span className="track-step-icon">
+                    {itemDone ? "✅" : "🏁"}
+                  </span>
+                  <span className="track-step-label">Дайын</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       {order.createdAt && (
-        <div className="track-card-date">📅 {formatDateTime(order.createdAt.seconds)}</div>
+        <div className="track-card-date">
+          📅 {formatDateTime(order.createdAt.seconds)}
+        </div>
       )}
     </div>
   );
