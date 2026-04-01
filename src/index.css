@@ -1589,14 +1589,18 @@ body {
 }
 .track-card-item {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 3px;
   font-size: 0.78rem;
   color: var(--text-secondary);
-  padding: 2px 0;
+  padding: 3px 0;
+}
+.track-card-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .track-card-desc {
-  flex: 1;
   font-size: 0.78rem;
 }
 .track-card-date {
@@ -1606,9 +1610,8 @@ body {
 }
 .track-roadmap {
   display: flex;
-  gap: 6px;
-  margin-left: auto;
-  flex-shrink: 0;
+  gap: 8px;
+  padding-left: 2px;
 }
 .track-step {
   display: flex;

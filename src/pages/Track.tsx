@@ -175,12 +175,14 @@ function TrackOrderCard({ order, num }: { order: Order; num: number }) {
           const itemDone = item.raspilDone && (hasPvh ? item.pvhDone : true);
           return (
             <div key={i} className="track-card-item">
-              {item.material && (
-                <span className={`material-tag material-${item.material}`}>
-                  {item.material.toUpperCase()}
-                </span>
-              )}
-              <span className="track-card-desc">{item.description}</span>
+              <div className="track-card-item-row">
+                {item.material && (
+                  <span className={`material-tag material-${item.material}`}>
+                    {item.material.toUpperCase()}
+                  </span>
+                )}
+                <span className="track-card-desc">{item.description}</span>
+              </div>
               <div className="track-roadmap">
                 <div className={`track-step${item.raspilDone ? " done" : ""}`}>
                   <span className="track-step-icon">🪚</span>
