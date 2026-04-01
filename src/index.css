@@ -1611,7 +1611,7 @@ body {
 .track-roadmap {
   display: flex;
   gap: 8px;
-  padding-left: 2px;
+  padding-left: 0;
 }
 .track-step {
   display: flex;
