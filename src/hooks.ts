@@ -24,6 +24,7 @@ export interface Order {
   queue: number;
   raspilDone: boolean;
   pvhDone: boolean;
+  estimatedMinutes?: number;
   createdAt?: { seconds: number };
 }
 
@@ -46,6 +47,7 @@ function normalizeOrder(id: string, data: Record<string, unknown>): Order {
     queue?: number;
     raspilDone?: boolean;
     pvhDone?: boolean;
+    estimatedMinutes?: number;
     createdAt?: { seconds: number };
   };
 
@@ -81,6 +83,7 @@ function normalizeOrder(id: string, data: Record<string, unknown>): Order {
     queue: raw.queue || 0,
     raspilDone,
     pvhDone,
+    estimatedMinutes: raw.estimatedMinutes,
     createdAt: raw.createdAt,
   };
 }

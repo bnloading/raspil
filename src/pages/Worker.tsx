@@ -56,6 +56,21 @@ export default function Worker() {
     }
   };
 
+  const handleSetMinutes = async (order: Order, minutes: number) => {
+    try {
+      await updateDoc(doc(db, "orders", order.id), {
+        estimatedMinutes: minutes,
+      });
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      const display =
+        h > 0 ? `${h} сағ.${m > 0 ? ` ${m} мин.` : ""}` : `${m} мин.`;
+      showToast(`⏱ ${display} орнатылды`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
   const myField = currentRole === "raspil" ? "raspilDone" : "pvhDone";
   const pendingOrders = orders.filter((o) => {
     const items =
@@ -126,6 +141,7 @@ export default function Worker() {
         loading={ordersLoading}
         currentRole={currentRole}
         onToggle={handleToggle}
+        onSetMinutes={handleSetMinutes}
       />
 
       <Toast message={message} visible={visible} />
@@ -149,11 +165,13 @@ function WorkerOrderList({
   loading,
   currentRole,
   onToggle,
+  onSetMinutes,
 }: {
   orders: Order[];
   loading: boolean;
   currentRole: string;
   onToggle: (order: Order, itemIndex: number) => void;
+  onSetMinutes: (order: Order, minutes: number) => void;
 }) {
   const [compact, setCompact] = useState(false);
 
@@ -204,6 +222,7 @@ function WorkerOrderList({
               num={idx + 1}
               currentRole={currentRole}
               onToggle={onToggle}
+              onSetMinutes={onSetMinutes}
             />
           ))
         )}
@@ -270,13 +289,29 @@ function WorkerOrderCard({
   num,
   currentRole,
   onToggle,
+  onSetMinutes,
 }: {
   order: Order;
   num: number;
   currentRole: string;
   onToggle: (order: Order, itemIndex: number) => void;
+  onSetMinutes: (order: Order, minutes: number) => void;
 }) {
   const isDone = order.raspilDone && order.pvhDone;
+  const [editMin, setEditMin] = useState(false);
+  const existingH = order.estimatedMinutes
+    ? Math.floor(order.estimatedMinutes / 60)
+    : 0;
+  const existingM = order.estimatedMinutes ? order.estimatedMinutes % 60 : 0;
+  const [hours, setHours] = useState(existingH.toString());
+  const [mins, setMins] = useState(existingM.toString());
+
+  // Format display
+  const timeDisplay = order.estimatedMinutes
+    ? order.estimatedMinutes >= 60
+      ? `${Math.floor(order.estimatedMinutes / 60)} сағ. ${order.estimatedMinutes % 60 > 0 ? `${order.estimatedMinutes % 60} мин.` : ""}`
+      : `${order.estimatedMinutes} мин.`
+    : null;
 
   return (
     <div className={`worker-card${isDone ? " done" : ""}`}>
@@ -289,6 +324,63 @@ function WorkerOrderCard({
           {isDone ? "✅" : "⏳"}
         </span>
       </div>
+      {currentRole === "raspil" && !isDone && (
+        <div className="estimated-time-row">
+          {editMin ? (
+            <div className="estimated-time-edit">
+              <div className="time-picker-group">
+                <input
+                  type="number"
+                  className="estimated-time-input"
+                  placeholder="0"
+                  min={0}
+                  max={23}
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  autoFocus
+                />
+                <span className="time-picker-label">сағ</span>
+              </div>
+              <span className="time-picker-sep">:</span>
+              <div className="time-picker-group">
+                <input
+                  type="number"
+                  className="estimated-time-input"
+                  placeholder="0"
+                  min={0}
+                  max={59}
+                  value={mins}
+                  onChange={(e) => setMins(e.target.value)}
+                />
+                <span className="time-picker-label">мин</span>
+              </div>
+              <button
+                className="btn-est-save"
+                onClick={() => {
+                  const total =
+                    (parseInt(hours) || 0) * 60 + (parseInt(mins) || 0);
+                  if (total > 0) {
+                    onSetMinutes(order, total);
+                    setEditMin(false);
+                  }
+                }}
+              >
+                ✓
+              </button>
+              <button
+                className="btn-est-cancel"
+                onClick={() => setEditMin(false)}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button className="btn-set-time" onClick={() => setEditMin(true)}>
+              ⏱ {timeDisplay || "Уақыт қою"}
+            </button>
+          )}
+        </div>
+      )}
       <div className="worker-card-items">
         {order.items.map((item, i) => {
           if (currentRole === "pvh" && !needsPvh(item.material)) return null;

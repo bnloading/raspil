@@ -1185,6 +1185,93 @@ textarea.form-input {
   font-size: 0.95rem;
   color: var(--text);
 }
+
+/* ── Estimated Time (Worker) ── */
+.estimated-time-row {
+  margin-bottom: 8px;
+}
+.btn-set-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: #eef2ff;
+  border: 1px solid var(--primary-light);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-set-time:active {
+  background: #dbeafe;
+}
+.estimated-time-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.estimated-time-input {
+  width: 70px;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  border: 1.5px solid var(--primary-light);
+  border-radius: var(--radius-xs);
+  outline: none;
+  text-align: center;
+}
+.estimated-time-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.btn-est-save {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  cursor: pointer;
+}
+.btn-est-cancel {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--danger-light);
+  color: var(--danger);
+  cursor: pointer;
+}
+
+/* ── Time Picker (Worker) ── */
+.time-picker-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.time-picker-label {
+  font-size: 0.65rem;
+  color: var(--text-light);
+  font-weight: 500;
+}
+.time-picker-sep {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 0 2px;
+  align-self: flex-start;
+  margin-top: 6px;
+}
 .worker-card-items {
   display: flex;
   flex-direction: column;
@@ -1484,49 +1571,56 @@ textarea.form-input {
   border-color: var(--primary);
 }
 
-/* ── Bottom Navigation (Mobile App) ── */
+/* ── Bottom Navigation (iOS Glass Style) ── */
+
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  background: var(--card);
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 8px 0;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+  padding: 10px 0;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 100;
-  border-top: 1px solid var(--border);
+  background: rgba(249, 249, 249, 0.35);
+  -webkit-backdrop-filter: saturate(200%) blur(24px);
+  backdrop-filter: saturate(200%) blur(24px);
+  border-radius: 32px 32px 0 0 / 40px 40px 0 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 4px 24px 0 rgba(0, 0, 0, 0.1),
+    0 1.5px 0 rgba(255, 255, 255, 0.18) inset;
+  margin: 0 12px 8px 12px;
 }
 .bottom-nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   text-decoration: none;
-  color: var(--text-light);
+  color: #8e8e93;
   padding: 4px 16px;
   border-radius: 12px;
-  transition: var(--transition);
+  transition: color 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .bottom-nav-item.active {
-  color: var(--primary);
+  color: #007aff;
 }
 .bottom-nav-item:active {
-  transform: scale(0.92);
+  transform: scale(0.9);
+  opacity: 0.7;
 }
 .bottom-nav-icon {
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
 }
 .bottom-nav-label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 /* ── Mobile App Enhancements ── */
@@ -1585,21 +1679,55 @@ body {
 .track-card-items {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-}
-.track-card-item {
-  display: flex;
-  flex-direction: column;
   gap: 2px;
+}
+.track-item-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 0;
   font-size: 0.78rem;
   color: var(--text-secondary);
-  padding: 3px 0;
 }
-.track-card-item-row {
+.track-item-left {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1;
+  min-width: 0;
+}
+.track-item-left .track-card-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.track-item-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.track-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-size: 0.75rem;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+.track-dot small {
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: var(--text-light);
+  line-height: 1;
+}
+.track-dot.done {
+  opacity: 1;
+}
+.track-dot.done small {
+  color: var(--success);
 }
 .track-card-desc {
   font-size: 0.78rem;
@@ -1608,6 +1736,187 @@ body {
   font-size: 0.7rem;
   color: var(--text-light);
   margin-top: 4px;
+}
+
+/* ── Estimated Wait (Track) ── */
+.track-card-wait {
+  display: inline-block;
+  padding: 4px 10px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #b45309;
+  background: var(--warning-light);
+  border-radius: 20px;
+}
+
+/* ── Date Tabs (Track) ── */
+.date-tabs-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+}
+.date-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+.date-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  min-width: max-content;
+}
+.date-tab {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+.date-tab:active {
+  transform: scale(0.96);
+}
+.date-tab.active {
+  background: var(--gradient);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+/* ── Status Filter Buttons (Track) ── */
+.status-filter-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.status-filter-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+}
+.status-filter-btn:active {
+  transform: scale(0.97);
+}
+.status-filter-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.status-filter-btn.pending.active {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+.status-filter-btn.done.active {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+/* ── Assortment Page ── */
+.assortment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 16px;
+}
+.assortment-card {
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+.assortment-card:active {
+  transform: scale(0.97);
+}
+.assortment-swatch {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.assortment-name {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+/* ── Lightbox ── */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+.lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lightbox-img {
+  max-width: 100%;
+  max-height: 75vh;
+  border-radius: var(--radius);
+  object-fit: contain;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.lightbox-name {
+  margin-top: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+}
+.lightbox-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.lightbox-close:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .track-roadmap {
   display: flex;

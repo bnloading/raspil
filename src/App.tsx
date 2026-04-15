@@ -8,6 +8,7 @@ const Admin = lazy(() => import("./pages/Admin"));
 const Worker = lazy(() => import("./pages/Worker"));
 const Track = lazy(() => import("./pages/Track"));
 const Setup = lazy(() => import("./pages/Setup"));
+const Assortment = lazy(() => import("./pages/Assortment"));
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/worker" element={<Worker />} />
             <Route path="/track" element={<Track />} />
             <Route path="/setup" element={<Setup />} />
+            <Route path="/assortment" element={<Assortment />} />
           </Routes>
         </Suspense>
       </AuthProvider>
