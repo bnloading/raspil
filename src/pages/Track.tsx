@@ -1,51 +1,61 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
-import { useOrders, type Order, needsPvh } from "../hooks";
-import { Spinner } from "../components";
+import { useOrders, type Material, type Order, needsPvh } from "../hooks";
+import { Spinner, TrackBottomNav } from "../components";
 import { formatDateTime } from "../utils";
+import moderaLogo from "../assets/modera-logo.svg";
 
-export default function Track() {
+function getSheetLeaderboard(orders: Order[]) {
+  // Count material usage across all order items
+  const sheetMap = new Map<Material | string, number>();
+  for (const order of orders) {
+    for (const item of order.items) {
+      const mat = item.material || "лдсп";
+      sheetMap.set(mat, (sheetMap.get(mat) || 0) + 1);
+    }
+  }
+  return Array.from(sheetMap.entries()).sort((a, b) => b[1] - a[1]);
+}
+
+function getDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getOrderDateKey(order: Order) {
+  return getDateKey(
+    order.createdAt ? new Date(order.createdAt.seconds * 1000) : new Date(),
+  );
+}
+
+function formatDayChip(date: Date, index: number) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${index === 0 ? "Бүгін " : ""}${day}.${month}.${year}`;
+}
+
+function getRecentDays() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: 4 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - index);
+    return { key: getDateKey(date), label: formatDayChip(date, index) };
+  });
+}
+
+function Track() {
   const { orders, loading } = useOrders();
+  const recentDays = useMemo(() => getRecentDays(), []);
+  const [selectedDateKey, setSelectedDateKey] = useState(recentDays[0].key);
   const [search, setSearch] = useState("");
-  const [selectedDate, setSelectedDate] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "done" | "pending">(
     "all",
   );
-
-  // Generate date tabs: today + 6 past days
-  const dateTabs = useMemo(() => {
-    const tabs: { key: string; label: string; date: Date }[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (let i = 0; i >= -6; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() + i);
-      let label: string;
-      if (i === 0) label = "Бүгін";
-      else if (i === -1) label = "Кеше";
-      else {
-        const dayNum = d.getDate();
-        const monthNames = [
-          "қаң",
-          "ақп",
-          "нау",
-          "сәу",
-          "мам",
-          "мау",
-          "шіл",
-          "там",
-          "қыр",
-          "қаз",
-          "қар",
-          "жел",
-        ];
-        label = `${dayNum} ${monthNames[d.getMonth()]}`;
-      }
-      tabs.push({ key: d.toISOString().slice(0, 10), label, date: d });
-    }
-    return tabs;
-  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -61,24 +71,19 @@ export default function Track() {
     return orders.filter((o) => !(o.raspilDone && o.pvhDone));
   }, [orders]);
 
-  // Filter orders by selected date and status
-  const dateFilteredOrders = useMemo(() => {
-    let list =
-      selectedDate === "all"
-        ? activeOrders
-        : orders.filter((o) => {
-            if (!o.createdAt) return false;
-            const d = new Date(o.createdAt.seconds * 1000);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-            return key === selectedDate;
-          });
+  const dateOrders = useMemo(() => {
+    return orders.filter((o) => getOrderDateKey(o) === selectedDateKey);
+  }, [orders, selectedDateKey]);
+
+  const visibleOrders = useMemo(() => {
+    let list = dateOrders;
     if (statusFilter === "done") {
-      list = orders.filter((o) => o.raspilDone && o.pvhDone);
+      list = list.filter((o) => o.raspilDone && o.pvhDone);
     } else if (statusFilter === "pending") {
       list = list.filter((o) => !(o.raspilDone && o.pvhDone));
     }
     return list;
-  }, [orders, activeOrders, selectedDate, statusFilter]);
+  }, [dateOrders, statusFilter]);
 
   // Calculate estimated wait minutes for each active order
   const waitTimes = useMemo(() => {
@@ -93,27 +98,46 @@ export default function Track() {
     return map;
   }, [activeOrders]);
 
+  // Sheet/material leaderboard
+  const sheetLeaderboard = useMemo(() => getSheetLeaderboard(orders), [orders]);
+
+  const [showSheetLeaderboard, setShowSheetLeaderboard] = useState(false);
+
   return (
-    <>
+    <div className="figma-track-page">
       <div className="client-header">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h1>📦 Заказ трекер</h1>
-          <Link to="/login" className="btn-login-link">
-            🔑 Кіру
-          </Link>
+        <div className="client-header-top">
+          <img
+            src={moderaLogo}
+            alt="Modera Interior Objects"
+            className="client-logo"
+          />
+          <div className="client-header-actions">
+            <button
+              className="header-icon-btn"
+              type="button"
+              aria-label="Notifications"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                <path d="M10 21h4" />
+              </svg>
+            </button>
+            <Link to="/login" className="btn-login-link" aria-label="Кіру">
+              <span />
+            </Link>
+          </div>
         </div>
-        <p>Заказыңыздың дайындығын бақылаңыз</p>
       </div>
 
       <div className="search-bar">
         <div className="search-input-wrap">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16.5 16.5 4 4" />
+            </svg>
+          </span>
           <input
             type="text"
             className="search-input"
@@ -151,60 +175,54 @@ export default function Track() {
       </div>
 
       <div className="orders-section">
-        <div className="section-title">Барлық белсенді заказдар</div>
+        <div className="section-title">Барлық заказдар</div>
+        <div className="date-filter-row" aria-label="Күн бойынша сүзгі">
+          {recentDays.map((day) => (
+            <button
+              key={day.key}
+              type="button"
+              className={`date-filter-btn${selectedDateKey === day.key ? " active" : ""}`}
+              onClick={() => setSelectedDateKey(day.key)}
+            >
+              {day.label}
+            </button>
+          ))}
+        </div>
         <div className="status-filter-row">
           <button
             className={`status-filter-btn${statusFilter === "all" ? " active" : ""}`}
             onClick={() => setStatusFilter("all")}
           >
-            Барлығы
+            <span>Барлығы</span>
+            <b>{dateOrders.length}</b>
           </button>
           <button
             className={`status-filter-btn pending${statusFilter === "pending" ? " active" : ""}`}
             onClick={() => setStatusFilter("pending")}
           >
-            ⏳ Дайын емес
+            <span>Дайын емес</span>
+            <b>
+              {dateOrders.filter((o) => !(o.raspilDone && o.pvhDone)).length}
+            </b>
           </button>
           <button
             className={`status-filter-btn done${statusFilter === "done" ? " active" : ""}`}
             onClick={() => setStatusFilter("done")}
           >
-            ✅ Дайын
+            <span>Дайын</span>
+            <b>{dateOrders.filter((o) => o.raspilDone && o.pvhDone).length}</b>
           </button>
-        </div>
-        <div className="date-tabs-scroll">
-          <div className="date-tabs">
-            <button
-              className={`date-tab${selectedDate === "all" ? " active" : ""}`}
-              onClick={() => setSelectedDate("all")}
-            >
-              Барлығы
-            </button>
-            {dateTabs.map((tab) => (
-              <button
-                key={tab.key}
-                className={`date-tab${selectedDate === tab.key ? " active" : ""}`}
-                onClick={() => setSelectedDate(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div>
           {loading ? (
             <Spinner />
-          ) : dateFilteredOrders.length === 0 ? (
+          ) : visibleOrders.length === 0 ? (
             <div className="empty-state">
-              <div className="icon">🎉</div>
-              <p>
-                {selectedDate === "all"
-                  ? "Қазір белсенді заказдар жоқ"
-                  : "Бұл күнде заказдар жоқ"}
-              </p>
+              <div className="icon">✓</div>
+              <p>Бұл күнге заказдар жоқ</p>
             </div>
           ) : (
-            dateFilteredOrders.map((order, idx) => (
+            visibleOrders.map((order, idx) => (
               <TrackOrderCard
                 key={order.id}
                 order={order}
@@ -216,72 +234,63 @@ export default function Track() {
         </div>
       </div>
 
-      <div style={{ paddingBottom: 80 }} />
+      <div className="track-page-spacer" />
 
       <TrackBottomNav />
-    </>
+      {showSheetLeaderboard && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowSheetLeaderboard(false)}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              minWidth: 320,
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: "90vw",
+              margin: "40px auto",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>Листтар Лидерборды</h2>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {sheetLeaderboard.length === 0 ? (
+                <li style={{ color: "#aaa" }}>Дерек жоқ</li>
+              ) : (
+                sheetLeaderboard.map(([mat, count], i) => (
+                  <li
+                    key={mat}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 0",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>
+                      {i + 1}. {mat.toUpperCase()}
+                    </span>
+                    <span style={{ color: "#555" }}>{count} рет</span>
+                  </li>
+                ))
+              )}
+            </ul>
+            <button
+              style={{ marginTop: 20 }}
+              onClick={() => setShowSheetLeaderboard(false)}
+            >
+              Жабу
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-function TrackBottomNav() {
-  const { user, userData } = useAuth();
-  if (!user || !userData) {
-    return (
-      <nav className="bottom-nav">
-        <Link to="/" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">📦</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-        <Link to="/assortment" className="bottom-nav-item">
-          <span className="bottom-nav-icon">🎨</span>
-          <span className="bottom-nav-label">Листтар</span>
-        </Link>
-        <Link to="/login" className="bottom-nav-item">
-          <span className="bottom-nav-icon">🔑</span>
-          <span className="bottom-nav-label">Кіру</span>
-        </Link>
-      </nav>
-    );
-  }
-  if (userData.role === "admin") {
-    return (
-      <nav className="bottom-nav">
-        <Link to="/admin" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📋</span>
-          <span className="bottom-nav-label">Заказдар</span>
-        </Link>
-        <Link to="/track" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">📦</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-        <Link to="/assortment" className="bottom-nav-item">
-          <span className="bottom-nav-icon">🎨</span>
-          <span className="bottom-nav-label">Листтар</span>
-        </Link>
-        <Link to="/setup" className="bottom-nav-item">
-          <span className="bottom-nav-icon">⚙️</span>
-          <span className="bottom-nav-label">Баптау</span>
-        </Link>
-      </nav>
-    );
-  }
-  return (
-    <nav className="bottom-nav">
-      <Link to="/worker" className="bottom-nav-item">
-        <span className="bottom-nav-icon">🔧</span>
-        <span className="bottom-nav-label">Заказ</span>
-      </Link>
-      <Link to="/track" className="bottom-nav-item active">
-        <span className="bottom-nav-icon">📦</span>
-        <span className="bottom-nav-label">Бақылау</span>
-      </Link>
-      <Link to="/assortment" className="bottom-nav-item">
-        <span className="bottom-nav-icon">🎨</span>
-        <span className="bottom-nav-label">Листтар</span>
-      </Link>
-    </nav>
-  );
-}
+export default Track;
 
 function TrackOrderCard({
   order,
@@ -292,16 +301,18 @@ function TrackOrderCard({
   num: number;
   waitMinutes?: number;
 }) {
+  const { userData } = useAuth();
+  const canDelete = userData?.role === "admin";
   const isDone = order.raspilDone && order.pvhDone;
   let statusText: string, statusClass: string;
   if (isDone) {
-    statusText = "Дайын ✅";
+    statusText = "Дайын";
     statusClass = "status-done";
   } else if (order.raspilDone || order.pvhDone) {
-    statusText = "Жұмыста 🔄";
+    statusText = "Жұмыста";
     statusClass = "status-progress";
   } else {
-    statusText = "Кезекте ⏳";
+    statusText = "Кезекте";
     statusClass = "status-queue";
   }
 
@@ -324,16 +335,30 @@ function TrackOrderCard({
 
   return (
     <div className={`track-card${isDone ? " done" : ""}`}>
-      <div className="track-card-header">
-        <span className="track-card-num">{num}.</span>
+      <div className={`track-card-header${canDelete ? " has-delete" : ""}`}>
+        <span className="track-card-num">{num}</span>
         <span className="track-card-client">{order.clientName}</span>
         <span className={`track-card-status ${statusClass}`}>{statusText}</span>
+        {canDelete && (
+          <button
+            className="track-card-delete"
+            type="button"
+            aria-label="Өшіру"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M6 6l1 15h10l1-15" />
+              <path d="M10 10v7" />
+              <path d="M14 10v7" />
+            </svg>
+          </button>
+        )}
       </div>
       {waitDisplay && <div className="track-card-wait">{waitDisplay}</div>}
       <div className="track-card-items">
         {order.items.map((item, i) => {
           const hasPvh = needsPvh(item.material);
-          const itemDone = item.raspilDone && (hasPvh ? item.pvhDone : true);
           return (
             <div key={i} className="track-item-compact">
               <div className="track-item-left">
@@ -346,17 +371,15 @@ function TrackOrderCard({
               </div>
               <div className="track-item-dots">
                 <span className={`track-dot${item.raspilDone ? " done" : ""}`}>
-                  🪚<small>Распил</small>
+                  <span className="track-dot-icon">⌁</span>
+                  <small>Распил</small>
                 </span>
                 {hasPvh && (
                   <span className={`track-dot${item.pvhDone ? " done" : ""}`}>
-                    🪟<small>ПВХ</small>
+                    <span className="track-dot-icon">╂</span>
+                    <small>ПВХ</small>
                   </span>
                 )}
-                <span className={`track-dot${itemDone ? " done" : ""}`}>
-                  {itemDone ? "✅" : "⬜"}
-                  <small>Дайын</small>
-                </span>
               </div>
             </div>
           );

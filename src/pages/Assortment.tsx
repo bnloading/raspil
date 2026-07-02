@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../AuthContext";
+import { TrackBottomNav, Spinner } from "../components";
+import { useSheets } from "../hooks";
 
 import imgAk from "../images/Белый.jpeg";
 import imgSeryy from "../images/светло серый.jpg";
@@ -10,7 +10,7 @@ import imgSonoma from "../images/дуб санома.jpeg";
 import imgChester from "../images/Честер.jpg";
 import imgKanyon from "../images/каньон.jpg";
 
-const sheets = [
+const fallbackSheets = [
   { name: "Ақ", image: imgAk },
   { name: "Светло серый", image: imgSeryy },
   { name: "Дуб Вотан", image: imgVotan },
@@ -21,30 +21,40 @@ const sheets = [
 ];
 
 export default function Assortment() {
+  const { sheets: dbSheets, loading } = useSheets();
   const [selected, setSelected] = useState<{
     name: string;
     image: string;
   } | null>(null);
 
+  const sheets =
+    dbSheets.length > 0
+      ? dbSheets.map((s) => ({ name: s.name, image: s.imageUrl || "" }))
+      : fallbackSheets;
+
   return (
-    <>
+    <div className="figma-track-page assortment-track-page">
       <div className="client-header">
         <h1>🎨 Листтар</h1>
         <p>Біздегі ЛДСП листтарының түстері</p>
       </div>
 
-      <div className="assortment-grid">
-        {sheets.map((s) => (
-          <div
-            key={s.name}
-            className="assortment-card"
-            onClick={() => setSelected(s)}
-          >
-            <img className="assortment-swatch" src={s.image} alt={s.name} />
-            <div className="assortment-name">{s.name}</div>
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <Spinner />
+      ) : (
+        <div className="assortment-grid">
+          {sheets.map((s) => (
+            <div
+              key={s.name}
+              className="assortment-card"
+              onClick={() => setSelected(s)}
+            >
+              <img className="assortment-swatch" src={s.image} alt={s.name} />
+              <div className="assortment-name">{s.name}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {selected && (
         <div className="lightbox-overlay" onClick={() => setSelected(null)}>
@@ -69,67 +79,7 @@ export default function Assortment() {
       )}
 
       <div style={{ paddingBottom: 80 }} />
-      <AssortmentBottomNav />
-    </>
-  );
-}
-
-function AssortmentBottomNav() {
-  const { user, userData } = useAuth();
-  if (!user || !userData) {
-    return (
-      <nav className="bottom-nav">
-        <Link to="/" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📦</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-        <Link to="/assortment" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">🎨</span>
-          <span className="bottom-nav-label">Листтар</span>
-        </Link>
-        <Link to="/login" className="bottom-nav-item">
-          <span className="bottom-nav-icon">🔑</span>
-          <span className="bottom-nav-label">Кіру</span>
-        </Link>
-      </nav>
-    );
-  }
-  if (userData.role === "admin") {
-    return (
-      <nav className="bottom-nav">
-        <Link to="/admin" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📋</span>
-          <span className="bottom-nav-label">Заказдар</span>
-        </Link>
-        <Link to="/track" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📦</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-        <Link to="/assortment" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">🎨</span>
-          <span className="bottom-nav-label">Листтар</span>
-        </Link>
-        <Link to="/setup" className="bottom-nav-item">
-          <span className="bottom-nav-icon">⚙️</span>
-          <span className="bottom-nav-label">Баптау</span>
-        </Link>
-      </nav>
-    );
-  }
-  return (
-    <nav className="bottom-nav">
-      <Link to="/worker" className="bottom-nav-item">
-        <span className="bottom-nav-icon">🔧</span>
-        <span className="bottom-nav-label">Заказ</span>
-      </Link>
-      <Link to="/track" className="bottom-nav-item">
-        <span className="bottom-nav-icon">📦</span>
-        <span className="bottom-nav-label">Бақылау</span>
-      </Link>
-      <Link to="/assortment" className="bottom-nav-item active">
-        <span className="bottom-nav-icon">🎨</span>
-        <span className="bottom-nav-label">Листтар</span>
-      </Link>
-    </nav>
+      <TrackBottomNav active="assortment" />
+    </div>
   );
 }

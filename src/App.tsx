@@ -7,8 +7,10 @@ const Login = lazy(() => import("./pages/Login"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Worker = lazy(() => import("./pages/Worker"));
 const Track = lazy(() => import("./pages/Track"));
+
 const Setup = lazy(() => import("./pages/Setup"));
 const Assortment = lazy(() => import("./pages/Assortment"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 
 export default function App() {
   return (
@@ -20,9 +22,12 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/worker" element={<Worker />} />
+            <Route path="/cutting" element={<Worker forcedRole="raspil" />} />
+            <Route path="/pvc" element={<Worker forcedRole="pvh" />} />
             <Route path="/track" element={<Track />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/assortment" element={<Assortment />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           </Routes>
         </Suspense>
       </AuthProvider>

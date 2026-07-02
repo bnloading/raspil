@@ -99,6 +99,11 @@ export function useOrders() {
       snapshot.forEach((d) =>
         data.push(normalizeOrder(d.id, d.data() as Record<string, unknown>)),
       );
+      data.sort((a, b) => {
+        const queueDiff = (a.queue || 0) - (b.queue || 0);
+        if (queueDiff !== 0) return queueDiff;
+        return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+      });
       setOrders(data);
       setLoading(false);
     });
@@ -106,6 +111,41 @@ export function useOrders() {
   }, []);
 
   return { orders, loading };
+}
+
+export interface Sheet {
+  id: string;
+  name: string;
+  imageUrl?: string;
+}
+
+export function useSheets() {
+  const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, "sheets"), orderBy("name", "asc"));
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const data: Sheet[] = [];
+        snapshot.forEach((d) => {
+          const raw = d.data() as { name?: string; imageUrl?: string };
+          data.push({
+            id: d.id,
+            name: raw.name || "",
+            imageUrl: raw.imageUrl,
+          });
+        });
+        setSheets(data);
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+    return unsub;
+  }, []);
+
+  return { sheets, loading };
 }
 
 export function useToast() {

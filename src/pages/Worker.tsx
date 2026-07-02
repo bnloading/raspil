@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
@@ -10,9 +10,11 @@ import {
   type OrderItem,
   needsPvh,
 } from "../hooks";
-import { Toast, Spinner } from "../components";
+import { Toast, Spinner, TrackBottomNav } from "../components";
 
-export default function Worker() {
+type OperatorRole = "raspil" | "pvh";
+
+export default function Worker({ forcedRole }: { forcedRole?: OperatorRole }) {
   const { user, userData, loading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
   const { orders, loading: ordersLoading } = useOrders();
@@ -24,17 +26,22 @@ export default function Worker() {
         navigate("/login", { replace: true });
       } else if (userData?.role === "admin") {
         navigate("/admin", { replace: true });
+      } else if (forcedRole && userData && userData.role !== forcedRole) {
+        navigate(userData.role === "raspil" ? "/cutting" : "/pvc", {
+          replace: true,
+        });
       }
     }
-  }, [authLoading, user, userData, navigate]);
+  }, [authLoading, user, userData, forcedRole, navigate]);
 
   if (authLoading || !userData) return <Spinner />;
 
-  const currentRole = userData.role;
+  const currentRole = forcedRole || userData.role;
   const roleNames: Record<string, string> = {
-    raspil: "🪚 Распил",
-    pvh: "🪟 ПВХ",
+    raspil: "Распилщик",
+    pvh: "ПВХ оператор",
   };
+  const roleTitle = currentRole === "raspil" ? "Распил панелі" : "ПВХ панелі";
 
   const handleLogout = () => {
     logout().then(() => navigate("/login"));
@@ -51,6 +58,25 @@ export default function Worker() {
     try {
       await updateDoc(doc(db, "orders", order.id), { items: updatedItems });
       showToast(current ? "↩️ Артқа қайтарылды" : "✅ Дайын деп белгіленді!");
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  const handleSetStatus = async (
+    order: Order,
+    itemIndex: number,
+    done: boolean,
+  ) => {
+    const item = order.items[itemIndex];
+    if (currentRole === "pvh" && !needsPvh(item.material)) return;
+    const field = currentRole === "raspil" ? "raspilDone" : "pvhDone";
+    const updatedItems = order.items.map((item, i) =>
+      i === itemIndex ? { ...item, [field]: done } : item,
+    );
+    try {
+      await updateDoc(doc(db, "orders", order.id), { items: updatedItems });
+      showToast(done ? "✅ Статус сақталды" : "↩️ Статус қайтарылды");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -95,15 +121,11 @@ export default function Worker() {
   }, 0);
 
   return (
-    <>
+    <div className="figma-track-page worker-track-page">
       <div className="header">
         <div className="header-top">
           <div>
-            <h1>
-              {roleNames[currentRole]
-                ? `${roleNames[currentRole]} панелі`
-                : "🔧 Жұмыс панелі"}
-            </h1>
+            <h1>{roleTitle}</h1>
             <p>Сәлем, {userData.name || "Жұмысшы"}</p>
           </div>
           <div>
@@ -141,22 +163,14 @@ export default function Worker() {
         loading={ordersLoading}
         currentRole={currentRole}
         onToggle={handleToggle}
+        onSetStatus={handleSetStatus}
         onSetMinutes={handleSetMinutes}
       />
 
       <Toast message={message} visible={visible} />
 
-      <nav className="bottom-nav">
-        <Link to="/worker" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">🔧</span>
-          <span className="bottom-nav-label">Заказ</span>
-        </Link>
-        <Link to="/track" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📍</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-      </nav>
-    </>
+      <TrackBottomNav />
+    </div>
   );
 }
 
@@ -165,12 +179,14 @@ function WorkerOrderList({
   loading,
   currentRole,
   onToggle,
+  onSetStatus,
   onSetMinutes,
 }: {
   orders: Order[];
   loading: boolean;
   currentRole: string;
   onToggle: (order: Order, itemIndex: number) => void;
+  onSetStatus: (order: Order, itemIndex: number, done: boolean) => void;
   onSetMinutes: (order: Order, minutes: number) => void;
 }) {
   const [compact, setCompact] = useState(false);
@@ -222,6 +238,7 @@ function WorkerOrderList({
               num={idx + 1}
               currentRole={currentRole}
               onToggle={onToggle}
+              onSetStatus={onSetStatus}
               onSetMinutes={onSetMinutes}
             />
           ))
@@ -289,12 +306,14 @@ function WorkerOrderCard({
   num,
   currentRole,
   onToggle,
+  onSetStatus,
   onSetMinutes,
 }: {
   order: Order;
   num: number;
   currentRole: string;
   onToggle: (order: Order, itemIndex: number) => void;
+  onSetStatus: (order: Order, itemIndex: number, done: boolean) => void;
   onSetMinutes: (order: Order, minutes: number) => void;
 }) {
   const isDone = order.raspilDone && order.pvhDone;
@@ -390,6 +409,7 @@ function WorkerOrderCard({
               item={item}
               currentRole={currentRole}
               onToggle={() => onToggle(order, i)}
+              onSetStatus={(done) => onSetStatus(order, i, done)}
             />
           );
         })}
@@ -402,23 +422,30 @@ function WorkerItemRow({
   item,
   currentRole,
   onToggle,
+  onSetStatus,
 }: {
   item: OrderItem;
   currentRole: string;
   onToggle: () => void;
+  onSetStatus: (done: boolean) => void;
 }) {
   const myDone = currentRole === "raspil" ? item.raspilDone : item.pvhDone;
   const hasPvh = needsPvh(item.material);
   const itemDone = item.raspilDone && (hasPvh ? item.pvhDone : true);
+  const negativeLabel =
+    currentRole === "raspil" ? "Кесілмеген" : "ПВХ дайын емес";
+  const positiveLabel = currentRole === "raspil" ? "Кесілді" : "ПВХ дайын";
 
   return (
-    <div
-      className={`worker-item-row${itemDone ? " done" : ""}`}
-      onClick={onToggle}
-    >
-      <div className={`toggle-switch${myDone ? " on" : ""}`}>
-        <div className="toggle-knob" />
-      </div>
+    <div className={`worker-item-row${itemDone ? " done" : ""}`}>
+      <button
+        type="button"
+        className={`toggle-switch${myDone ? " on" : ""}`}
+        onClick={onToggle}
+        aria-label={myDone ? positiveLabel : negativeLabel}
+      >
+        <span className="toggle-knob" />
+      </button>
       <span className="worker-item-desc">
         {item.material && item.material !== "лдсп" && (
           <span className={`material-tag material-${item.material}`}>
@@ -427,6 +454,22 @@ function WorkerItemRow({
         )}
         {item.description}
       </span>
+      <div className="operator-status-actions">
+        <button
+          type="button"
+          className={`operator-status-btn${!myDone ? " active" : ""}`}
+          onClick={() => onSetStatus(false)}
+        >
+          {negativeLabel}
+        </button>
+        <button
+          type="button"
+          className={`operator-status-btn${myDone ? " active" : ""}`}
+          onClick={() => onSetStatus(true)}
+        >
+          {positiveLabel}
+        </button>
+      </div>
       <div className="item-roadmap">
         <div className={`roadmap-step${item.raspilDone ? " completed" : ""}`}>
           <div className="roadmap-dot">🪚</div>

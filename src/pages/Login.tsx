@@ -26,6 +26,10 @@ export default function Login() {
   if (!loading && user && userData) {
     if (userData.role === "admin") {
       navigate("/admin", { replace: true });
+    } else if (userData.role === "raspil") {
+      navigate("/cutting", { replace: true });
+    } else if (userData.role === "pvh") {
+      navigate("/pvc", { replace: true });
     } else {
       navigate("/worker", { replace: true });
     }
@@ -60,6 +64,10 @@ export default function Login() {
       const role = snap.data().role;
       if (role === "admin") {
         navigate("/admin");
+      } else if (role === "raspil") {
+        navigate("/cutting");
+      } else if (role === "pvh") {
+        navigate("/pvc");
       } else {
         navigate("/worker");
       }

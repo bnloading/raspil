@@ -1,11 +1,13 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   collection,
   addDoc,
   deleteDoc,
   doc,
   serverTimestamp,
+  updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
@@ -16,7 +18,13 @@ import {
   type Material,
   needsPvh,
 } from "../hooks";
-import { Toast, ItemProgressSteps, getStatus, Spinner } from "../components";
+import {
+  Toast,
+  ItemProgressSteps,
+  getStatus,
+  Spinner,
+  TrackBottomNav,
+} from "../components";
 import { formatDateTime } from "../utils";
 
 export default function Admin() {
@@ -25,6 +33,7 @@ export default function Admin() {
   const { orders, loading: ordersLoading } = useOrders();
   const { message, visible, showToast } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [itemDescs, setItemDescs] = useState<
@@ -61,7 +70,39 @@ export default function Admin() {
       prev.map((v, idx) => (idx === i ? { ...v, [key]: val } : v)),
     );
 
-  const handleAddOrder = async (e: FormEvent) => {
+  const resetOrderForm = () => {
+    setModalOpen(false);
+    setEditingOrder(null);
+    setClientName("");
+    setClientPhone("");
+    setItemDescs([{ desc: "", material: "лдсп" }]);
+    setQueueNum("");
+  };
+
+  const openAddOrder = () => {
+    setEditingOrder(null);
+    setClientName("");
+    setClientPhone("");
+    setItemDescs([{ desc: "", material: "лдсп" }]);
+    setQueueNum("");
+    setModalOpen(true);
+  };
+
+  const openEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setClientName(order.clientName);
+    setClientPhone(order.phone || "");
+    setQueueNum(order.queue ? String(order.queue) : "");
+    setItemDescs(
+      order.items.map((item) => ({
+        desc: item.description,
+        material: item.material || "лдсп",
+      })),
+    );
+    setModalOpen(true);
+  };
+
+  const handleSubmitOrder = async (e: FormEvent) => {
     e.preventDefault();
     const validItems = itemDescs.filter((d) => d.desc.trim().length > 0);
     if (!clientName.trim() || validItems.length === 0) {
@@ -69,26 +110,55 @@ export default function Admin() {
       return;
     }
     try {
-      await addDoc(collection(db, "orders"), {
+      const payload = {
         clientName: clientName.trim(),
         phone: clientPhone.trim(),
-        items: validItems.map((item) => ({
-          description: item.desc.trim(),
-          material: item.material,
-          raspilDone: false,
-          pvhDone: !needsPvh(item.material),
-        })),
+        items: validItems.map((item) => {
+          const description = item.desc.trim();
+          const existing = editingOrder?.items.find(
+            (existing) => existing.description === description,
+          );
+          return {
+            description,
+            material: item.material,
+            raspilDone: existing?.raspilDone || false,
+            pvhDone: needsPvh(item.material)
+              ? existing?.pvhDone || false
+              : true,
+          };
+        }),
         queue:
           parseInt(queueNum) ||
           (orders.length > 0 ? Math.max(...orders.map((o) => o.queue)) + 1 : 1),
-        createdAt: serverTimestamp(),
-      });
-      setModalOpen(false);
-      setClientName("");
-      setClientPhone("");
-      setItemDescs([{ desc: "", material: "лдсп" }]);
-      setQueueNum("");
-      showToast("✅ Заказ қосылды");
+      };
+
+      if (editingOrder) {
+        await updateDoc(doc(db, "orders", editingOrder.id), payload);
+        showToast("✅ Заказ жаңартылды");
+      } else {
+        await addDoc(collection(db, "orders"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+        showToast("✅ Заказ қосылды");
+      }
+      resetOrderForm();
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  const handleMoveQueue = async (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= orders.length) return;
+    const current = orders[index];
+    const target = orders[targetIndex];
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "orders", current.id), { queue: target.queue });
+      batch.update(doc(db, "orders", target.id), { queue: current.queue });
+      await batch.commit();
+      showToast("↕️ Очередь жаңартылды");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -105,15 +175,20 @@ export default function Admin() {
   };
 
   return (
-    <>
-      <div className="header">
+    <div className="orders-mobile-page figma-track-page admin-track-page">
+      <div className="header orders-mobile-header">
         <div className="header-top">
           <div>
-            <h1>📋 Заказдар</h1>
+            <span className="screen-kicker">Furniture workshop</span>
+            <h1>Orders</h1>
             <p>Сәлем, {userData.name || "Админ"}</p>
           </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            Шығу ↗
+          <button
+            className="btn-logout orders-icon-button"
+            onClick={handleLogout}
+            aria-label="Шығу"
+          >
+            ↗
           </button>
         </div>
       </div>
@@ -134,7 +209,10 @@ export default function Admin() {
       </div>
 
       <div className="orders-section">
-        <div className="section-title">Белсенді заказдар</div>
+        <div className="section-title-row orders-title-row">
+          <div className="section-title">Белсенді заказдар</div>
+          <span>{orders.length} order</span>
+        </div>
         <div>
           {ordersLoading ? (
             <Spinner />
@@ -153,31 +231,28 @@ export default function Admin() {
                 key={order.id}
                 order={order}
                 num={idx + 1}
+                canMoveUp={idx > 0}
+                canMoveDown={idx < orders.length - 1}
+                onEdit={openEditOrder}
                 onDelete={handleDelete}
+                onMoveUp={() => handleMoveQueue(idx, -1)}
+                onMoveDown={() => handleMoveQueue(idx, 1)}
               />
             ))
           )}
         </div>
       </div>
 
-      <button
-        className="fab"
-        onClick={() => setModalOpen(true)}
-        title="Жаңа заказ"
-      >
-        +
-      </button>
-
       <div
         className={`modal-overlay${modalOpen ? " active" : ""}`}
         onClick={(e) => {
-          if (e.target === e.currentTarget) setModalOpen(false);
+          if (e.target === e.currentTarget) resetOrderForm();
         }}
       >
         <div className="modal">
           <div className="modal-handle" />
-          <h2>➕ Жаңа заказ</h2>
-          <form onSubmit={handleAddOrder}>
+          <h2>{editingOrder ? "✎ Заказды өзгерту" : "➕ Жаңа заказ"}</h2>
+          <form onSubmit={handleSubmitOrder}>
             <div className="form-group">
               <label>Клиент аты</label>
               <input
@@ -262,12 +337,12 @@ export default function Admin() {
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => setModalOpen(false)}
+                onClick={resetOrderForm}
               >
                 Болдырмау
               </button>
               <button type="submit" className="btn btn-primary">
-                Қосу
+                {editingOrder ? "Сақтау" : "Қосу"}
               </button>
             </div>
           </form>
@@ -275,40 +350,44 @@ export default function Admin() {
       </div>
 
       <Toast message={message} visible={visible} />
-
-      <nav className="bottom-nav">
-        <Link to="/admin" className="bottom-nav-item active">
-          <span className="bottom-nav-icon">📋</span>
-          <span className="bottom-nav-label">Заказдар</span>
-        </Link>
-        <Link to="/track" className="bottom-nav-item">
-          <span className="bottom-nav-icon">📦</span>
-          <span className="bottom-nav-label">Бақылау</span>
-        </Link>
-        <Link to="/setup" className="bottom-nav-item">
-          <span className="bottom-nav-icon">⚙️</span>
-          <span className="bottom-nav-label">Баптау</span>
-        </Link>
-      </nav>
-    </>
+      <TrackBottomNav onCreateOrder={openAddOrder} />
+    </div>
   );
 }
 
 function OrderCard({
   order,
   num,
+  canMoveUp,
+  canMoveDown,
+  onEdit,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   order: Order;
   num: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const status = getStatus(order);
   const isDone = order.raspilDone && order.pvhDone;
   const date = order.createdAt ? formatDateTime(order.createdAt.seconds) : "";
+  const primaryMaterial = order.items[0]?.material || "лдсп";
+  const completedItems = order.items.filter((item) => {
+    const hasPvh = needsPvh(item.material);
+    return item.raspilDone && (hasPvh ? item.pvhDone : true);
+  }).length;
 
   return (
     <div className={`order-card${isDone ? " done" : ""}`}>
+      <div className={`order-card-media material-bg-${primaryMaterial}`}>
+        <span>{String(num).padStart(2, "0")}</span>
+      </div>
       <button
         className="btn-delete"
         onClick={() => onDelete(order.id)}
@@ -316,6 +395,27 @@ function OrderCard({
       >
         🗑
       </button>
+      <div className="order-admin-actions">
+        <button type="button" onClick={() => onEdit(order)} title="Өзгерту">
+          ✎
+        </button>
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={!canMoveUp}
+          title="Очередьте жоғары"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={!canMoveDown}
+          title="Очередьте төмен"
+        >
+          ↓
+        </button>
+      </div>
       <div className="order-card-header">
         <span className="order-number">
           {num}. #{order.queue}
@@ -325,6 +425,12 @@ function OrderCard({
         </span>
       </div>
       <div className="order-client">{order.clientName}</div>
+      <div className="order-card-meta">
+        <span>
+          {completedItems}/{order.items.length} дайын
+        </span>
+        {date && <span>{date}</span>}
+      </div>
       {order.phone && (
         <div className="order-phone">
           📞 <span>{order.phone}</span>
@@ -344,7 +450,6 @@ function OrderCard({
           </div>
         ))}
       </div>
-      {date && <div className="order-date">📅 {date}</div>}
     </div>
   );
 }
