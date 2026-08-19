@@ -8,7 +8,7 @@ export function TrackBottomNav({
   active = "home",
 }: {
   onCreateOrder?: () => void;
-  active?: "home" | "leaderboard" | "assortment" | "settings";
+  active?: "home" | "leaderboard" | "assortment" | "camera" | "settings";
 }) {
   const { user, userData, logout } = useAuth();
   const navigate = useNavigate();
@@ -95,6 +95,21 @@ export function TrackBottomNav({
           </span>
           {active === "assortment" && (
             <span className="bottom-nav-label">Листтар</span>
+          )}
+        </Link>
+        <Link
+          to="/camera"
+          className={`bottom-nav-item${active === "camera" ? " active" : ""}`}
+          aria-label="Камера"
+        >
+          <span className="bottom-nav-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="2" y="6" width="14" height="12" rx="2" />
+              <path d="m16 10 6-3v10l-6-3" />
+            </svg>
+          </span>
+          {active === "camera" && (
+            <span className="bottom-nav-label">Камера</span>
           )}
         </Link>
         <Link

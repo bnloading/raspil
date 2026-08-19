@@ -11,6 +11,7 @@ const Track = lazy(() => import("./pages/Track"));
 const Setup = lazy(() => import("./pages/Setup"));
 const Assortment = lazy(() => import("./pages/Assortment"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
+const Camera = lazy(() => import("./pages/Camera"));
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/setup" element={<Setup />} />
             <Route path="/assortment" element={<Assortment />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/camera" element={<Camera />} />
           </Routes>
         </Suspense>
       </AuthProvider>
