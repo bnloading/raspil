@@ -1,0 +1,49 @@
+{
+  "indexes": [
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "customerId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "productionStatus", "order": "ASCENDING" },
+      { "fieldPath": "priority", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "assignedCutterId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "assignedPvcId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "orders", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "paymentStatus", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "payments", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "orderId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "payments", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "reversed", "order": "ASCENDING" },
+      { "fieldPath": "paymentDate", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "inventoryMovements", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "materialId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "inventoryMovements", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "type", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "userId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "materials", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "active", "order": "ASCENDING" },
+      { "fieldPath": "name", "order": "ASCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

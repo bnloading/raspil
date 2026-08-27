@@ -1,4 +1,4 @@
-import { TrackBottomNav } from "../components";
+import { AppShell } from "../components/layout/AppShell";
 
 // go2rtc стрим-сервері (ноутта істеп тұруы керек: camera-server\go2rtc.exe)
 // Vercel-де VITE_CAMERA_SERVER айнымалысына туннельдің HTTPS адресін қойыңыз.
@@ -18,14 +18,13 @@ const CAMERAS: { name: string; id: string }[] = [
 
 export default function Camera() {
   return (
-    <div className="figma-track-page">
-      <div style={{ padding: "16px", paddingBottom: "88px" }}>
-        <h1 style={{ margin: "0 0 12px" }}>📷 Камералар</h1>
+    <AppShell title="Камера" subtitle="Цехтағы камералар">
+      <div className="panel-card">
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "12px",
+            gap: "16px",
           }}
         >
           {CAMERAS.map((cam) => (
@@ -74,7 +73,6 @@ export default function Camera() {
           ))}
         </div>
       </div>
-      <TrackBottomNav active="camera" />
-    </div>
+    </AppShell>
   );
 }

@@ -29,3 +29,11 @@ camera-server/
 
 .vercel
 .env*
+!.env.example
+
+# Firebase local emulator cache/state
+.firebase/
+firestore-debug.log
+ui-debug.log
+firebase-debug.log
+service-account.json

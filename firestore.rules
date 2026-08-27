@@ -1,0 +1,415 @@
+rules_version = '2';
+
+// RBAC is enforced here, not just by hiding buttons in the UI. Role strings match the existing
+// `users/{uid}.role` values already in production: 'admin' | 'manager' | 'raspil' (cutter) | 'pvh'
+// (PVC) | 'customer'. See src/lib/rbac.ts for the client-side mirror of these checks.
+//
+// IMPORTANT for callers: Firestore does not filter unauthorized documents out of a `list` query —
+// if a query could return even one document a rule would deny, the WHOLE query fails. Every
+// `list`/`collection` query issued by the app must therefore carry a `where` clause that lines up
+// with the rule condition below (see src/hooks/useOrders.ts for how cutter/PVC/customer queries
+// are split so each one is independently provable).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+
+    function role() {
+      return isSignedIn() ? userDoc().role : null;
+    }
+
+    function isNotBlocked() {
+      // .get(key, default) instead of dot-access: a user doc missing `blocked` entirely (e.g.
+      // created by hand in the console, or from before this field existed) must default to
+      // "not blocked", not silently deny every permission check that depends on isAdmin/isStaff.
+      return isSignedIn() && userDoc().get('blocked', false) != true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && isNotBlocked() && role() == 'admin';
+    }
+
+    // Manager: processes every order end-to-end (accept/price/payment/queue/assign/deliver) but
+    // can never touch user roles, materials/price catalogs, payment methods or system settings —
+    // see the per-collection rules below, where only isAdmin() (never isAdminOrManager()) guards
+    // those. "Perform every Manager action" for Admin is satisfied because isAdmin() is OR'd in
+    // alongside isAdminOrManager() everywhere the latter appears.
+    function isManager() {
+      return isSignedIn() && isNotBlocked() && role() == 'manager';
+    }
+
+    function isAdminOrManager() {
+      return isAdmin() || isManager();
+    }
+
+    function isCutter() {
+      return isSignedIn() && isNotBlocked() && role() == 'raspil';
+    }
+
+    function isPvc() {
+      return isSignedIn() && isNotBlocked() && role() == 'pvh';
+    }
+
+    function isCustomer() {
+      return isSignedIn() && isNotBlocked() && role() == 'customer';
+    }
+
+    function isStaff() {
+      return isAdmin() || isManager() || isCutter() || isPvc();
+    }
+
+    function unchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ---------------------------------------------------------------- users
+    match /users/{userId} {
+      allow get: if isAdmin() || (isSignedIn() && uid() == userId);
+      // Manager needs to list cutters/PVC workers to populate the "assign worker" dropdown (spec:
+      // "Manager: assign workers") — scoped to exactly those two roles per candidate document, so
+      // this never lets Manager browse customers/admins/other managers. Cutter/PVC (any staff) in
+      // turn needs to list admin+manager accounts purely to fan out lib/orderStatus.ts's
+      // notifyManagers() calls (startCutting/completeCutting/startPvc/completePvc/...) — likewise
+      // scoped to exactly those two roles, so it never lets a worker browse other workers/customers.
+      allow list: if isAdmin()
+        || (isManager() && resource.data.role in ['raspil', 'pvh'])
+        || (isStaff() && resource.data.role in ['admin', 'manager']);
+      allow create: if isAdmin() || (isSignedIn() && uid() == userId
+        && request.resource.data.role == 'customer'
+        && request.resource.data.blocked == false);
+      // Only Admin may change role/blocked — Manager (or anyone else) editing their own profile
+      // can never touch either field, which is exactly "Manager cannot change Admin permissions".
+      allow update: if isAdmin()
+        || (isSignedIn() && uid() == userId && unchanged(['role', 'blocked']));
+      allow delete: if false; // block/unblock via `blocked` field, never delete auth history
+    }
+
+    // ------------------------------------------------------- catalog data
+    match /materials/{id} {
+      allow read: if resource.data.active == true || isStaff();
+      allow write: if isAdmin(); // prices/specs: Admin-only, per spec
+      // Two narrow, field-scoped exceptions to the admin-only write above — both only ever move
+      // qtyOnHand/reservedQty, driven by src/lib/warehouse.ts's transactions, never anything else
+      // about the material (price, name, active flag, ...):
+      //  - cutter: consumeForCutting (cutting-completion stock decrement)
+      //  - manager: reserveStock/releaseReservation (queue-entry reservation, order cancellation)
+      allow update: if (isCutter() || isManager()) && unchanged([
+        'name', 'article', 'color', 'manufacturer', 'thicknessMm', 'sheetLengthMm', 'sheetWidthMm',
+        'sellingPriceTiyn', 'initialQty', 'minStock', 'active', 'archived', 'imageUrl', 'note',
+        'grainDirectionRequired'
+      ]);
+    }
+
+    match /materialCosts/{id} {
+      allow read, write: if isAdmin(); // purchase price never exposed to non-admins (not even Manager)
+    }
+
+    match /pvcTypes/{id} {
+      allow read: if resource.data.active == true || isStaff();
+      allow write: if isAdmin();
+    }
+
+    match /paymentMethods/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /expenseCategories/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /workshopActivity/{id} {
+      // Fully anonymized (no customerId/name/pricing — see WorkshopActivityEntry) "currently being
+      // worked on" feed for the customer-facing "Цехта қазір" transparency widget: any signed-in
+      // user may read it (not just the order's owner), since it can't identify whose order it is.
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /csvExportSettings/{id} {
+      // Legacy single-slot CSV format, superseded by /csvTemplates. Kept readable so an older
+      // client still works; no longer written by the app.
+      allow read: if isAdminOrManager();
+      allow write: if isAdmin();
+    }
+
+    match /csvTemplates/{id} {
+      // Named cutting-program export formats ("Пила №1", "Excel формат", …). Manager picks one at
+      // export time, so Manager reads them; only Admin creates/edits/deletes them.
+      allow read: if isAdminOrManager();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /applicationSettings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /counters/{id} {
+      // Anyone signed in may bump the order-number counter by exactly 1; worst case on a race is
+      // a skipped number, never a security issue, and never a duplicate (transaction-guarded).
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.seq == 1;
+      allow update: if isSignedIn() && request.resource.data.seq == resource.data.seq + 1;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------- orders
+    match /orders/{orderId} {
+      function order() {
+        return resource.data;
+      }
+      function isOwner() {
+        return isCustomer() && order().customerId == uid();
+      }
+      function cutterCanSee() {
+        return isCutter() && (
+          order().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed']
+          || order().assignedCutterId == uid()
+        );
+      }
+      function pvcCanSee() {
+        return isPvc() && (
+          order().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed']
+          || order().assignedPvcId == uid()
+        );
+      }
+      // The one hard gate of the strict workflow: an order may only newly enter CUTTING_QUEUE if
+      // it is already fully paid. Only Admin's unconditional isAdmin() branch below may bypass
+      // this (the app additionally requires a typed reason + audit entry before it ever tries).
+      function enteringCuttingQueue() {
+        return request.resource.data.productionStatus == 'cutting_queue'
+          && order().productionStatus != 'cutting_queue';
+      }
+      function paymentGateOk() {
+        return order().paymentStatus == 'paid' || order().paymentStatus == 'overpaid';
+      }
+
+      allow get: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee();
+      // `list` is evaluated per candidate document, same as `get` — a query only succeeds if
+      // EVERY document it could return would pass this check, which is why it must reference
+      // resource.data instead of a blanket role check (see file header note on query shapes).
+      allow list: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee();
+
+      allow create: if isAdmin() || (
+        // Manager types walk-in orders straight into the order journal. Two hard limits keep the
+        // strict workflow intact: the order can never be born already paid (paidTiyn must start
+        // at 0, so every tenge still arrives through the transactional, audited recordPayment),
+        // and it can never be born already in the cutting queue — it has to pass the payment gate
+        // in lib/orderStatus.ts enterCuttingQueue() like any other order.
+        isManager()
+        && request.resource.data.paidTiyn == 0
+        && request.resource.data.productionStatus in [
+          'draft', 'submitted', 'manager_review', 'price_calculated', 'waiting_payment'
+        ]
+      ) || (
+        isCustomer()
+        && request.resource.data.customerId == uid()
+        && request.resource.data.productionStatus in ['draft', 'submitted']
+        && request.resource.data.paidTiyn == 0
+        && request.resource.data.priority == 0
+        && request.resource.data.get('assignedCutterId', null) == null
+        && request.resource.data.get('assignedPvcId', null) == null
+        && request.resource.data.get('adminNote', '') == ''
+      );
+
+      allow update: if isAdmin() || (
+        // Manager drives almost the entire workflow (review, price, publish, payments, assign,
+        // deliver) with one restriction: it can never be the one to push an unpaid/partially-paid
+        // order into the cutting queue.
+        isManager() && (!enteringCuttingQueue() || paymentGateOk())
+      ) || (
+        isOwner()
+        && order().productionStatus in ['draft', 'submitted']
+        && request.resource.data.productionStatus in ['draft', 'submitted', 'cancelled']
+        && request.resource.data.customerId == order().customerId
+        && unchanged([
+          'paidTiyn', 'debtTiyn', 'paymentStatus', 'assignedCutterId', 'assignedPvcId',
+          'priority', 'adminNote', 'confirmedSheets', 'cuttingConsumedAt', 'cuttingConsumedMovementId'
+        ])
+      ) || (
+        cutterCanSee()
+        && unchanged([
+          'customerId', 'materialId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
+          'assignedPvcId', 'discountTiyn', 'adminNote'
+        ])
+        // Setting the idempotency guard is only valid as part of the exact cutting-completion
+        // transition — cutting_started -> cutting_completed (warehouse.consumeForCutting also
+        // advances straight to pvc_queue/ready in the same transaction) — never an arbitrary jump.
+        && (
+          unchanged(['cuttingConsumedAt', 'cuttingConsumedMovementId'])
+          || (
+            order().productionStatus == 'cutting_started'
+            && request.resource.data.productionStatus in ['pvc_queue', 'ready']
+          )
+        )
+      ) || (
+        pvcCanSee()
+        && unchanged([
+          'customerId', 'materialId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
+          'assignedCutterId', 'discountTiyn', 'adminNote', 'confirmedSheets',
+          'cuttingConsumedAt', 'cuttingConsumedMovementId'
+        ])
+      );
+
+      allow delete: if false; // orders are cancelled, never deleted
+
+      match /parts/{partId} {
+        function parentOrder() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        allow read: if isAdmin() || isManager()
+          || (isCustomer() && parentOrder().customerId == uid())
+          || (isCutter() && (parentOrder().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed'] || parentOrder().assignedCutterId == uid()))
+          || (isPvc() && (parentOrder().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed'] || parentOrder().assignedPvcId == uid()));
+        // Manager may correct dimensions/specification any time before the order is fully paid
+        // (spec: "Correct the order specification before calculating the final price") — once
+        // payment has started, the parts list is frozen like everything else about the order.
+        allow write: if isAdmin()
+          || (isManager() && parentOrder().productionStatus in [
+            'submitted', 'manager_review', 'price_calculated', 'waiting_payment'
+          ])
+          || (isCustomer() && parentOrder().customerId == uid() && parentOrder().productionStatus in ['draft', 'submitted']);
+      }
+
+      match /statusHistory/{entryId} {
+        function parentOrderStatusHistory() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        allow read: if isAdmin() || isManager()
+          || (isCustomer() && parentOrderStatusHistory().customerId == uid())
+          || (isCutter() && parentOrderStatusHistory().assignedCutterId == uid())
+          || (isPvc() && parentOrderStatusHistory().assignedPvcId == uid());
+        allow create: if isStaff() && request.resource.data.userId == uid();
+        allow update, delete: if false; // immutable audit trail
+      }
+    }
+
+    // ------------------------------------------------------------ payments
+    match /payments/{id} {
+      function relatedOrder() {
+        return get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data;
+      }
+      allow get: if isAdminOrManager() || (isCustomer() && relatedOrder().customerId == uid());
+      // Requires the client to query with where('orderId','==', id) so every candidate document
+      // shares one orderId and the ownership check below can be proven for the whole result set.
+      allow list: if isAdminOrManager() || (isCustomer() && relatedOrder().customerId == uid());
+      allow create: if isAdminOrManager() && request.resource.data.recordedByUid == uid();
+      // Reversal ("Reverse incorrect payment... with a required reason") is Admin-only, per spec.
+      allow update: if isAdmin();
+      allow delete: if false; // reverse via `reversed` flag, never delete a financial record
+    }
+
+    // -------------------------------------------------------- warehouse
+    match /inventoryMovements/{id} {
+      allow read: if isAdminOrManager();
+      allow create: if (isAdmin() && request.resource.data.userId == uid())
+        // Manager may only ever create the reservation/release entries its own workflow produces
+        // (enterCuttingQueue / cancelOrder) — never a manual correction or receipt.
+        || (isManager() && request.resource.data.userId == uid() && request.resource.data.type in ['reservation', 'reservation_release'])
+        // Cutter may only ever create the one movement type their own workflow produces.
+        || (isCutter() && request.resource.data.userId == uid() && request.resource.data.type == 'cutting_consumption');
+      allow update, delete: if false; // immutable ledger; corrections are new movements
+    }
+
+    match /inventoryReservations/{id} {
+      // Cutter must be able to find its own order's active reservation (src/lib/orderStatus.ts
+      // completeCutting looks it up by orderId+status before releasing it) — scoped to only
+      // 'active' reservations, mirroring the release permission it already has below.
+      allow read: if isAdminOrManager() || (isCutter() && resource.data.status == 'active');
+      allow write: if isAdmin();
+      allow create: if isManager();
+      // Cutter/Manager may release (never create or re-activate) a reservation as part of
+      // consumeForCutting / cancelOrder.
+      allow update: if (isCutter() || isManager())
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'released'
+        && unchanged(['materialId', 'orderId', 'qty', 'createdAt']);
+    }
+
+    match /leftoverPieces/{id} {
+      allow read: if isAdmin() || isCutter();
+      allow create: if (isAdmin() || isCutter()) && request.resource.data.createdByUid == uid();
+      allow update, delete: if isAdmin();
+    }
+
+    // --------------------------------------------------------- notifications
+    match /notifications/{id} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
+      allow create: if isStaff();
+      allow update: if isSignedIn() && resource.data.userId == uid() && unchanged([
+        'userId', 'type', 'title', 'body', 'orderId', 'createdAt'
+      ]);
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------ invoices
+    match /invoices/{id} {
+      // A customer sees only invoices for their own orders that have actually been sent to them —
+      // an unsent draft stays invisible. Their list query must filter on both customerId and
+      // sentToCustomer for the whole query to be provable (see useCustomerInvoices).
+      allow get, list: if isAdminOrManager()
+        || (isCustomer() && resource.data.customerId == uid() && resource.data.sentToCustomer == true);
+      allow create: if isAdminOrManager() && request.resource.data.issuedByUid == uid();
+      // Issuing again creates a NEW version rather than editing an old one, so the only field an
+      // update may touch is the send flag — the frozen financial snapshot is immutable.
+      allow update: if isAdminOrManager() && unchanged([
+        'orderId', 'orderNumber', 'invoiceNumber', 'version', 'customerId', 'customerName',
+        'customerPhone', 'lines', 'subtotalTiyn', 'discountTiyn', 'totalTiyn', 'paidTiyn',
+        'debtTiyn', 'issuedByUid', 'issuedByName', 'issuedAt'
+      ]);
+      allow delete: if false; // financial records are never deleted
+    }
+
+    // ------------------------------------------------- attendance & salary
+    match /attendance/{id} {
+      // A worker may read only their own attendance; Admin marks it and sees everyone's. Reading
+      // is per-document, so a worker's list query must filter where('userId','==',uid) for the
+      // whole query to be provable (see the header note on list queries).
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
+      allow write: if isAdmin();
+    }
+
+    match /salaryRules/{userId} {
+      allow get: if isAdmin() || (isSignedIn() && uid() == userId);
+      allow list: if isAdmin();
+      allow write: if isAdmin(); // pay configuration is Admin-only, per spec
+    }
+
+    match /salaryEntries/{id} {
+      // "Worker sees only their own salary" — enforced here, not by hiding a nav item.
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
+      allow write: if isAdmin();
+    }
+
+    match /salaryAdjustments/{id} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
+      // Adjustments are Admin-only and immutable once written: correcting one means adding
+      // another, so the reason history can never be rewritten or erased.
+      allow create: if isAdmin() && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0;
+      allow update, delete: if false;
+    }
+
+    // --------------------------------------------------------------- audit
+    match /auditLogs/{id} {
+      // Reading the audit trail is Admin-only per spec ("View audit history" is listed only under
+      // Admin) — Manager can still WRITE entries for its own actions (isStaff() below), it just
+      // can't browse the log, and nobody can ever delete it (spec: "cannot... delete audit history").
+      allow read: if isAdmin();
+      allow create: if isStaff() && request.resource.data.userId == uid();
+      allow update, delete: if false;
+    }
+  }
+}

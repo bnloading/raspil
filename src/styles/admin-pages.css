@@ -1,0 +1,15 @@
+/* Page-specific layout rules for the admin pages (AdminOrderDetail, AdminUsers,
+   AdminMaterials, AdminReports, AdminAuditLog) that don't fit the shared
+   primitives in src/index.css cleanly. Imported by src/main.tsx (wired up by
+   the redesign orchestrator once all parallel page-migration passes are done). */
+
+/* AdminUsers and AdminMaterials both list rows in a .data-table where a row
+   can represent a blocked user or an inactive material/PVC type. The existing
+   ".user-row.blocked" rule (index.css) only targets the old card-row markup,
+   so give <tr> rows the same "dimmed + danger accent" treatment when blocked. */
+.data-table tbody tr.blocked {
+  opacity: 0.55;
+}
+.data-table tbody tr.blocked td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}

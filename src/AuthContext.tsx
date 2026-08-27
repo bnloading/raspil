@@ -1,17 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, onSnapshot } from 'firebase/firestore'
 import { auth, db } from './firebase'
-
-interface UserData {
-  name: string
-  email: string
-  role: 'admin' | 'raspil' | 'pvh'
-}
+import type { UserDoc } from './types/domain'
 
 interface AuthContextType {
   user: User | null
-  userData: UserData | null
+  userData: UserDoc | null
   loading: boolean
   logout: () => Promise<void>
 }
@@ -29,26 +24,49 @@ export function useAuth() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [userData, setUserData] = useState<UserData | null>(null)
+  const [userData, setUserData] = useState<UserDoc | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubDoc: (() => void) | null = null
+
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (unsubDoc) {
+        unsubDoc()
+        unsubDoc = null
+      }
       setUser(firebaseUser)
       if (firebaseUser) {
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid))
-        if (snap.exists()) {
-          setUserData(snap.data() as UserData)
-        } else {
-          setUserData(null)
-        }
+        unsubDoc = onSnapshot(
+          doc(db, 'users', firebaseUser.uid),
+          (snap) => {
+            setUserData(snap.exists() ? (snap.data() as UserDoc) : null)
+            setLoading(false)
+          },
+          () => {
+            setUserData(null)
+            setLoading(false)
+          },
+        )
       } else {
         setUserData(null)
+        setLoading(false)
       }
-      setLoading(false)
     })
-    return unsub
+
+    return () => {
+      unsubAuth()
+      if (unsubDoc) unsubDoc()
+    }
   }, [])
+
+  // Blocked users are signed out client-side as soon as their doc reflects it. This is a UX
+  // convenience, not the security boundary — firestore.rules deny blocked users regardless.
+  useEffect(() => {
+    if (userData?.blocked) {
+      signOut(auth)
+    }
+  }, [userData])
 
   const logout = async () => {
     await signOut(auth)

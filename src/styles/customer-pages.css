@@ -1,0 +1,20 @@
+/* Page-specific layout rules for the customer-facing pages that don't fit the
+   shared primitives in src/index.css cleanly. Imported by src/main.tsx
+   (wired up by the redesign orchestrator once all parallel page-migration
+   passes are done). */
+
+/* Profile.tsx: two settings panels (profile info + password) that should sit
+   side-by-side on wider screens but stack on mobile. .card-grid's fixed
+   2/3/4 column steps don't fit two fixed panels, so this is a dedicated
+   2-column-at-desktop grid instead. */
+.profile-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 768px) {
+  .profile-panels {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}

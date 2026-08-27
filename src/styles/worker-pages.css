@@ -1,0 +1,15 @@
+/* Worker (cutter/PVC) shop-floor pages — CutterDashboard, PvcDashboard.
+   Not wired into main.tsx/index.css yet; orchestrator adds the import once all
+   parallel redesign agents are done (see task instructions).
+
+   The shared .card-grid primitive (src/index.css) always renders at least
+   var(--cols, 2) columns, even below its own first breakpoint — so a page that
+   passes --cols:2 still gets 2 (cramped) columns on small phones. The worker
+   job-queue cards carry an inline minutes input, a note field and an action
+   button each, so they read better as a single column on narrow phones,
+   growing to the page's requested --cols (2) at wider widths. */
+@media (max-width: 480px) {
+  .worker-card-grid.card-grid {
+    grid-template-columns: 1fr;
+  }
+}

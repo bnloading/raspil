@@ -6,19 +6,40 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-workshop-rules-test \"vitest run --config vitest.rules.config.ts\"",
+    "seed": "node scripts/seed.mjs",
+    "seed:csv-templates": "node --env-file=.env.local scripts/seed-csv-templates.mjs",
+    "verify:pdf": "node scripts/verify-invoice-pdf.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/pdfmake": "^0.3.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "firebase-admin": "^14.3.0",
+    "globals": "^17.11.0",
     "typescript": "~5.9.3",
-    "vite": "^8.0.1"
+    "typescript-eslint": "^8.68.0",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
-    "firebase": "^12.11.0",
+    "@fontsource/noto-sans": "^5.3.0",
+    "firebase": "^12.18.0",
+    "pdfmake": "^0.3.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.2"
+    "react-router-dom": "^7.13.2",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
   }
 }
