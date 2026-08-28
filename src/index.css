@@ -2727,6 +2727,23 @@ textarea.form-input {
   white-space: nowrap;
 }
 
+/* Admin's bar carries six items. At 360px that already leaves only a couple of pixels spare, so
+   on smaller phones the touch target and the active label give a little back rather than letting
+   the bar overflow. 40px is still an acceptable target for an icon this size. */
+@media (max-width: 380px) {
+  .bottom-nav-item {
+    min-width: 40px;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  .bottom-nav-label {
+    font-size: 0.6rem;
+    max-width: 62px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .track-fab {
   position: fixed;
   left: 50%;
@@ -4358,6 +4375,32 @@ body {
 .jt-pay-refunded,
 .jt-tone-muted { background: #f1f3f7; color: var(--text-light); }
 .jt-tone-emerald { background: var(--emerald-light); color: var(--emerald); }
+
+/* Статус is a toggle, not a label: reuses the .jt-pay-* tones above so the colour still carries
+   the meaning, but is a real button with a hit area that fills the cell. */
+.jt-pay-toggle {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: var(--jt-font-sm);
+  font-weight: 700;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jt-pay-toggle:hover {
+  border-color: currentColor;
+  filter: brightness(0.97);
+}
+.jt-pay-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
 
 /* "Төлем түрі" reads as a plain cell until hovered, then as the button it is. */
 .jt-method-btn {

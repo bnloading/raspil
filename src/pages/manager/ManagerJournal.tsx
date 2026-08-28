@@ -22,7 +22,7 @@ import {
   saveJournalRow,
   type JournalDraft,
 } from "../../lib/journalOrders";
-import { recordPayment } from "../../lib/payments";
+import { recordPayment, reversePayment } from "../../lib/payments";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_SHORT, PRODUCTION_STATUS_ORDER } from "../../lib/statuses";
 import type { Material, Order, PaymentMethodDef } from "../../types/domain";
 
@@ -120,6 +120,10 @@ export default function ManagerJournal() {
 
   /** Order whose payment dialog is open. */
   const [payFor, setPayFor] = useState<Order | null>(null);
+  /** Method the Статус toggle reuses, so settling an order is one tap after the first time. */
+  const [defaultMethodId, setDefaultMethodId] = useState(
+    () => localStorage.getItem("journalDefaultMethod") ?? "",
+  );
 
   const [newRow, setNewRow] = useState<JournalDraft | null>(null);
   const newRowNameRef = useRef<HTMLInputElement>(null);
@@ -197,6 +201,54 @@ export default function ManagerJournal() {
     setSaving(false);
   };
 
+  /**
+   * The Статус cell's toggle: settle the order in full, or undo that.
+   *
+   * Marking paid records a real payment through the same transactional path as the dialog, using
+   * the method last chosen here. The very first time there is nothing to remember, so the dialog
+   * opens instead of the code guessing which method the money came in by.
+   *
+   * Un-marking reverses every live payment on the order. firestore.rules keeps reversal
+   * Admin-only, so a Manager is told rather than shown a write that would be rejected.
+   */
+  const handleTogglePaid = async (order: Order) => {
+    const settled = order.paymentStatus === "paid" || order.paymentStatus === "overpaid";
+
+    if (!settled) {
+      const remaining = Math.max(0, order.debtTiyn);
+      if (remaining <= 0) {
+        showToast("Бұл заказда төленетін сома жоқ");
+        return;
+      }
+      const remembered = methods.find((m) => m.id === defaultMethodId);
+      if (!remembered) {
+        setPayFor(order); // first use — let the method be chosen, then remember it
+        return;
+      }
+      await handleAddPayment(order, remembered.id, remaining);
+      return;
+    }
+
+    if (userData.role !== "admin") {
+      showToast("Төлемді тек әкімші қайтара алады");
+      return;
+    }
+    const live = (byOrder.get(order.id) ?? []).filter((p) => !p.reversed);
+    if (live.length === 0) {
+      showToast("Қайтаратын төлем жоқ");
+      return;
+    }
+    if (!confirm(`${order.orderNumber}: ${live.length} төлем қайтарылады. Жалғастырасыз ба?`)) return;
+    try {
+      for (const p of live) {
+        await reversePayment(db, actor, { paymentId: p.id, reason: "Журналда «төленбеді» деп белгіленді" });
+      }
+      showToast("✅ Төлем белгісі алынды");
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
   const handleAddPayment = async (order: Order, methodId: string, amountTiyn: number) => {
     const method = methods.find((m) => m.id === methodId);
     if (!method) {
@@ -215,7 +267,10 @@ export default function ManagerJournal() {
         methodName: method.name,
         comment: "Журнал арқылы",
       });
-      showToast("✅ Төлем тіркелді");
+      // Remembered so the Статус toggle can settle the next order without asking again.
+      setDefaultMethodId(method.id);
+      localStorage.setItem("journalDefaultMethod", method.id);
+      showToast(`✅ Төлем тіркелді — ${method.name}`);
       setPayFor(null);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
@@ -380,6 +435,7 @@ export default function ManagerJournal() {
                     actor={actor}
                     onOpen={() => navigate(`/manager/order/${order.id}`)}
                     onAddPayment={() => setPayFor(order)}
+                    onTogglePaid={() => handleTogglePaid(order)}
                     onError={showToast}
                   />
                 ))
@@ -557,7 +613,7 @@ const AUTOSAVE_MS = 900;
  * — or leaving one half-typed while you look at another — behave sensibly.
  */
 function JournalRow({
-  order, materials, payments, actor, onOpen, onAddPayment, onError,
+  order, materials, payments, actor, onOpen, onAddPayment, onTogglePaid, onError,
 }: {
   order: Order;
   materials: Material[];
@@ -567,6 +623,8 @@ function JournalRow({
   onOpen: () => void;
   /** Opens the payment dialog for this row; the method and amount are chosen there. */
   onAddPayment: () => void;
+  /** Settles the order in full, or undoes that if it is already paid. */
+  onTogglePaid: () => void;
   onError: (message: string) => void;
 }) {
   const byMethod = paidByMethod(payments);
@@ -699,10 +757,16 @@ function JournalRow({
 
       <td className="jt-tint-total jt-num jt-total">{formatMoneyBare(preview.totalTiyn)}</td>
 
-      <td title={PAYMENT_STATUS_LABELS[preview.paymentStatus]}>
-        <span className={`jt-pill jt-pay-${preview.paymentStatus}`}>
+      {/* Tap to settle the order in full, tap again to undo — the ledger's fast path. The Төлем
+          түрі button beside it stays for part payments and for choosing a different method. */}
+      <td>
+        <button
+          className={`jt-pay-toggle jt-pay-${preview.paymentStatus}`}
+          onClick={onTogglePaid}
+          title={`${PAYMENT_STATUS_LABELS[preview.paymentStatus]} — өзгерту үшін басыңыз`}
+        >
           {PAYMENT_STATUS_SHORT[preview.paymentStatus]}
-        </span>
+        </button>
       </td>
 
       <td className="jt-muted jt-nowrap">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</td>

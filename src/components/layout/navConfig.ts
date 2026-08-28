@@ -36,7 +36,9 @@ function adminNav(): NavItem[] {
     { key: "admin-materials", label: "Қойма", path: "/admin/materials", icon: IconWarehouse, group: "main", mobile: true },
     { key: "admin-payments", label: "Төлемдер", path: "/admin/reports", icon: IconReports, group: "main" },
     { key: "admin-reports", label: "Есептер", path: "/admin/reports", icon: IconReports, group: "main", mobile: true },
-    { key: "admin-debt", label: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main" },
+    // On the phone bottom bar: an owner checking in from outside the shop wants the debt ledger
+    // more than anything below it in this list.
+    { key: "admin-debt", label: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main", mobile: true },
     { key: "admin-customers", label: "Клиенттер", path: "/setup", icon: IconUsers, group: "main" },
     { key: "admin-staff", label: "Қызметкерлер", path: "/setup", icon: IconUsers, group: "main" },
     { key: "admin-attendance", label: "Жұмысқа қатысу", path: "/admin/attendance", icon: IconAudit, group: "main" },

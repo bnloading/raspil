@@ -9,7 +9,9 @@ interface BottomNavProps {
 }
 
 export function BottomNav({ items, activeKey, fab }: BottomNavProps) {
-  const mobileItems = items.filter((item) => item.mobile).slice(0, 5);
+  // Six is what fits a 360px bar: each item has a 44px touch target and only the active one shows
+  // its label. Beyond six they start to crowd, so the cap stays.
+  const mobileItems = items.filter((item) => item.mobile).slice(0, 6);
 
   return (
     <>
