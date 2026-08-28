@@ -18,8 +18,17 @@ import {
 import { totalPvcMeters } from "../lib/pricing";
 import { NumberField } from "./NumberField";
 
-/** Fixed row height (px) the virtualizer assumes — must match .bulk-row's height in index.css. */
-const ROW_H = 56;
+/**
+ * Fixed row heights (px) the virtualizer assumes — these must match `.bulk-row`'s height in
+ * index.css, including its `max-width: 767px` override.
+ *
+ * A phone cannot fit three number inputs and four edge buttons on one 56px line: the inputs get
+ * squeezed by the flex layout until a 3–4 digit size is cut off mid-number. On narrow screens the
+ * edge buttons wrap onto a second line and the row is correspondingly taller.
+ */
+const ROW_H_WIDE = 56;
+const ROW_H_NARROW = 88;
+const NARROW_QUERY = "(max-width: 767px)";
 /** Rows rendered above/below the viewport so fast scrolling doesn't show blank space. */
 const OVERSCAN = 6;
 /** Below this many rows, windowing costs more than it saves — render them all. */
@@ -93,10 +102,24 @@ export function BulkPartsEditor({
     return () => ro.disconnect();
   }, []);
 
+  // Row height follows the same breakpoint the stylesheet uses, and is re-read on resize/rotation
+  // so the virtualizer never positions rows by a height the CSS is no longer applying.
+  const [rowH, setRowH] = useState(() =>
+    typeof matchMedia === "function" && matchMedia(NARROW_QUERY).matches ? ROW_H_NARROW : ROW_H_WIDE,
+  );
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const mq = matchMedia(NARROW_QUERY);
+    const sync = () => setRowH(mq.matches ? ROW_H_NARROW : ROW_H_WIDE);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   const virtualize = visible.length > VIRTUALIZE_ABOVE;
-  const startIndex = virtualize ? Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN) : 0;
+  const startIndex = virtualize ? Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN) : 0;
   const endIndex = virtualize
-    ? Math.min(visible.length, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN)
+    ? Math.min(visible.length, Math.ceil((scrollTop + viewportH) / rowH) + OVERSCAN)
     : visible.length;
   const windowed = visible.slice(startIndex, endIndex);
 
@@ -241,11 +264,11 @@ export function BulkPartsEditor({
         {visible.length === 0 ? (
           <div className="bulk-empty">Бөлшек табылмады</div>
         ) : (
-          <div style={virtualize ? { height: visible.length * ROW_H, position: "relative" } : undefined}>
+          <div style={virtualize ? { height: visible.length * rowH, position: "relative" } : undefined}>
             <div
               style={
                 virtualize
-                  ? { position: "absolute", top: startIndex * ROW_H, left: 0, right: 0 }
+                  ? { position: "absolute", top: startIndex * rowH, left: 0, right: 0 }
                   : undefined
               }
             >

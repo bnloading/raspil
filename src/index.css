@@ -1173,6 +1173,11 @@ textarea.form-input {
 }
 .btn-full {
   width: 100%;
+  /* `.btn` is nowrap so inline buttons keep their shape, but a full-width button has nowhere to
+     grow sideways — a long Kazakh label then spilled outside its own background on a phone
+     ("Таңдалған бөлшектерге қолдану"). These may wrap instead. */
+  white-space: normal;
+  text-wrap: balance;
 }
 .btn-sm {
   padding: 8px 16px;
@@ -5607,12 +5612,45 @@ body {
 @media (max-width: 767px) {
   .bulk-rows { max-height: 46vh; }
   .bulk-row-name { display: none; }
-  /* Reclaim width on a 320px screen so three inputs + four edge buttons still fit the row. */
-  .bulk-row { gap: 5px; padding: 0 6px; }
   .bulk-row-index { display: none; }
-  .bulk-edge { width: 27px; }
-  .bulk-num { max-width: 54px; font-size: 0.9rem; }
-  .bulk-num-qty { max-width: 40px; }
+
+  /* Three inputs and four edge buttons cannot share one line on a phone: flex kept shrinking the
+     inputs until a 3–4 digit size was cut off mid-number. The edges wrap to their own line and the
+     row is 88px tall — ROW_H_NARROW in BulkPartsEditor.tsx must match this. */
+  .bulk-row {
+    gap: 6px;
+    padding: 6px;
+    height: 88px;
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: 6px;
+  }
+  .bulk-row-dims { flex: 1 1 auto; gap: 6px; }
+  /* A firm floor: without it the flex row shrinks these below a readable width again. */
+  .bulk-num {
+    flex: 1 1 0;
+    min-width: 62px;
+    max-width: none;
+    height: 38px;
+    font-size: 1rem;
+  }
+  .bulk-num-qty {
+    flex: 0 0 auto;
+    min-width: 50px;
+    max-width: 56px;
+  }
+  /* Forces the wrap, so the edge buttons own the second line and can be full-sized again. */
+  .bulk-edges {
+    flex: 1 0 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .bulk-edge {
+    flex: 1 1 0;
+    width: auto;
+    height: 32px;
+  }
+  .bulk-row-more { height: 38px; }
   /* The bulk panel deliberately stays in normal flow rather than sticking to the bottom: the row
      list already scrolls inside its own max-height, so the panel is always reachable, and a
      sticky panel rode up over the select-all control whenever the list was short. */
