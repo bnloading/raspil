@@ -19,6 +19,7 @@ import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { stockStatus, lowStockCount } from "../../lib/stockStatus";
 import { RowMenu } from "../../components/RowMenu";
+import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
@@ -242,9 +243,14 @@ function MaterialsTab({
                 return (
                   <tr key={m.id} className={!m.active ? "blocked" : undefined}>
                     <td data-label="Материал">
-                      <strong>{m.name}</strong>
-                      <div className="wh-sub">
-                        {m.article || MATERIAL_CATEGORY_LABELS[m.category ?? "ldsp"]}
+                      <div className="wh-material">
+                        <MaterialThumb material={m} />
+                        <span>
+                          <strong>{m.name}</strong>
+                          <span className="wh-sub">
+                            {m.article || MATERIAL_CATEGORY_LABELS[m.category ?? "ldsp"]}
+                          </span>
+                        </span>
                       </div>
                     </td>
                     <td data-label="Өлшемі" className="wh-sub">
@@ -614,9 +620,14 @@ function PvcTab({
               {pvcTypes.map((p) => (
                 <tr key={p.id} className={!p.active ? "blocked" : undefined}>
                   <td data-label="Түсі / Қалыңдығы">
-                    <strong>
-                      {p.colorName} · {p.thicknessMm} мм
-                    </strong>
+                    {/* Edge banding is bought by colour, so show it. Resolves by colorName; the
+                        colours with no photo fall back to the placeholder swatch. */}
+                    <div className="wh-material">
+                      <MaterialThumb material={p} />
+                      <strong>
+                        {p.colorName} · {p.thicknessMm} мм
+                      </strong>
+                    </div>
                   </td>
                   <td className="num" data-label="Бағасы">
                     {formatMoney(p.pricePerMeterTiyn)} / метр

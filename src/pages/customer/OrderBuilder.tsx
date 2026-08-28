@@ -21,6 +21,7 @@ import { MoneyInput } from "../../components/MoneyInput";
 import type { ScannedPart } from "../../lib/ocrDimensions";
 import { DimensionScanner } from "../../components/DimensionScanner";
 import { BulkPartsEditor } from "../../components/BulkPartsEditor";
+import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney } from "../../lib/money";
 import { generateOrderNumber } from "../../lib/orderNumber";
 import {
@@ -484,6 +485,8 @@ export default function OrderBuilder() {
                         className={`material-pick-card${materialId === m.id ? " selected" : ""}`}
                         onClick={() => setMaterialId(m.id)}
                       >
+                        {/* Colour is the thing a customer is actually choosing, so lead with it. */}
+                        <MaterialThumb material={m} size="md" />
                         <strong>{m.name}</strong>
                         <span>{m.color} · {m.thicknessMm} мм</span>
                         <span>{m.sheetLengthMm}×{m.sheetWidthMm} мм</span>

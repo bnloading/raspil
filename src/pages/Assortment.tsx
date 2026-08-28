@@ -4,6 +4,7 @@ import { Spinner } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { useMaterials } from "../hooks/useMaterials";
 import { formatMoney } from "../lib/money";
+import { materialImage } from "../lib/materialImages";
 
 import imgAk from "../images/Белый.jpeg";
 import imgSeryy from "../images/светло серый.jpg";
@@ -38,7 +39,8 @@ export default function Assortment() {
     materials.length > 0
       ? materials.map((m) => ({
           name: m.name,
-          image: m.imageUrl || "",
+          // Falls back to the bundled catalogue photo when no imageUrl has been set.
+          image: materialImage(m) ?? "",
           detail: `${m.thicknessMm} мм · ${formatMoney(m.sellingPriceTiyn)} / лист`,
           available: m.qtyOnHand - m.reservedQty > 0,
         }))
