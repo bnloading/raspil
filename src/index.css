@@ -6957,3 +6957,55 @@ body {
   .mbreak-row { grid-template-columns: 1fr auto 42px; }
   .mbreak-name { grid-column: 1 / -1; }
 }
+
+/* Customer order card: a link-wrapped summary with the actions kept outside the anchor. */
+.ocard.is-static { position: relative; }
+.ocard-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding-right: 18px; /* room for the chevron */
+}
+.ocard-chev {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-light);
+}
+.ocard.is-static .track-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+/* The cards are the customer's only view of their orders, so they show at every width, unlike
+   the admin list where they are the phone half of a table/card pair. */
+.orders-section .ocards { display: grid; }
+
+/* A KPI tile is half a phone screen wide, and a money figure at 1.45rem did not fit — it was
+   ellipsising to "157 …", which is worse than useless for a number. Shrink the value instead. */
+@media (max-width: 480px) {
+  .kpi-value { font-size: 1.15rem; }
+  .kpi-card { padding: 12px 13px; }
+  .kpi-icon { width: 32px; height: 32px; font-size: 15px; }
+}
+
+/* Narrower still: a 320px phone leaves ~75px for the value beside the icon. */
+@media (max-width: 380px) {
+  .kpi-value { font-size: 0.95rem; }
+  .kpi-label { font-size: 0.72rem; }
+  .kpi-card { padding: 10px 11px; gap: 6px; }
+  .kpi-icon { width: 28px; height: 28px; font-size: 13px; }
+}
+
+/* Below 360px even a shrunken money value cannot share the tile with the icon. The icon is
+   decorative — the label already names the figure — so it is what gives way. */
+@media (max-width: 359px) {
+  .kpi-icon { display: none; }
+  .kpi-value { font-size: 1.05rem; }
+}
