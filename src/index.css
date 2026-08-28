@@ -195,9 +195,11 @@
   /* Order-journal table metrics (ЛДСП — ТАПСЫРЫС ЖУРНАЛЫ) */
   --jt-row-h: 38px;
   --jt-header-h: 40px;
-  --jt-cell-pad-x: 10px;
-  --jt-font: 0.78rem;
-  --jt-font-sm: 0.72rem;
+  /* Tightened once the ledger became fixed-width: with 16 columns sharing the viewport, the old
+     10px/0.78rem left money figures like "65 000 ₸" clipping mid-number. */
+  --jt-cell-pad-x: 6px;
+  --jt-font: 0.74rem;
+  --jt-font-sm: 0.68rem;
   /* Pale colour-coded column groups, matching the reference's tinted bands */
   --jt-tint-material: #f7f9fc;
   --jt-tint-pvc: #f6fbf8;
@@ -229,6 +231,15 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+}
+
+/* Nearly every size in this sheet is in rem, so one root bump enlarges the whole phone UI
+   proportionally — labels, pills and inputs together — instead of leaving a patchwork of
+   hand-tuned sizes. 17.5px is ~9% up: readable at arm's length without reflowing layouts. */
+@media (max-width: 767px) {
+  html {
+    font-size: 17.5px;
+  }
 }
 
 body {
@@ -283,38 +294,151 @@ h3 {
   position: relative;
   overflow: hidden;
 }
-.login-page::before {
-  content: "";
-  position: absolute;
-  width: 300px;
-  height: 300px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 44px;
-  top: -100px;
-  right: -80px;
-}
+/* Two soft light sources rather than hard-edged squares — the old rounded rectangles read as
+   stray UI on a phone, where they landed right beside the card. */
+.login-page::before,
 .login-page::after {
   content: "";
   position: absolute;
-  width: 200px;
-  height: 200px;
-  background: rgba(79, 110, 247, 0.22);
-  border-radius: 34px;
-  bottom: -60px;
-  left: -40px;
+  border-radius: 50%;
+  filter: blur(70px);
+  pointer-events: none;
 }
+.login-page::before {
+  width: 460px;
+  height: 460px;
+  background: rgba(99, 130, 255, 0.35);
+  top: -160px;
+  right: -120px;
+}
+.login-page::after {
+  width: 380px;
+  height: 380px;
+  background: rgba(56, 189, 248, 0.18);
+  bottom: -150px;
+  left: -110px;
+}
+
+/* Brand panel beside the form on desktop; the form alone on a phone. */
+.login-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  width: 100%;
+  max-width: 400px;
+  gap: 0;
+}
+.login-brand {
+  display: none;
+  color: #fff;
+  padding: 48px 44px;
+}
+.login-brand-mark {
+  width: 60px;
+  height: 60px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-bottom: 22px;
+}
+.login-brand h2 {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+  color: #fff;
+}
+.login-brand-lead {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 30px;
+  max-width: 34ch;
+}
+.login-brand-list {
+  list-style: none;
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+}
+.login-brand-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+.login-brand-list span {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 17px;
+}
+
 .login-card {
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-lg);
   padding: 40px 28px;
   width: 100%;
-  max-width: 400px;
   box-shadow: var(--shadow-lg);
   animation: slideUp 0.6s ease;
   position: relative;
   z-index: 1;
 }
+
+@media (min-width: 900px) {
+  .login-shell {
+    grid-template-columns: 1.1fr 420px;
+    max-width: 980px;
+    align-items: center;
+    gap: 40px;
+  }
+  .login-brand { display: block; }
+  /* The brand panel already says the product name, so the card drops its own logo block. */
+  .login-shell .login-logo .icon { display: none; }
+  .login-card { padding: 44px 36px; }
+}
+
+/* An input with a button parked inside its right edge (password reveal). */
+.input-with-affix {
+  position: relative;
+}
+.input-with-affix .form-input {
+  padding-right: 46px;
+}
+.input-affix-btn {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.65;
+}
+.input-affix-btn:hover { opacity: 1; }
+
 .login-logo {
   text-align: center;
   margin-bottom: 32px;
@@ -4071,12 +4195,41 @@ body {
   min-height: 0;
 }
 
+/* Fixed layout is what removes the horizontal scroll: with `auto`, each column grew to fit its
+   widest header or value and the table settled ~300px past the viewport no matter how many
+   columns were cut. Fixed makes the percentages below authoritative, so 16 columns always fit
+   the available width and long text ellipsises instead of pushing the table sideways. */
 .journal-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--jt-font);
   white-space: nowrap;
+}
+/* Balanced against real content: money needs room for "65 000", the name and material columns for
+   actual names, the counts almost none.
+
+   These sum to 100 across the 16 actual columns (2 × qty, 6 × money, one each of the rest).
+   Overshooting the total makes the browser rescale everything proportionally, which quietly
+   shrinks the narrowest column — the actions cell — until its buttons no longer fit. */
+@media (min-width: 768px) {
+  .journal-table .jt-col-num { width: 3.2%; }
+  .journal-table .jt-col-name { width: 9.6%; }
+  .journal-table .jt-w-phone { width: 7.6%; }
+  .journal-table .jt-w-mat { width: 8%; }
+  .journal-table .jt-w-qty { width: 3.8%; }
+  .journal-table .jt-w-money { width: 6.7%; }
+  .journal-table .jt-w-status { width: 5.8%; }
+  .journal-table .jt-w-date { width: 6.3%; }
+  .journal-table .jt-w-method { width: 7.3%; }
+  .journal-table .jt-w-act { width: 5.4%; }
+}
+/* Nothing may spill out of its column, or the ellipsis never happens. */
+.journal-table td,
+.journal-table th {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .journal-table th,
 .journal-table td {
@@ -4111,30 +4264,15 @@ body {
   padding: 28px 0;
 }
 
-/* Frozen identity columns — order number and customer name stay put while the money columns scroll. */
-.jt-sticky {
-  position: sticky;
-  z-index: 2;
-  background: var(--card);
-}
-.journal-table thead .jt-sticky {
-  z-index: 4;
-  background: #f8fafc;
-}
-.jt-col-num {
-  left: 0;
-  width: 62px;
-  min-width: 62px;
-}
+/* The identity columns used to be frozen so they stayed put while the money columns scrolled
+   sideways. The table no longer scrolls sideways at all, so freezing them buys nothing — and the
+   hard-coded `left: 62px` offset stopped matching the (now percentage-sized) № column, which made
+   the name column sit on top of Телефон. Only the divider is kept. */
 .jt-col-name {
-  left: 62px;
-  min-width: 140px;
   border-right: 1px solid var(--border-strong);
 }
-.journal-table tbody tr:hover .jt-sticky {
-  background: #fafbfe;
-}
-.jt-row.is-editing .jt-sticky,
+/* These cells are no longer sticky, so they inherit the row's own background — only the new-order
+   row still needs its tint restated, because it is set per-cell. */
 .jt-row.is-new .jt-sticky {
   background: var(--primary-soft);
 }
@@ -4177,7 +4315,9 @@ body {
 
 .jt-input {
   width: 100%;
-  min-width: 60px;
+  /* No min-width: under table-layout:fixed a floor here would be the one thing still able to
+     force the table wider than its container. */
+  min-width: 0;
   height: 26px;
   padding: 0 6px;
   border: 1px solid var(--primary-light);
@@ -4214,36 +4354,116 @@ body {
 .jt-tone-muted { background: #f1f3f7; color: var(--text-light); }
 .jt-tone-emerald { background: var(--emerald-light); color: var(--emerald); }
 
-/* Payment-method money cells double as "record a payment" buttons */
-.jt-pay-cell {
+/* "Төлем түрі" reads as a plain cell until hovered, then as the button it is. */
+.jt-method-btn {
   width: 100%;
-  border: none;
-  background: none;
-  padding: 2px 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
   font: inherit;
-  text-align: right;
+  font-size: var(--jt-font);
   color: var(--text-light);
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.jt-pay-cell.has-value {
+.jt-method-btn.has-value {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.jt-method-btn:hover,
+.jt-method-btn:focus {
+  border-color: var(--primary-light);
+  background: var(--card);
+  outline: none;
+}
+
+/* Payment dialog — methods as tap targets rather than a dropdown. */
+.pay-method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.pay-method-option {
+  padding: 11px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.pay-method-option:hover { border-color: var(--primary); color: var(--primary); }
+.pay-method-option.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.jt-paid {
   color: var(--emerald);
   font-weight: 600;
 }
-.jt-pay-cell:hover {
+
+/* Every cell is always an input now, so the inputs have to read as *cells* until touched —
+   borderless and transparent, gaining a frame only on hover/focus. A grid of visibly-boxed inputs
+   at this density is unreadable. */
+.journal-table .jt-input {
+  border-color: transparent;
+  background: transparent;
+}
+.journal-table .jt-input:hover {
+  border-color: var(--border);
   background: var(--card);
-  box-shadow: inset 0 0 0 1px var(--primary-light);
-  color: var(--primary);
+}
+.journal-table .jt-input:focus {
+  border-color: var(--primary);
+  background: var(--card);
+  box-shadow: 0 0 0 2px var(--primary-soft);
 }
 
-.jt-actions {
+/* Autosave state, in the actions cell. Deliberately tiny: a row saving itself is the normal case
+   and must not flash something attention-grabbing on every keystroke. */
+.jt-save-dot {
+  display: inline-block;
+  width: 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  transition: color 0.2s ease;
+}
+.jt-save-dot.is-idle { color: transparent; }
+.jt-save-dot.is-dirty { color: var(--warning); }
+.jt-save-dot.is-saving { color: var(--text-light); }
+.jt-save-dot.is-saved { color: var(--emerald); }
+.jt-save-dot.is-error { color: var(--danger); }
+
+/* The narrowest column in a fixed-width table, and the new-order row has to fit two buttons in it.
+   Padding is trimmed to the minimum here so they are never clipped past the cell's edge — a
+   clipped button still renders but cannot be clicked. */
+/* The narrowest column in a fixed-width table, and the new-order row fits two buttons in it.
+   `overflow: visible` matters: the table-wide `overflow: hidden` that gives text cells their
+   ellipsis also clips buttons, and a clipped button stops being the hit target — the cell itself
+   swallows the click, so ✓/✕ on the new-order row silently did nothing. */
+/* Selector must out-specify `.journal-table td`, which sets `overflow: hidden` for text ellipsis.
+   That clip also applies to buttons, and a clipped button stops being the hit target — the cell
+   swallows the click instead, which is why ✓/✕ on the new-order row did nothing. */
+.journal-table td.jt-actions {
   white-space: nowrap;
   border-right: none;
+  padding-left: 2px;
+  padding-right: 2px;
+  text-align: center;
+  overflow: visible;
 }
 .jt-icon-btn {
-  width: 26px;
-  height: 26px;
-  margin-right: 4px;
+  width: 24px;
+  height: 24px;
+  margin-right: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
   background: var(--card);
@@ -4251,6 +4471,10 @@ body {
   font-size: 0.8rem;
   line-height: 1;
   cursor: pointer;
+}
+/* The trailing margin is the last few pixels of overflow in a 62px cell holding two buttons. */
+.jt-icon-btn:last-child {
+  margin-right: 0;
 }
 .jt-icon-btn:hover {
   border-color: var(--primary);
@@ -4395,12 +4619,31 @@ body {
   margin-top: 10px;
 }
 
-/* A 23-column spreadsheet can't be squeezed onto a phone (and must never make the page scroll
-   sideways), so below the tablet breakpoint the table is replaced outright by the card list and
-   one order opens in the existing full-screen editor at /manager/order/:id. */
+/* The toggle only exists on phones — on desktop the table is always the view. */
+.journal-view-toggle { display: none; }
+
+/* A 19-column spreadsheet can't be the phone default (and must never make the *page* scroll
+   sideways), so below the tablet breakpoint the card list leads and one order opens in the
+   full-screen editor at /manager/order/:id. The ledger is still one tap away via the toggle:
+   `.journal-scroll` owns the sideways scroll, so only the table moves, never the page. */
 @media (max-width: 767px) {
+  .journal-view-toggle { display: inline-flex; }
   .journal-cards { display: block; }
+  .journal-cards.is-hidden { display: none; }
   .journal-wrap { display: none; }
+  .journal-wrap.is-mobile-visible { display: block; }
+  /* On a phone the fixed percentage widths would squeeze 16 columns into 360px, so the table
+     reverts to auto layout and scrolls sideways inside .journal-scroll instead. */
+  .journal-wrap.is-mobile-visible .journal-table {
+    table-layout: auto;
+    width: max-content;
+    min-width: 100%;
+  }
+  .journal-wrap.is-mobile-visible .journal-table th,
+  .journal-wrap.is-mobile-visible .journal-table td {
+    font-size: 0.8rem;
+    padding: 8px 7px;
+  }
   .journal-summary {
     gap: 14px;
     margin-top: 4px;
@@ -4470,6 +4713,46 @@ body {
 }
 .stat-card .delta.down {
   color: var(--danger);
+}
+
+/* On a phone the icon moves onto the number's line instead of sitting on a row of its own. Seven
+   of these stacked at full height pushed the actual dashboard content two screens down. */
+@media (max-width: 767px) {
+  .stat-grid {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 2px;
+    padding: 12px 13px;
+  }
+  .stat-card-icon {
+    grid-row: 1 / 3;
+    width: 34px;
+    height: 34px;
+  }
+  .stat-card .number {
+    font-size: 1.45rem;
+    line-height: 1.1;
+  }
+  .stat-card .label {
+    font-size: 0.74rem;
+    line-height: 1.3;
+  }
+  /* Cards with no icon (the reports grid) keep the plain stacked shape. */
+  .stat-card:not(:has(.stat-card-icon)) {
+    display: flex;
+  }
+  /* An odd count leaves the last card alone in a half-width column, where a long money figure
+     wraps onto two lines. Let it take the whole row instead. */
+  .stat-grid > .stat-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Customer-facing order status card (CustomerStatusCard) — compact order#+pill header, queue
@@ -4657,16 +4940,49 @@ body {
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
-.worker-salary-teaser { justify-content: space-between; }
+/* The worker's own pay — the reason they open the app, so it gets the full width of the stat row
+   and the accent treatment rather than sitting as one small tile among the queue counters. */
+.worker-salary-teaser {
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  background: var(--gradient, linear-gradient(135deg, #4f6ef7, #6366f1));
+  border-color: transparent;
+  color: #fff;
+}
+.worker-salary-teaser .worker-stat-cap { color: rgba(255, 255, 255, 0.75); }
 .worker-salary-amount {
-  font-size: 1.25rem;
+  font-size: 1.9rem;
   font-weight: 800;
+  line-height: 1.15;
+  margin-top: 4px;
+  color: #fff;
+}
+.worker-salary-detail {
   margin-top: 2px;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+/* "болжам" — not yet confirmed by an Admin's month-end recalculation. */
+.worker-salary-est {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
 }
 .worker-salary-link {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--primary);
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  opacity: 0.85;
+}
+
+@media (max-width: 767px) {
+  .worker-stat-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .worker-salary-teaser { padding: 18px; }
+  .worker-salary-amount { font-size: 2.1rem; }
 }
 
 .worker-current { margin-bottom: 18px; }
@@ -4945,27 +5261,142 @@ body {
   font-size: 0.72rem;
   color: var(--text-light);
 }
+/* Dimensions are edited straight in the row — sized so the row still fits a 320px screen and
+   stays exactly ROW_H tall for the virtualizer. */
 .bulk-row-dims {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+}
+.form-hint {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-light);
+}
+
+/* ── Suretten ölşem alu: the reviewable table of rows OCR read off a photo ── */
+.scan-hint {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.scan-pick-btn {
+  display: block;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.scan-rows {
+  /* A photographed list can be long; cap it so the modal's buttons stay reachable. */
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.scan-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.scan-row-num {
+  width: 22px;
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.scan-row-del {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  flex: none;
   border: none;
   background: none;
-  padding: 0;
-  font: inherit;
-  text-align: left;
+  color: var(--text-light);
+  font-size: 15px;
   cursor: pointer;
-  color: inherit;
+  border-radius: var(--radius-xs);
 }
-.bulk-dims {
-  font-size: 0.86rem;
-  font-weight: 700;
-  white-space: nowrap;
+.scan-row-del:hover { background: var(--danger-light); color: var(--danger); }
+.scan-raw {
+  margin-top: 12px;
+  font-size: 0.78rem;
 }
-.bulk-qty {
-  font-size: 0.74rem;
+.scan-raw-text {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  max-height: 130px;
+  overflow-y: auto;
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bulk-num {
+  width: 100%;
+  min-width: 0;
+  max-width: 62px;
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  /* Native spinners eat ~20px of a narrow field on desktop and are useless on touch. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.bulk-num::-webkit-outer-spin-button,
+.bulk-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.bulk-num:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+.bulk-num-qty {
+  max-width: 46px;
+  background: var(--primary-soft);
+}
+.bulk-x {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+.bulk-row-more {
+  flex-shrink: 0;
+  width: 30px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.bulk-row-more:hover { border-color: var(--primary); color: var(--primary); }
+
+.number-field-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.number-field-suffix {
+  font-size: 0.78rem;
   color: var(--text-secondary);
 }
 .bulk-row-name {
@@ -5176,6 +5607,12 @@ body {
 @media (max-width: 767px) {
   .bulk-rows { max-height: 46vh; }
   .bulk-row-name { display: none; }
+  /* Reclaim width on a 320px screen so three inputs + four edge buttons still fit the row. */
+  .bulk-row { gap: 5px; padding: 0 6px; }
+  .bulk-row-index { display: none; }
+  .bulk-edge { width: 27px; }
+  .bulk-num { max-width: 54px; font-size: 0.9rem; }
+  .bulk-num-qty { max-width: 40px; }
   /* The bulk panel deliberately stays in normal flow rather than sticking to the bottom: the row
      list already scrolls inside its own max-height, so the panel is always reachable, and a
      sticky panel rode up over the select-all control whenever the list was short. */
@@ -5366,6 +5803,49 @@ body {
 .attendance-btn.is-active.tone-red { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
 .attendance-btn.is-active.tone-blue { background: var(--info-light); border-color: var(--info); color: var(--info); }
 .attendance-btn.is-active.tone-muted { background: #f1f3f7; border-color: var(--border-strong); color: var(--text); }
+
+/* On a phone the row stops being a row: name, then the two times, then the status buttons as a
+   grid of full-width targets. Five pills squeezed onto one line are all but untappable, and this
+   page is used standing at the shop door marking people in. */
+@media (max-width: 767px) {
+  .attendance-row {
+    display: block;
+    padding: 14px;
+  }
+  .attendance-row .data-row-main {
+    margin-bottom: 10px;
+  }
+  .attendance-times {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .attendance-times input {
+    width: 100%;
+    height: 44px;
+    font-size: 0.95rem;
+  }
+  /* The hours readout is a third child of a two-column grid — let it take its own full-width row. */
+  .attendance-times > span {
+    grid-column: 1 / -1;
+    text-align: right;
+  }
+  .attendance-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .attendance-btn {
+    padding: 12px 8px;
+    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+  }
+  /* An odd number of statuses leaves a gap; the last one spans it rather than sitting half-width. */
+  .attendance-btn:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
 
 .salary-hero { text-align: center; margin-bottom: 16px; }
 .salary-total {
@@ -5781,6 +6261,42 @@ body {
     color: var(--text-secondary);
     text-align: left;
   }
+
+  /* Compact variant for record lists (recent orders and the like). The plain stack gives every
+     field its own full-width line, so eight orders becomes a wall of thirty-odd rows. Here the
+     first cell is the card's heading and the rest pair up two-per-line, which roughly halves the
+     height without dropping any field. */
+  .data-table.stack-mobile.stack-compact tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 10px;
+    padding: 12px 14px;
+  }
+  .data-table.stack-mobile.stack-compact td {
+    display: block;
+    padding: 4px 0;
+    text-align: left;
+  }
+  .data-table.stack-mobile.stack-compact td::before {
+    display: block;
+    margin-bottom: 1px;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-light);
+  }
+  /* The first cell identifies the record, so it spans the row and drops its label. */
+  .data-table.stack-mobile.stack-compact td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .data-table.stack-mobile.stack-compact td:first-child::before {
+    display: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5934,4 +6450,31 @@ body {
 }
 .summary-row strong {
   color: var(--text);
+}
+/* The bottom line of a money breakdown — heavier, so the eye lands on it last and stops there. */
+.summary-row.is-final {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 2px solid var(--text);
+  font-size: 1rem;
+}
+.summary-row.is-final strong {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.finance-profit .finance-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft, rgba(99, 102, 241, 0.08));
+  border-left: 3px solid var(--primary);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.finance-profit .finance-note strong {
+  color: var(--primary);
+  font-weight: 700;
 }

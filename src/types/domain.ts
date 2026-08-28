@@ -45,9 +45,24 @@ export interface CuttingPart {
   edges: Record<EdgeKey, PartEdge>;
 }
 
+/**
+ * What kind of sheet this is. Drives piece-rate pay, which differs per category (a cutter earns
+ * more per ЛДСП sheet than per ХДФ), so it cannot be inferred from the name alone.
+ */
+export type MaterialCategory = "ldsp" | "hdf" | "countertop" | "other";
+
+export const MATERIAL_CATEGORY_LABELS: Record<MaterialCategory, string> = {
+  ldsp: "ЛДСП",
+  hdf: "ХДФ",
+  countertop: "Столешница",
+  other: "Басқа",
+};
+
 export interface Material {
   id: string;
   name: string;
+  /** Defaults to "ldsp" for materials created before categories existed. */
+  category?: MaterialCategory;
   article: string;
   color: string;
   manufacturer?: string;
@@ -70,6 +85,15 @@ export interface Material {
 /** Admin-only collection, split out of `materials` because Firestore rules cannot redact individual fields per-role. */
 export interface MaterialCost {
   purchasePriceTiyn: number;
+}
+
+/** One colour's consumption on a single order (see Order.pvcByType). */
+export interface PvcUsage {
+  pvcTypeId: string;
+  colorName: string;
+  thicknessMm: number;
+  meters: number;
+  costTiyn: number;
 }
 
 export interface PvcType {
@@ -175,6 +199,17 @@ export interface Order {
    *  this is what the Manager journal edits directly for walk-in orders typed straight into the
    *  ledger, where there is no per-part edge data to derive a rate from. */
   pvcPricePerMeterTiyn?: number;
+  /**
+   * Metres of each PVC colour this order consumed, denormalized from `parts[].edges[].pvcTypeId`
+   * when the order is submitted.
+   *
+   * Kept on the order so "how much of each colour went out this month" is answerable by reading
+   * orders alone, instead of fanning out to every order's `parts` subcollection. Absent on orders
+   * created before this existed and on walk-in orders typed straight into the journal, which carry
+   * only a blended metre total with no colour attached — see lib/pvcUsage.ts for how both are
+   * reported rather than silently dropped.
+   */
+  pvcByType?: PvcUsage[];
   materialCostTiyn: number;
   cuttingCostTiyn: number;
   pvcCostTiyn: number;
@@ -369,7 +404,12 @@ export interface SalaryRule {
   userId: string;
   mode: SalaryMode;
   fixedMonthlyTiyn?: number;
+  /** Piece rate for a plain ЛДСП sheet. */
   perSheetTiyn?: number;
+  /** Piece rates for the other sheet categories — a cutter is paid differently for ХДФ and for
+   *  a countertop than for ЛДСП. Each falls back to perSheetTiyn when not set. */
+  perHdfSheetTiyn?: number;
+  perCountertopTiyn?: number;
   perPvcMeterTiyn?: number;
   perOrderTiyn?: number;
   hourlyTiyn?: number;
@@ -399,6 +439,10 @@ export interface SalaryEntry {
   baseTiyn: number;
   /** Measured work in the period — what the per-unit modes multiply. */
   sheetsCut: number;
+  /** sheetsCut broken down by material category, since each is paid at its own rate. */
+  ldspSheets?: number;
+  hdfSheets?: number;
+  countertopSheets?: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;

@@ -23,6 +23,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const { message, visible, showToast } = useToast();
 
@@ -114,56 +115,88 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-card">
-        <div className="login-logo">
-          <div className="icon">🏭</div>
-          <h1>Цех Трекер</h1>
-          <p>Заказдарды онлайн бақылау жүйесі</p>
-        </div>
+      <div className="login-shell">
+        {/* Brand panel — desktop only. On a phone it would push the form below the fold, which is
+            the one thing this page must never do. */}
+        <aside className="login-brand">
+          <div className="login-brand-mark">🏭</div>
+          <h2>Цех Трекер</h2>
+          <p className="login-brand-lead">
+            Жиһаз цехының заказдарын қабылдаудан клиентке тапсырғанға дейін бір жерден бақылаңыз.
+          </p>
+          <ul className="login-brand-list">
+            <li><span>📐</span> Размерді онлайн жіберу</li>
+            <li><span>🪚</span> Распил және ПВХ кезегі</li>
+            <li><span>💰</span> Төлем, қарыз және есеп</li>
+            <li><span>📊</span> Айлық пайда мен жалақы</li>
+          </ul>
+        </aside>
 
-        <form onSubmit={handleSubmit} className={shake ? "shake" : ""}>
-          <div className="form-group">
-            <label>Email немесе телефон</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="email@example.com немесе +7 777 123 4567"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-            />
+        <div className="login-card">
+          <div className="login-logo">
+            <div className="icon">🏭</div>
+            <h1>Қош келдіңіз</h1>
+            <p>Аккаунтыңызға кіріңіз</p>
           </div>
-          <div className="form-group">
-            <label>Құпия сөз</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+
+          <form onSubmit={handleSubmit} className={shake ? "shake" : ""}>
+            <div className="form-group">
+              <label>Email немесе телефон</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="email@example.com немесе +7 777 123 4567"
+                autoComplete="username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Құпия сөз</label>
+              {/* A reveal toggle, because a mistyped password on a phone keyboard is otherwise
+                  invisible and reads to the user as "the site won't let me in". */}
+              <div className="input-with-affix">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="form-input"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="input-affix-btn"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Құпия сөзді жасыру" : "Құпия сөзді көрсету"}
+                >
+                  {showPassword ? "🙈" : "👁"}
+                </button>
+              </div>
+            </div>
+            <label className="remember-me">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span className="remember-check">{rememberMe ? "✓" : ""}</span>
+              <span>Мені есте сақта</span>
+            </label>
+
+            <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
+              {submitting ? "Кіру..." : "Кіру"}
+            </button>
+          </form>
+
+          <div className="nav-links">
+            <button type="button" className="link-button" onClick={handleForgotPassword}>
+              Құпия сөзді ұмыттыңыз ба?
+            </button>
+            <Link to="/register">📝 Клиент ретінде тіркелу</Link>
           </div>
-          <label className="remember-me">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-            />
-            <span className="remember-check">{rememberMe ? "✓" : ""}</span>
-            <span>Мені есте сақта</span>
-          </label>
-
-          <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
-            {submitting ? "Кіру..." : "Кіру"}
-          </button>
-        </form>
-
-        <div className="nav-links">
-          <button type="button" className="link-button" onClick={handleForgotPassword}>
-            Құпия сөзді ұмыттыңыз ба?
-          </button>
-          <Link to="/register">📝 Клиент ретінде тіркелу</Link>
         </div>
       </div>
 

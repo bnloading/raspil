@@ -198,6 +198,79 @@ describe("computeSalaryBase — MANUAL is the default and invents nothing", () =
   });
 });
 
+describe("the shop's actual pay rules", () => {
+  // Cutter: 600 ₸ per ЛДСП sheet, 100 ₸ per ХДФ, 200 ₸ per countertop.
+  const cutterRule: SalaryRule = {
+    id: CUTTER, userId: CUTTER, mode: "PER_SHEET",
+    perSheetTiyn: T(600), perHdfSheetTiyn: T(100), perCountertopTiyn: T(200),
+  };
+  // PVC worker: flat 350 000 ₸ a month regardless of metres.
+  const pvcRule: SalaryRule = { id: PVC, userId: PVC, mode: "FIXED_MONTHLY", fixedMonthlyTiyn: T(350000) };
+
+  const categories = new Map<string, "ldsp" | "hdf" | "countertop">([
+    ["m-ldsp", "ldsp"], ["m-hdf", "hdf"], ["m-top", "countertop"],
+  ]);
+
+  it("pays a cutter each category at its own rate", () => {
+    const work = measureWork(
+      [
+        order({ id: "a", materialId: "m-ldsp", assignedCutterId: CUTTER, confirmedSheets: 10, cuttingCompletedAt: MARCH }),
+        order({ id: "b", materialId: "m-hdf", assignedCutterId: CUTTER, confirmedSheets: 4, cuttingCompletedAt: MARCH }),
+        order({ id: "c", materialId: "m-top", assignedCutterId: CUTTER, confirmedSheets: 3, cuttingCompletedAt: MARCH }),
+      ],
+      [], CUTTER, "2026-03", categories,
+    );
+    expect(work).toMatchObject({ sheetsCut: 17, ldspSheets: 10, hdfSheets: 4, countertopSheets: 3 });
+    // 10×600 + 4×100 + 3×200 = 6 000 + 400 + 600 = 7 000 ₸
+    expect(computeSalaryBase(cutterRule, work).baseTiyn).toBe(T(7000));
+  });
+
+  it("treats an uncategorised material as ЛДСП", () => {
+    const work = measureWork(
+      [order({ materialId: "unknown", assignedCutterId: CUTTER, confirmedSheets: 5, cuttingCompletedAt: MARCH })],
+      [], CUTTER, "2026-03", categories,
+    );
+    expect(work.ldspSheets).toBe(5);
+    expect(computeSalaryBase(cutterRule, work).baseTiyn).toBe(T(3000));
+  });
+
+  it("falls back to the ЛДСП rate when a category rate is not configured", () => {
+    const flat: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "PER_SHEET", perSheetTiyn: T(600) };
+    const work = { ...EMPTY_WORK_TOTALS, ldspSheets: 1, hdfSheets: 1, countertopSheets: 1, sheetsCut: 3 };
+    expect(computeSalaryBase(flat, work).baseTiyn).toBe(T(1800));
+  });
+
+  it("pays an uncategorised legacy total at the ЛДСП rate rather than zero", () => {
+    // Entries measured before categories existed carry only sheetsCut.
+    const legacy = { ...EMPTY_WORK_TOTALS, sheetsCut: 20 };
+    expect(computeSalaryBase(cutterRule, legacy).baseTiyn).toBe(T(12000));
+  });
+
+  it("pays the PVC worker a flat monthly amount, independent of metres", () => {
+    const busy = { ...EMPTY_WORK_TOTALS, pvcMeters: 900 };
+    const quiet = { ...EMPTY_WORK_TOTALS, pvcMeters: 12 };
+    expect(computeSalaryBase(pvcRule, busy).baseTiyn).toBe(T(350000));
+    expect(computeSalaryBase(pvcRule, quiet).baseTiyn).toBe(T(350000));
+  });
+
+  it("builds a full cutter payslip end to end", () => {
+    const entry = buildSalaryEntry({
+      userId: CUTTER, userName: "Распилшик", periodKey: "2026-03",
+      rule: cutterRule,
+      orders: [
+        order({ id: "a", materialId: "m-ldsp", assignedCutterId: CUTTER, confirmedSheets: 120, cuttingCompletedAt: MARCH }),
+        order({ id: "b", materialId: "m-hdf", assignedCutterId: CUTTER, confirmedSheets: 30, cuttingCompletedAt: MARCH }),
+        order({ id: "c", materialId: "m-top", assignedCutterId: CUTTER, confirmedSheets: 10, cuttingCompletedAt: MARCH }),
+      ],
+      attendance: [], categoryByMaterialId: categories,
+    });
+    // 120×600 + 30×100 + 10×200 = 72 000 + 3 000 + 2 000 = 77 000 ₸
+    expect(entry.baseTiyn).toBe(T(77000));
+    expect(entry.finalTiyn).toBe(T(77000));
+    expect(entry.mode).toBe("PER_SHEET");
+  });
+});
+
 describe("computeFinalSalary", () => {
   it("adds bonus and adjustments, subtracts deductions", () => {
     expect(

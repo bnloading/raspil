@@ -98,6 +98,13 @@ export default function Register() {
           <div className="form-group">
             <label>Телефон нөмірі</label>
             <PhoneInput value={phone} onChange={setPhone} required />
+            {/* Sign-in is by phone, so registration mints a synthetic auth address from the number
+                (see lib/phone.ts). People who also enter a real email were reading that synthetic
+                address in the Firebase console as "my email was changed" — saying so up front. */}
+            <p className="form-hint">
+              Сайтқа осы нөмір арқылы кіресіз. Жүйе оны ішкі мекенжайға айналдырады
+              («…@customers.workshop.local») — бұл қалыпты жағдай, сіздің email-іңіз өзгермейді.
+            </p>
           </div>
           <div className="form-group">
             <label>Email (міндетті емес, құпия сөзді қалпына келтіру үшін)</label>

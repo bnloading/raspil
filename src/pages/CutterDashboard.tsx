@@ -73,7 +73,7 @@ export default function CutterDashboard() {
             <div className="worker-stat-cap">Бүгін дайын</div>
           </div>
         </div>
-        <WorkerSalaryTeaser uid={user.uid} />
+        <WorkerSalaryTeaser uid={user.uid} orders={orders} />
       </div>
 
       {loading ? (

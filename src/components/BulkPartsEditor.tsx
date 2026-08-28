@@ -16,6 +16,7 @@ import {
   type PvcFilter,
 } from "../lib/pvcBulk";
 import { totalPvcMeters } from "../lib/pricing";
+import { NumberField } from "./NumberField";
 
 /** Fixed row height (px) the virtualizer assumes — must match .bulk-row's height in index.css. */
 const ROW_H = 56;
@@ -258,15 +259,36 @@ export function BulkPartsEditor({
                     </label>
                     <span className="bulk-row-index">{absoluteIndex + 1}</span>
 
-                    {/* Opens the editor sheet. Editing must not happen inline: rows are a fixed
-                        height for the virtualizer, so an expanding row overlapped the ones below. */}
-                    <button className="bulk-row-dims" onClick={() => setEditingId(part.id)}>
-                      <span className="bulk-dims">
-                        {part.lengthMm} × {part.widthMm}
-                      </span>
-                      <span className="bulk-qty">×{part.qty}</span>
-                      <span className="bulk-row-name">{part.name || `Бөлшек ${absoluteIndex + 1}`}</span>
-                    </button>
+                    {/* Dimensions are typed straight into the row — no modal for a number. The
+                        inputs are sized to keep the row exactly ROW_H tall, which the virtualizer
+                        depends on; only the extra fields (name, grain, note) open the sheet. */}
+                    <div className="bulk-row-dims">
+                      <NumberField
+                        className="bulk-num"
+                        value={part.lengthMm}
+                        onChange={(v) => patchPart(part.id, { lengthMm: v })}
+                        min={0}
+                        placeholder="ұзын"
+                        ariaLabel="Ұзындығы, мм"
+                      />
+                      <span className="bulk-x">×</span>
+                      <NumberField
+                        className="bulk-num"
+                        value={part.widthMm}
+                        onChange={(v) => patchPart(part.id, { widthMm: v })}
+                        min={0}
+                        placeholder="ен"
+                        ariaLabel="Ені, мм"
+                      />
+                      <NumberField
+                        className="bulk-num bulk-num-qty"
+                        value={part.qty}
+                        onChange={(v) => patchPart(part.id, { qty: v })}
+                        min={1}
+                        emptyValue={1}
+                        ariaLabel="Саны"
+                      />
+                    </div>
 
                     <div className="bulk-edges">
                       {EDGE_KEYS.map((edge: EdgeKey) => (
@@ -280,6 +302,15 @@ export function BulkPartsEditor({
                         </button>
                       ))}
                     </div>
+
+                    <button
+                      className="bulk-row-more"
+                      onClick={() => setEditingId(part.id)}
+                      title="Атауы, талшық, ескертпе"
+                      aria-label="Қосымша өрістер"
+                    >
+                      ⋯
+                    </button>
 
                   </div>
                 );

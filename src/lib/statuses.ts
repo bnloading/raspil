@@ -71,6 +71,18 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   refunded: "Қайтарылды",
 };
 
+/**
+ * Short forms for the journal's narrow Статус column, where the full labels above clip mid-word.
+ * Everywhere with room keeps PAYMENT_STATUS_LABELS.
+ */
+export const PAYMENT_STATUS_SHORT: Record<PaymentStatus, string> = {
+  unpaid: "Жоқ",
+  partial: "Жартылай",
+  paid: "Төленді",
+  overpaid: "Артық",
+  refunded: "Қайтар.",
+};
+
 export const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
   unpaid: "red",
   partial: "amber",

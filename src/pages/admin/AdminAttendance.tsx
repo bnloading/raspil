@@ -176,7 +176,7 @@ export default function AdminAttendance() {
           {period === monthKey(new Date()) && <span className="jt-muted">ағымдағы ай</span>}
         </div>
         <div className="data-table-wrap">
-          <table className="data-table">
+          <table className="data-table stack-mobile">
             <thead>
               <tr>
                 <th>Қызметкер</th>
@@ -191,11 +191,11 @@ export default function AdminAttendance() {
                 const s = monthSummary.get(member.id) ?? { present: 0, late: 0, absent: 0, hours: 0 };
                 return (
                   <tr key={member.id}>
-                    <td>{member.name}</td>
-                    <td>{s.present}</td>
-                    <td>{s.late}</td>
-                    <td>{s.absent}</td>
-                    <td>{s.hours.toFixed(1)}</td>
+                    <td data-label="Қызметкер"><strong>{member.name}</strong></td>
+                    <td data-label="Келді">{s.present}</td>
+                    <td data-label="Кешікті">{s.late}</td>
+                    <td data-label="Келмеді">{s.absent}</td>
+                    <td data-label="Сағат">{s.hours.toFixed(1)}</td>
                   </tr>
                 );
               })}

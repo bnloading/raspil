@@ -199,7 +199,7 @@ export default function AdminUsers() {
           <Spinner />
         ) : (
           <div className="data-table-wrap">
-            <table className="data-table stack-mobile">
+            <table className="data-table stack-mobile stack-compact">
               <thead>
                 <tr>
                   <th>Аты</th>
@@ -259,7 +259,7 @@ export default function AdminUsers() {
           </div>
         ) : (
           <div className="data-table-wrap">
-            <table className="data-table stack-mobile">
+            <table className="data-table stack-mobile stack-compact">
               <thead>
                 <tr>
                   <th>Аты</th>

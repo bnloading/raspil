@@ -9,7 +9,8 @@ import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useMaterials } from "../../hooks/useMaterials";
-import { formatMoney } from "../../lib/money";
+import { NumberField } from "../../components/NumberField";
+import { formatMoney, formatMoneyBare } from "../../lib/money";
 import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
@@ -22,12 +23,16 @@ import {
   type JournalDraft,
 } from "../../lib/journalOrders";
 import { recordPayment } from "../../lib/payments";
-import { PAYMENT_STATUS_LABELS, PRODUCTION_STATUS_ORDER } from "../../lib/statuses";
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_SHORT, PRODUCTION_STATUS_ORDER } from "../../lib/statuses";
 import type { Material, Order, PaymentMethodDef } from "../../types/domain";
 
 const PAGE_SIZES = [25, 50, 100];
 
-/** The payment methods that get their own money column, in the reference layout's order. */
+/**
+ * The methods that get their own column in the CSV/XLSX export. The on-screen journal collapsed
+ * these into one "Төлем түрі" dropdown, but an export is read in Excel where a column per method
+ * is what the accountant sums — so the wide shape is kept here deliberately.
+ */
 const METHOD_COLUMNS: { id: string; label: string }[] = [
   { id: "cash", label: "Нал" },
   { id: "kaspi", label: "Kaspi" },
@@ -103,9 +108,18 @@ export default function ManagerJournal() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<JournalDraft | null>(null);
+  // Only the "add a new order" row still has an explicit save; existing rows write themselves.
   const [saving, setSaving] = useState(false);
+
+  // Phone-only view choice, remembered so a manager who prefers the ledger isn't re-toggling it
+  // on every visit. Ignored entirely above the tablet breakpoint, where both classes are inert.
+  const [mobileTable, setMobileTable] = useState(() => localStorage.getItem("journalMobileTable") === "1");
+  useEffect(() => {
+    localStorage.setItem("journalMobileTable", mobileTable ? "1" : "0");
+  }, [mobileTable]);
+
+  /** Order whose payment dialog is open. */
+  const [payFor, setPayFor] = useState<Order | null>(null);
 
   const [newRow, setNewRow] = useState<JournalDraft | null>(null);
   const newRowNameRef = useRef<HTMLInputElement>(null);
@@ -166,28 +180,6 @@ export default function ManagerJournal() {
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
 
-  const beginEdit = (order: Order) => {
-    setEditingId(order.id);
-    setDraft(draftFromOrder(order));
-  };
-  const cancelEdit = () => {
-    setEditingId(null);
-    setDraft(null);
-  };
-
-  const commitEdit = async (order: Order) => {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      await saveJournalRow(db, actor, order, draft, materialsById.get(draft.materialId));
-      showToast("✅ Сақталды");
-      cancelEdit();
-    } catch (err: unknown) {
-      showToast("Қате: " + (err as Error).message);
-    }
-    setSaving(false);
-  };
-
   const commitNewRow = async () => {
     if (!newRow) return;
     if (!newRow.customerName.trim()) {
@@ -205,13 +197,12 @@ export default function ManagerJournal() {
     setSaving(false);
   };
 
-  const handleAddPayment = async (order: Order, methodId: string) => {
+  const handleAddPayment = async (order: Order, methodId: string, amountTiyn: number) => {
     const method = methods.find((m) => m.id === methodId);
-    if (!method) return;
-    const remaining = Math.max(0, order.debtTiyn);
-    const raw = prompt(`${method.name} — сома (₸):`, remaining > 0 ? String(remaining / 100) : "");
-    if (raw === null) return;
-    const amountTiyn = Math.round((parseFloat(raw.replace(",", ".")) || 0) * 100);
+    if (!method) {
+      showToast("Төлем түрі табылмады");
+      return;
+    }
     if (amountTiyn <= 0) {
       showToast("Сома дұрыс емес");
       return;
@@ -225,6 +216,7 @@ export default function ManagerJournal() {
         comment: "Журнал арқылы",
       });
       showToast("✅ Төлем тіркелді");
+      setPayFor(null);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -291,6 +283,14 @@ export default function ManagerJournal() {
       <button className="btn btn-outline btn-sm no-print" onClick={() => window.print()}>
         🖨
       </button>
+      {/* Phone-only: the card list is the readable default, but the full ledger has to be
+          reachable on a phone too — this swaps to the real table, scrolled sideways. */}
+      <button
+        className="btn btn-outline btn-sm journal-view-toggle"
+        onClick={() => setMobileTable((v) => !v)}
+      >
+        {mobileTable ? "▤ Карта" : "▦ Кесте"}
+      </button>
     </div>
   );
 
@@ -300,7 +300,7 @@ export default function ManagerJournal() {
 
       {/* Phones get compact cards instead of a 23-column spreadsheet; tapping one opens the
           full-screen order editor. The table below is hidden at the same breakpoint in CSS. */}
-      <div className="journal-cards">
+      <div className={`journal-cards${mobileTable ? " is-hidden" : ""}`}>
         {loading || paymentsLoading ? (
           <Spinner />
         ) : pageItems.length === 0 ? (
@@ -336,55 +336,51 @@ export default function ManagerJournal() {
         )}
       </div>
 
-      <div className="journal-wrap">
+      <div className={`journal-wrap${mobileTable ? " is-mobile-visible" : ""}`}>
         <div className="journal-scroll">
           <table className="journal-table">
             <thead>
               <tr>
+                {/* Headers are abbreviated so the fixed-width columns hold real values rather
+                    than being sized by their own titles. Each carries its full text as a title. */}
                 <th className="jt-sticky jt-col-num">№</th>
-                <th className="jt-sticky jt-col-name">Клиент аты</th>
-                <th>Телефон</th>
-                <th className="jt-tint-material">Лист түрі</th>
-                <th className="jt-tint-material jt-num">Лист саны</th>
-                <th className="jt-tint-material jt-num">Лист бағасы</th>
-                <th className="jt-tint-pvc jt-num">ПВХ, м</th>
-                <th className="jt-tint-pvc jt-num">ПВХ 1 м бағасы</th>
-                <th className="jt-tint-pvc jt-num">Жалпы ПВХ</th>
-                <th className="jt-tint-total jt-num">Есептелген сома</th>
-                <th>Статус</th>
-                <th>Күні</th>
-                <th>Төлем түрі</th>
-                {METHOD_COLUMNS.map((m) => (
-                  <th key={m.id} className="jt-tint-pay jt-num">{m.label}</th>
-                ))}
-                <th className="jt-tint-debt jt-num">Қалдық</th>
-                <th>Распил</th>
-                <th>ПВХ</th>
-                <th>Дайын</th>
-                <th>Әрекет</th>
+                <th className="jt-sticky jt-col-name">Клиент</th>
+                <th className="jt-w-phone">Телефон</th>
+                <th className="jt-tint-material jt-w-mat">Материал</th>
+                <th className="jt-tint-material jt-num jt-w-qty" title="Лист саны">Саны</th>
+                <th className="jt-tint-material jt-num jt-w-money" title="Лист бағасы">Баға</th>
+                <th className="jt-tint-pvc jt-num jt-w-qty" title="ПВХ метр">м</th>
+                <th className="jt-tint-pvc jt-num jt-w-money" title="ПВХ 1 метр бағасы">ПВХ баға</th>
+                <th className="jt-tint-pvc jt-num jt-w-money" title="Жалпы ПВХ сомасы">ПВХ сома</th>
+                <th className="jt-tint-total jt-num jt-w-money" title="Есептелген сома">Сома</th>
+                <th className="jt-w-status">Статус</th>
+                <th className="jt-w-date">Күні</th>
+                <th className="jt-tint-pay jt-w-method">Төлем түрі</th>
+                <th className="jt-tint-pay jt-num jt-w-money">Төленген</th>
+                <th className="jt-tint-debt jt-num jt-w-money">Қалдық</th>
+                {/* Распил / ПВХ / Дайын dropped: three wide pill columns were what pushed the
+                    ledger past the viewport, and the same information is already in the Статус
+                    column and on the order page. The CSV export still carries all three. */}
+                <th className="jt-w-act" title="Әрекет">⋯</th>
               </tr>
             </thead>
             <tbody>
               {loading || paymentsLoading ? (
-                <tr><td colSpan={23} className="jt-empty">Жүктелуде…</td></tr>
+                <tr><td colSpan={16} className="jt-empty">Жүктелуде…</td></tr>
               ) : pageItems.length === 0 && !newRow ? (
-                <tr><td colSpan={23} className="jt-empty">Заказдар табылмады</td></tr>
+                <tr><td colSpan={16} className="jt-empty">Заказдар табылмады</td></tr>
               ) : (
                 pageItems.map((order) => (
                   <JournalRow
                     key={order.id}
                     order={order}
-                    isEditing={editingId === order.id}
-                    draft={editingId === order.id ? draft : null}
-                    setDraft={setDraft}
                     materials={materials}
+                    methods={methods}
                     payments={byOrder.get(order.id) ?? []}
-                    saving={saving}
-                    onEdit={() => beginEdit(order)}
-                    onCancel={cancelEdit}
-                    onSave={() => commitEdit(order)}
+                    actor={actor}
                     onOpen={() => navigate(`/manager/order/${order.id}`)}
-                    onAddPayment={(methodId) => handleAddPayment(order, methodId)}
+                    onAddPayment={() => setPayFor(order)}
+                    onError={showToast}
                   />
                 ))
               )}
@@ -452,31 +448,165 @@ export default function ManagerJournal() {
         </button>
       </div>
 
+      {payFor && (
+        <PaymentDialog
+          order={payFor}
+          methods={methods}
+          onClose={() => setPayFor(null)}
+          onSubmit={(methodId, amountTiyn) => handleAddPayment(payFor, methodId, amountTiyn)}
+        />
+      )}
+
       <Toast message={message} visible={visible} />
     </AppShell>
   );
 }
 
-function JournalRow({
-  order, isEditing, draft, setDraft, materials, payments, saving,
-  onEdit, onCancel, onSave, onOpen, onAddPayment,
+/**
+ * "Төлем тіркеу" — pick the method, confirm the amount.
+ *
+ * Replaces a window.prompt(): the amount defaults to what the order still owes, so the common case
+ * (customer settles in full) is two taps, and the method is picked from the shop's configured list
+ * rather than being one of five fixed columns.
+ */
+function PaymentDialog({
+  order,
+  methods,
+  onClose,
+  onSubmit,
 }: {
   order: Order;
-  isEditing: boolean;
-  draft: JournalDraft | null;
-  setDraft: (d: JournalDraft) => void;
+  methods: PaymentMethodDef[];
+  onClose: () => void;
+  onSubmit: (methodId: string, amountTiyn: number) => Promise<void> | void;
+}) {
+  const remaining = Math.max(0, order.debtTiyn);
+  const [methodId, setMethodId] = useState(() => methods[0]?.id ?? "");
+  const [amountTenge, setAmountTenge] = useState(remaining > 0 ? remaining / 100 : 0);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    await onSubmit(methodId, Math.round(amountTenge * 100));
+    setBusy(false);
+  };
+
+  return (
+    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <h2>💰 Төлем тіркеу</h2>
+        <p className="scan-hint">
+          {order.orderNumber} · {order.customerName}
+          {remaining > 0 && <> · қалдық <strong>{formatMoney(remaining)}</strong></>}
+        </p>
+
+        <div className="form-group">
+          <label>Төлем түрі</label>
+          <div className="pay-method-grid">
+            {methods.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={`pay-method-option${methodId === m.id ? " is-active" : ""}`}
+                onClick={() => setMethodId(m.id)}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Сома (₸)</label>
+          <NumberField value={amountTenge} min={0} onChange={setAmountTenge} ariaLabel="Төлем сомасы" />
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-outline" onClick={onClose}>Болдырмау</button>
+          <button type="button" className="btn btn-primary" disabled={busy || !methodId || amountTenge <= 0}
+            onClick={submit}>
+            {busy ? "Сақталуда…" : "✅ Тіркеу"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+
+const SAVE_GLYPHS: Record<SaveState, string> = { idle: "", dirty: "•", saving: "⋯", saved: "✓", error: "!" };
+const SAVE_TITLES: Record<SaveState, string> = {
+  idle: "",
+  dirty: "Өзгертілді — сақталуда",
+  saving: "Сақталуда…",
+  saved: "Сақталды",
+  error: "Сақталмады — қайта көріңіз",
+};
+
+/** How long after the last keystroke the row commits itself. Long enough to type a whole number. */
+const AUTOSAVE_MS = 900;
+
+/**
+ * One ledger row, always editable.
+ *
+ * There is no edit mode: every cell is a live input, and the row writes itself back a beat after
+ * you stop typing, the way a spreadsheet does. Each row owns its own draft rather than the page
+ * holding one shared "currently editing" draft, which is what makes editing several rows in a row
+ * — or leaving one half-typed while you look at another — behave sensibly.
+ */
+function JournalRow({
+  order, materials, payments, actor, onOpen, onAddPayment, onError,
+}: {
+  order: Order;
   materials: Material[];
+  methods: PaymentMethodDef[];
   payments: import("../../types/domain").Payment[];
-  saving: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: () => void;
+  actor: Parameters<typeof saveJournalRow>[1];
   onOpen: () => void;
-  onAddPayment: (methodId: string) => void;
+  /** Opens the payment dialog for this row; the method and amount are chosen there. */
+  onAddPayment: () => void;
+  onError: (message: string) => void;
 }) {
   const byMethod = paidByMethod(payments);
   const paid = netPaidTiyn(payments);
-  const stages = stageStates(order);
+
+  const [draft, setDraft] = useState<JournalDraft>(() => draftFromOrder(order));
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  // `dirty` gates the two effects below: one must not save a row nobody touched, and the other
+  // must not overwrite what is being typed with the snapshot Firestore just echoed back.
+  const dirtyRef = useRef(false);
+
+  // Adopt server-side changes (someone else's edit, or our own write coming back) only while this
+  // row is not mid-edit.
+  useEffect(() => {
+    if (!dirtyRef.current) setDraft(draftFromOrder(order));
+  }, [order]);
+
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+    const handle = setTimeout(async () => {
+      setSaveState("saving");
+      try {
+        await saveJournalRow(db, actor, order, draft, materials.find((m) => m.id === draft.materialId));
+        dirtyRef.current = false;
+        setSaveState("saved");
+      } catch (err: unknown) {
+        // Leave the row dirty so the next keystroke retries rather than silently losing the edit.
+        setSaveState("error");
+        onError("Сақталмады: " + (err as Error).message);
+      }
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
+  const patch = (p: Partial<JournalDraft>) => {
+    dirtyRef.current = true;
+    setSaveState("dirty");
+    setDraft((prev) => ({ ...prev, ...p }));
+  };
 
   // "Төлем түрі": the single method used, or "Аралас" once more than one method has paid into
   // this order — which is exactly what a mixed payment looks like once its legs are recorded.
@@ -486,149 +616,127 @@ function JournalRow({
     : usedMethods.length > 1 ? "Аралас"
     : (payments.find((p) => !p.reversed && p.methodId === usedMethods[0])?.methodName ?? usedMethods[0]);
 
-  // While editing, the money columns preview the same numbers a save would persist.
-  const preview = isEditing && draft
-    ? computeJournalRowTotals({
-        sheetQty: draft.sheetQty,
-        sheetPriceTiyn: draft.sheetPriceTiyn,
-        pvcMeters: draft.pvcMeters,
-        pvcPricePerMeterTiyn: draft.pvcPricePerMeterTiyn,
-        hdfCostTiyn: draft.hdfCostTiyn,
-        cuttingCostTiyn: draft.cuttingCostTiyn,
-        extraServicesTiyn: draft.extraServicesTiyn,
-        deliveryCostTiyn: draft.deliveryCostTiyn,
-        discountTiyn: draft.discountTiyn,
-        paidTiyn: paid,
-      })
-    : null;
+  // The per-method split lost its own columns; it survives as the paid cell's tooltip so a mixed
+  // payment is still auditable without reopening the order.
+  const methodBreakdown = [...byMethod.entries()]
+    .map(([id, amount]) => {
+      const name = payments.find((p) => !p.reversed && p.methodId === id)?.methodName ?? id;
+      return `${name}: ${formatMoney(amount)}`;
+    })
+    .join(" · ");
 
-  const patch = (p: Partial<JournalDraft>) => draft && setDraft({ ...draft, ...p });
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); onSave(); }
-    if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-  };
+  // Totals always come from the draft, so a figure updates as it is typed rather than only after
+  // the save lands.
+  const preview = computeJournalRowTotals({
+    sheetQty: draft.sheetQty,
+    sheetPriceTiyn: draft.sheetPriceTiyn,
+    pvcMeters: draft.pvcMeters,
+    pvcPricePerMeterTiyn: draft.pvcPricePerMeterTiyn,
+    hdfCostTiyn: draft.hdfCostTiyn,
+    cuttingCostTiyn: draft.cuttingCostTiyn,
+    extraServicesTiyn: draft.extraServicesTiyn,
+    deliveryCostTiyn: draft.deliveryCostTiyn,
+    discountTiyn: draft.discountTiyn,
+    paidTiyn: paid,
+  });
 
-  const sheets = order.confirmedSheets ?? order.estimatedSheets;
   const shortNum = order.orderNumber.match(/(\d+)$/)?.[1]?.replace(/^0+/, "") ?? order.orderNumber;
 
   return (
-    <tr className={isEditing ? "jt-row is-editing" : "jt-row"} onKeyDown={isEditing ? onKey : undefined}>
+    <tr className="jt-row">
       <td className="jt-sticky jt-col-num">
         <button className="jt-num-link" onClick={onOpen} title={order.orderNumber}>{shortNum}</button>
       </td>
 
       <td className="jt-sticky jt-col-name">
-        {isEditing && draft ? (
-          <input className="jt-input" value={draft.customerName} onChange={(e) => patch({ customerName: e.target.value })} />
-        ) : (
-          <span className="jt-name">{order.customerName}</span>
-        )}
+        <input className="jt-input" value={draft.customerName} onChange={(e) => patch({ customerName: e.target.value })} />
       </td>
 
       <td>
-        {isEditing && draft ? (
-          <input className="jt-input" value={draft.customerPhone} onChange={(e) => patch({ customerPhone: e.target.value })} />
-        ) : (
-          <span className="jt-muted">{order.customerPhone ? formatPhone(order.customerPhone) : "—"}</span>
-        )}
+        <input
+          className="jt-input"
+          value={draft.customerPhone}
+          onChange={(e) => patch({ customerPhone: e.target.value })}
+          placeholder={order.customerPhone ? formatPhone(order.customerPhone) : "—"}
+        />
       </td>
 
       <td className="jt-tint-material">
-        {isEditing && draft ? (
-          <select
-            className="jt-input"
-            value={draft.materialId}
-            onChange={(e) => {
-              const m = materials.find((x) => x.id === e.target.value);
-              patch({ materialId: e.target.value, sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn });
-            }}
-          >
-            <option value="">Лист түрін таңдаңыз</option>
-            {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        ) : (
-          order.materialSnapshot.name
-        )}
+        <select
+          className="jt-input"
+          value={draft.materialId}
+          onChange={(e) => {
+            const m = materials.find((x) => x.id === e.target.value);
+            patch({ materialId: e.target.value, sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn });
+          }}
+        >
+          <option value="">{order.materialSnapshot.name || "Лист түрі"}</option>
+          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
       </td>
 
       <td className="jt-tint-material jt-num">
-        {isEditing && draft ? (
-          <input type="number" min={0} className="jt-input jt-input-num" value={draft.sheetQty}
-            onChange={(e) => patch({ sheetQty: Number(e.target.value) || 0 })} />
-        ) : sheets}
+        <NumberField className="jt-input jt-input-num" value={draft.sheetQty} min={0}
+          onChange={(v) => patch({ sheetQty: v })} ariaLabel="Лист саны" />
       </td>
 
       <td className="jt-tint-material jt-num">
-        {isEditing && draft ? (
-          <input type="number" min={0} className="jt-input jt-input-num" value={draft.sheetPriceTiyn / 100}
-            onChange={(e) => patch({ sheetPriceTiyn: Math.round((Number(e.target.value) || 0) * 100) })} />
-        ) : formatMoney(order.materialSnapshot.sellingPriceTiyn)}
+        <NumberField className="jt-input jt-input-num" value={draft.sheetPriceTiyn / 100} min={0}
+          onChange={(v) => patch({ sheetPriceTiyn: Math.round(v * 100) })} ariaLabel="Лист бағасы" />
       </td>
 
       <td className="jt-tint-pvc jt-num">
-        {isEditing && draft ? (
-          <input type="number" min={0} step="0.01" className="jt-input jt-input-num" value={draft.pvcMeters}
-            onChange={(e) => patch({ pvcMeters: Number(e.target.value) || 0 })} />
-        ) : `${order.pvcMetersTotal} м`}
+        <NumberField className="jt-input jt-input-num" value={draft.pvcMeters} min={0}
+          onChange={(v) => patch({ pvcMeters: v })} ariaLabel="ПВХ метр" />
       </td>
 
       <td className="jt-tint-pvc jt-num">
-        {isEditing && draft ? (
-          <input type="number" min={0} className="jt-input jt-input-num" value={draft.pvcPricePerMeterTiyn / 100}
-            onChange={(e) => patch({ pvcPricePerMeterTiyn: Math.round((Number(e.target.value) || 0) * 100) })} />
-        ) : formatMoney(order.pvcPricePerMeterTiyn ?? 0)}
+        <NumberField className="jt-input jt-input-num" value={draft.pvcPricePerMeterTiyn / 100} min={0}
+          onChange={(v) => patch({ pvcPricePerMeterTiyn: Math.round(v * 100) })} ariaLabel="ПВХ 1 м бағасы" />
       </td>
 
-      <td className="jt-tint-pvc jt-num">{formatMoney(preview ? preview.pvcCostTiyn : order.pvcCostTiyn)}</td>
+      <td className="jt-tint-pvc jt-num">{formatMoneyBare(preview.pvcCostTiyn)}</td>
 
-      <td className="jt-tint-total jt-num jt-total">{formatMoney(preview ? preview.totalTiyn : order.totalTiyn)}</td>
+      <td className="jt-tint-total jt-num jt-total">{formatMoneyBare(preview.totalTiyn)}</td>
 
-      <td>
-        <span className={`jt-pill jt-pay-${preview ? preview.paymentStatus : order.paymentStatus}`}>
-          {PAYMENT_STATUS_LABELS[preview ? preview.paymentStatus : order.paymentStatus]}
+      <td title={PAYMENT_STATUS_LABELS[preview.paymentStatus]}>
+        <span className={`jt-pill jt-pay-${preview.paymentStatus}`}>
+          {PAYMENT_STATUS_SHORT[preview.paymentStatus]}
         </span>
       </td>
 
       <td className="jt-muted jt-nowrap">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</td>
 
-      <td className="jt-nowrap">
-        {methodLabel === null ? <span className="jt-muted">—</span> : <span className="jt-method">{methodLabel}</span>}
+      {/* One dropdown instead of a money column per method. Picking a method opens the payment
+          dialog for it, so the ledger reads like a spreadsheet cell and is five columns narrower. */}
+      <td className="jt-tint-pay jt-nowrap">
+        {/* A button, not a <select>. Driving an action from a select's change event proved
+            unreliable here — the picked value was reset before the handler could act on it, so
+            choosing a method silently recorded nothing. A button opening the picker below is
+            unambiguous, works the same on a phone, and replaces the old window.prompt(). */}
+        <button className={`jt-method-btn${methodLabel ? " has-value" : ""}`} onClick={onAddPayment}
+          title="Төлем тіркеу">
+          {methodLabel ?? "＋ төлем"}
+        </button>
       </td>
 
-      {METHOD_COLUMNS.map((m) => {
-        const amount = byMethod.get(m.id) ?? 0;
-        return (
-          <td key={m.id} className="jt-tint-pay jt-num">
-            <button className={`jt-pay-cell${amount > 0 ? " has-value" : ""}`} onClick={() => onAddPayment(m.id)}
-              title={`${m.label} төлемін тіркеу`}>
-              {amount > 0 ? formatMoney(amount) : "＋"}
-            </button>
-          </td>
-        );
-      })}
+      <td className="jt-tint-pay jt-num">
+        {paid > 0
+          ? <span className="jt-paid" title={methodBreakdown}>{formatMoneyBare(paid)}</span>
+          : <span className="jt-muted">—</span>}
+      </td>
 
       <td className="jt-tint-debt jt-num">
-        <span className={Math.max(0, preview ? preview.debtTiyn : order.debtTiyn) > 0 ? "jt-debt" : "jt-muted"}>
-          {formatMoney(Math.max(0, preview ? preview.debtTiyn : order.debtTiyn))}
+        <span className={Math.max(0, preview.debtTiyn) > 0 ? "jt-debt" : "jt-muted"}>
+          {formatMoneyBare(Math.max(0, preview.debtTiyn))}
         </span>
       </td>
 
-      <td><span className={`jt-pill jt-tone-${stages.cutting.tone}`}>{stages.cutting.label}</span></td>
-      <td><span className={`jt-pill jt-tone-${stages.pvc.tone}`}>{stages.pvc.label}</span></td>
-      <td><span className={`jt-pill jt-tone-${stages.ready.tone}`}>{stages.ready.label}</span></td>
-
       <td className="jt-actions">
-        {isEditing ? (
-          <>
-            <button className="jt-icon-btn is-ok" disabled={saving} onClick={onSave} title="Сақтау">✓</button>
-            <button className="jt-icon-btn" disabled={saving} onClick={onCancel} title="Болдырмау">✕</button>
-          </>
-        ) : (
-          <>
-            <button className="jt-icon-btn" onClick={onEdit} title="Өңдеу">✎</button>
-            <button className="jt-icon-btn" onClick={onOpen} title="Толық ашу">↗</button>
-          </>
-        )}
+        <span className={`jt-save-dot is-${saveState}`} title={SAVE_TITLES[saveState]} aria-live="polite">
+          {SAVE_GLYPHS[saveState]}
+        </span>
+        <button className="jt-icon-btn" onClick={onOpen} title="Толық ашу">↗</button>
       </td>
     </tr>
   );
@@ -699,8 +807,8 @@ function NewJournalRow({
         <input type="number" min={0} className="jt-input jt-input-num" value={draft.pvcPricePerMeterTiyn / 100}
           onChange={(e) => patch({ pvcPricePerMeterTiyn: Math.round((Number(e.target.value) || 0) * 100) })} />
       </td>
-      <td className="jt-tint-pvc jt-num">{formatMoney(preview.pvcCostTiyn)}</td>
-      <td className="jt-tint-total jt-num jt-total">{formatMoney(preview.totalTiyn)}</td>
+      <td className="jt-tint-pvc jt-num">{formatMoneyBare(preview.pvcCostTiyn)}</td>
+      <td className="jt-tint-total jt-num jt-total">{formatMoneyBare(preview.totalTiyn)}</td>
       <td><span className="jt-pill jt-pay-unpaid">{PAYMENT_STATUS_LABELS.unpaid}</span></td>
       <td>
         {/* dayKey() renders the Almaty calendar day, so the picker never shows "yesterday"
@@ -711,13 +819,8 @@ function NewJournalRow({
       {/* Payment method and amounts stay empty until the order exists — every tenge is recorded
           through the transactional recordPayment path, never typed straight onto a new order. */}
       <td className="jt-muted">—</td>
-      {METHOD_COLUMNS.map((m) => (
-        <td key={m.id} className="jt-tint-pay jt-num jt-muted">—</td>
-      ))}
-      <td className="jt-tint-debt jt-num jt-debt">{formatMoney(preview.totalTiyn)}</td>
-      <td className="jt-muted">—</td>
-      <td className="jt-muted">—</td>
-      <td className="jt-muted">—</td>
+      <td className="jt-tint-pay jt-num jt-muted">—</td>
+      <td className="jt-tint-debt jt-num jt-debt">{formatMoneyBare(preview.totalTiyn)}</td>
       <td className="jt-actions">
         <button className="jt-icon-btn is-ok" disabled={saving} onClick={onSave} title="Қосу">✓</button>
         <button className="jt-icon-btn" disabled={saving} onClick={onCancel} title="Болдырмау">✕</button>

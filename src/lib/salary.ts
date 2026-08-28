@@ -1,10 +1,17 @@
-import type { AttendanceRecord, Order, SalaryEntry, SalaryMode, SalaryRule } from "../types/domain";
+import type {
+  AttendanceRecord,
+  MaterialCategory,
+  Order,
+  SalaryEntry,
+  SalaryMode,
+  SalaryRule,
+} from "../types/domain";
 import { monthKey, dayKey } from "./dates";
 
 /**
  * Configurable salary engine.
  *
- * The exact business formula has not been provided yet, so the default mode is MANUAL: the engine
+ * MANUAL remains the default for any worker with no rule configured: the engine
  * measures the work and attendance honestly but computes a base of zero and waits for an Admin to
  * enter the amount. No formula is invented. The other modes are wired and ready to switch on per
  * worker once the real rules arrive, without touching this code.
@@ -12,6 +19,10 @@ import { monthKey, dayKey } from "./dates";
 
 export interface SalaryWorkTotals {
   sheetsCut: number;
+  /** sheetsCut split by material category — each category has its own piece rate. */
+  ldspSheets: number;
+  hdfSheets: number;
+  countertopSheets: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;
@@ -21,6 +32,9 @@ export interface SalaryWorkTotals {
 
 export const EMPTY_WORK_TOTALS: SalaryWorkTotals = {
   sheetsCut: 0,
+  ldspSheets: 0,
+  hdfSheets: 0,
+  countertopSheets: 0,
   pvcMeters: 0,
   ordersCompleted: 0,
   presentDays: 0,
@@ -41,8 +55,13 @@ export function measureWork(
   attendance: AttendanceRecord[],
   userId: string,
   periodKey: string,
+  /** Material category per materialId. Anything missing counts as ЛДСП, the common case. */
+  categoryByMaterialId: Map<string, MaterialCategory> = new Map(),
 ): SalaryWorkTotals {
   let sheetsCut = 0;
+  let ldspSheets = 0;
+  let hdfSheets = 0;
+  let countertopSheets = 0;
   let pvcMeters = 0;
   let ordersCompleted = 0;
 
@@ -52,7 +71,12 @@ export function measureWork(
       order.cuttingCompletedAt &&
       monthKey(order.cuttingCompletedAt.toDate()) === periodKey
     ) {
-      sheetsCut += order.confirmedSheets ?? order.estimatedSheets ?? 0;
+      const sheets = order.confirmedSheets ?? order.estimatedSheets ?? 0;
+      sheetsCut += sheets;
+      const category = categoryByMaterialId.get(order.materialId) ?? "ldsp";
+      if (category === "hdf") hdfSheets += sheets;
+      else if (category === "countertop") countertopSheets += sheets;
+      else ldspSheets += sheets;
       ordersCompleted += 1;
     }
     if (
@@ -80,13 +104,35 @@ export function measureWork(
     // "dayoff" and "sick" count as neither worked nor absent-for-deduction.
   }
 
-  return { sheetsCut, pvcMeters, ordersCompleted, presentDays, absentDays, workedHours };
+  return {
+    sheetsCut, ldspSheets, hdfSheets, countertopSheets,
+    pvcMeters, ordersCompleted, presentDays, absentDays, workedHours,
+  };
 }
 
 export interface SalaryComputation {
   mode: SalaryMode;
   baseTiyn: number;
   deductionTiyn: number;
+}
+
+/**
+ * Piece-rate pay for cut sheets, charged per material category. ХДФ and countertops fall back to
+ * the plain sheet rate only when no category-specific rate is configured, so a shop that pays one
+ * flat rate still works without setting three fields.
+ */
+function pieceRateTotal(rule: SalaryRule | undefined, work: SalaryWorkTotals): number {
+  const base = rule?.perSheetTiyn ?? 0;
+  const hdf = rule?.perHdfSheetTiyn ?? base;
+  const countertop = rule?.perCountertopTiyn ?? base;
+
+  const categorised = work.ldspSheets + work.hdfSheets + work.countertopSheets;
+  // Totals measured before categories existed carry only sheetsCut. Paying 0 for them would
+  // silently underpay, so an uncategorised total is treated as ЛДСП — the same fallback
+  // measureWork() applies to a material with no category set.
+  if (categorised === 0) return work.sheetsCut * base;
+
+  return work.ldspSheets * base + work.hdfSheets * hdf + work.countertopSheets * countertop;
 }
 
 /**
@@ -107,7 +153,7 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
       baseTiyn = rule?.fixedMonthlyTiyn ?? 0;
       break;
     case "PER_SHEET":
-      baseTiyn = round(work.sheetsCut * (rule?.perSheetTiyn ?? 0));
+      baseTiyn = round(pieceRateTotal(rule, work));
       break;
     case "PER_PVC_METER":
       baseTiyn = round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0));
@@ -122,7 +168,7 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
       // Every configured component adds up; unset components contribute nothing.
       baseTiyn =
         (rule?.fixedMonthlyTiyn ?? 0) +
-        round(work.sheetsCut * (rule?.perSheetTiyn ?? 0)) +
+        round(pieceRateTotal(rule, work)) +
         round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0)) +
         round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0)) +
         round(work.workedHours * (rule?.hourlyTiyn ?? 0));
@@ -155,10 +201,17 @@ export function buildSalaryEntry(params: {
   rule: SalaryRule | undefined;
   orders: Order[];
   attendance: AttendanceRecord[];
+  categoryByMaterialId?: Map<string, MaterialCategory>;
   bonusTiyn?: number;
   adjustmentTiyn?: number;
 }): Omit<SalaryEntry, "id" | "status"> {
-  const work = measureWork(params.orders, params.attendance, params.userId, params.periodKey);
+  const work = measureWork(
+    params.orders,
+    params.attendance,
+    params.userId,
+    params.periodKey,
+    params.categoryByMaterialId,
+  );
   const { mode, baseTiyn, deductionTiyn } = computeSalaryBase(params.rule, work);
   const bonusTiyn = params.bonusTiyn ?? 0;
   const adjustmentTiyn = params.adjustmentTiyn ?? 0;

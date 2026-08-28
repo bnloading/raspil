@@ -101,6 +101,15 @@ export default function MySalary() {
             </div>
             <div className="confirm-summary">
               <div className="confirm-row"><span>Кесілген лист</span><strong>{entry.sheetsCut}</strong></div>
+              {/* Only shown when the shop actually cut more than one category this month —
+                  otherwise it is noise on a payslip that is entirely ЛДСП. */}
+              {(entry.hdfSheets || entry.countertopSheets) ? (
+                <>
+                  <div className="confirm-row"><span>— ЛДСП</span><strong>{entry.ldspSheets ?? 0}</strong></div>
+                  <div className="confirm-row"><span>— ХДФ</span><strong>{entry.hdfSheets ?? 0}</strong></div>
+                  <div className="confirm-row"><span>— Столешница</span><strong>{entry.countertopSheets ?? 0}</strong></div>
+                </>
+              ) : null}
               <div className="confirm-row"><span>ПВХ метрі</span><strong>{entry.pvcMeters.toFixed(2)} м</strong></div>
               <div className="confirm-row"><span>Аяқталған заказ</span><strong>{entry.ordersCompleted}</strong></div>
               <div className="confirm-row"><span>Жұмыс күні</span><strong>{entry.presentDays}</strong></div>

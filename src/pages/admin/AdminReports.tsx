@@ -4,14 +4,23 @@ import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments, useAllInventoryMovements } from "../../hooks/useReports";
-import { useMaterials } from "../../hooks/useMaterials";
+import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useExpenseCategories } from "../../hooks/useExpenseCategories";
+import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useToast } from "../../hooks";
 import { BarChart } from "../../components/BarChart";
 import { formatMoney, tengeToTiyn } from "../../lib/money";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { PRODUCTION_STATUS_LABELS } from "../../lib/statuses";
 import { addExpenseCategory, deleteExpenseCategory, updateExpenseCategory } from "../../lib/expenseCategories";
+import { useAuth } from "../../AuthContext";
+import { computePvcUsage } from "../../lib/pvcUsage";
+import {
+  availableMonths,
+  computeFinanceSummary,
+  MACHINE_WASTE_PCT,
+  type FinanceSummary,
+} from "../../lib/finance";
 import type { ExpenseCategory } from "../../types/domain";
 import {
   computeCutterProductivity,
@@ -24,14 +33,17 @@ import {
   computePvcProductivity,
 } from "../../lib/dashboardStats";
 
-type Tab = "dashboard" | "sales" | "payments" | "production" | "warehouse" | "expenses";
+type Tab = "dashboard" | "finance" | "pvc" | "sales" | "payments" | "production" | "warehouse" | "expenses";
 
 export default function AdminReports() {
+  const { userData } = useAuth();
+  const isAdmin = userData?.role === "admin";
   const [tab, setTab] = useState<Tab>("dashboard");
   const { orders, loading: ordersLoading } = useAllOrders();
   const { payments, loading: paymentsLoading } = useAllPayments();
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
   const { materials } = useMaterials(false);
+  const { pvcTypes } = usePvcTypes(false);
   const { categories, loading: categoriesLoading } = useExpenseCategories();
   const { message, visible, showToast } = useToast();
 
@@ -40,7 +52,9 @@ export default function AdminReports() {
   return (
     <AppShell title="Есептер" subtitle="Сату, төлемдер, өндіріс, қойма есептері">
       <div className="tab-pill-row">
-        {(["dashboard", "sales", "payments", "production", "warehouse", "expenses"] as Tab[]).map((t) => (
+        {/* Editing the allocation percentages writes to an Admin-only collection, so a Manager
+            sees the resulting numbers on Қаржы but is not offered the settings tab. */}
+        {(["dashboard", "finance", "pvc", "sales", "payments", "production", "warehouse", ...(isAdmin ? ["expenses"] : [])] as Tab[]).map((t) => (
           <button key={t} className={`tab-pill${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
             {tabLabel(t)}
           </button>
@@ -52,6 +66,8 @@ export default function AdminReports() {
       ) : (
         <>
           {tab === "dashboard" && <DashboardTab orders={orders} payments={payments} movements={movements} materials={materials} />}
+          {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} />}
+          {tab === "pvc" && <PvcTab orders={orders} pvcTypes={pvcTypes} />}
           {tab === "sales" && <SalesTab orders={orders} />}
           {tab === "payments" && <PaymentsTab payments={payments} />}
           {tab === "production" && <ProductionTab orders={orders} movements={movements} materials={materials} />}
@@ -70,6 +86,8 @@ export default function AdminReports() {
 function tabLabel(t: Tab): string {
   return {
     dashboard: "Дашборд",
+    finance: "Қаржы",
+    pvc: "ПВХ",
     sales: "Сату",
     payments: "Төлемдер",
     production: "Өндіріс",
@@ -247,6 +265,319 @@ function ExpenseCategoryModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Жалпы біздегі сумма" — the shop's money in one place, for a month or for all time, ending in
+ * the standing rule that a slice of each month's profit is set aside for the machine and waste.
+ */
+function FinanceTab({
+  orders,
+  payments,
+  categories,
+}: {
+  orders: ReturnType<typeof useAllOrders>["orders"];
+  payments: ReturnType<typeof useAllPayments>["payments"];
+  categories: ExpenseCategory[];
+}) {
+  const months = useMemo(() => availableMonths(orders), [orders]);
+  const [period, setPeriod] = useState<string | null>(() => months[0] ?? null);
+  const { costs: purchaseByMaterialId, available: costsVisible } = useMaterialCosts();
+
+  const s = useMemo(
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, period }),
+    [orders, payments, purchaseByMaterialId, categories, period],
+  );
+  const allTime = useMemo(
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, period: null }),
+    [orders, payments, purchaseByMaterialId, categories],
+  );
+
+  const periodName = period ? monthName(period) : "Барлық уақыт";
+
+  const exportRows = () => [
+    { Көрсеткіш: "Есептелген сома", Сома: s.billedTiyn / 100 },
+    { Көрсеткіш: "Түскен төлем", Сома: s.receivedTiyn / 100 },
+    { Көрсеткіш: "Қарыз", Сома: s.debtTiyn / 100 },
+    { Көрсеткіш: "Материал өзіндік құны", Сома: s.costTiyn / 100 },
+    { Көрсеткіш: "Жалпы пайда", Сома: s.grossProfitTiyn / 100 },
+    ...s.allocations.map((a) => ({ Көрсеткіш: `${a.name} (${a.percentage}%)`, Сома: a.amountTiyn / 100 })),
+    { Көрсеткіш: "Таза пайда", Сома: s.netProfitTiyn / 100 },
+  ];
+
+  return (
+    <div>
+      <div className="panel-card">
+        <div className="chart-card-head">
+          <h3>Кезең: {periodName}</h3>
+          <select
+            className="form-select-material"
+            value={period ?? "all"}
+            onChange={(e) => setPeriod(e.target.value === "all" ? null : e.target.value)}
+          >
+            <option value="all">Барлық уақыт</option>
+            {months.map((m) => (
+              <option key={m} value={m}>{monthName(m)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div className="number">{formatMoney(s.billedTiyn)}</div>
+            <div className="label">Есептелген сома ({s.orderCount} заказ)</div>
+          </div>
+          <div className="stat-card">
+            <div className="number">{formatMoney(s.receivedTiyn)}</div>
+            <div className="label">Түскен төлем</div>
+          </div>
+          <div className="stat-card">
+            <div className="number">{formatMoney(s.debtTiyn)}</div>
+            <div className="label">Қарыз</div>
+          </div>
+          {costsVisible && (
+            <div className="stat-card">
+              <div className="number">{formatMoney(s.costTiyn)}</div>
+              <div className="label">Материал өзіндік құны</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Purchase prices are Admin-only (firestore.rules), so a Manager gets the money summary
+          above and the standing 5% rule, but not the margin the profit split would reveal. */}
+      {costsVisible ? (
+        <div className="panel-card finance-profit">
+          <div className="panel-head">
+            <h3>Пайданы бөлу — {periodName}</h3>
+          </div>
+
+          <div className="summary-row">
+            <span>Жалпы пайда (есептелген сома − материал құны)</span>
+            <strong className={s.grossProfitTiyn < 0 ? "jt-debt" : "jt-total"}>
+              {formatMoney(s.grossProfitTiyn)}
+            </strong>
+          </div>
+
+          {s.allocations.map((a) => (
+            <div key={a.name} className="summary-row">
+              <span>{a.name} — {a.percentage}%</span>
+              <strong>−{formatMoney(a.amountTiyn)}</strong>
+            </div>
+          ))}
+
+          <div className="summary-row is-final">
+            <span>Таза пайда</span>
+            <strong>{formatMoney(s.netProfitTiyn)}</strong>
+          </div>
+
+          <p className="finance-note">
+            ℹ️ Жалпы айлық пайданың {machineWastePct(categories)}% — станокқа, мусорға және цехтың
+            шығындарына арналады. {periodName} үшін бұл{" "}
+            <strong>{formatMoney(machineWasteAmount(s))}</strong> құрайды.
+          </p>
+        </div>
+      ) : (
+        <div className="panel-card finance-profit">
+          <div className="panel-head">
+            <h3>Пайданы бөлу</h3>
+          </div>
+          <p className="finance-note">
+            ℹ️ Жалпы айлық пайданың {machineWastePct(categories)}% — станокқа, мусорға және цехтың
+            шығындарына арналады. Пайданың нақты сомасы материалдың сатып алу бағасына байланысты,
+            оны тек әкімші (Admin) көре алады.
+          </p>
+        </div>
+      )}
+
+      <div className="panel-card">
+        <div className="panel-head">
+          <h3>Барлық уақыт</h3>
+        </div>
+        <div className="summary-row">
+          <span>Барлық есептелген сома</span>
+          <strong className="jt-total">{formatMoney(allTime.billedTiyn)}</strong>
+        </div>
+        <div className="summary-row">
+          <span>Барлық түскен төлем</span>
+          <strong>{formatMoney(allTime.receivedTiyn)}</strong>
+        </div>
+        <div className="summary-row">
+          <span>Барлық қарыз</span>
+          <strong className="jt-debt">{formatMoney(allTime.debtTiyn)}</strong>
+        </div>
+      </div>
+
+      <div className="wizard-actions" style={{ marginTop: 12 }}>
+        <button className="btn btn-outline btn-sm" onClick={() => exportCsv(`қаржы-${period ?? "барлығы"}`, exportRows())}>
+          📄 CSV экспорт
+        </button>
+        <button className="btn btn-outline btn-sm" onClick={() => exportXlsx(`қаржы-${period ?? "барлығы"}`, exportRows())}>
+          📊 XLSX экспорт
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const MONTH_NAMES_KK = [
+  "Қаңтар", "Ақпан", "Наурыз", "Сәуір", "Мамыр", "Маусым",
+  "Шілде", "Тамыз", "Қыркүйек", "Қазан", "Қараша", "Желтоқсан",
+];
+
+/** "2026-08" → "Тамыз 2026". */
+function monthName(key: string): string {
+  const [year, month] = key.split("-");
+  return `${MONTH_NAMES_KK[Number(month) - 1] ?? month} ${year}`;
+}
+
+/** The machine/waste rate actually in force — the configured category if there is one. */
+function machineWastePct(categories: ExpenseCategory[]): number {
+  const row = categories.find((c) => c.active && c.name.toLowerCase().includes("станок"));
+  return row?.percentage ?? MACHINE_WASTE_PCT;
+}
+
+function machineWasteAmount(s: FinanceSummary): number {
+  const row = s.allocations.find((a) => a.name.toLowerCase().includes("станок"));
+  return row?.amountTiyn ?? Math.round((s.grossProfitTiyn * MACHINE_WASTE_PCT) / 100);
+}
+
+/**
+ * "ПВХ шығыны" — metres and cost of each edge-banding colour, for a month or all time.
+ * Answers "қайсыдан қанша метр кетті" directly.
+ */
+function PvcTab({
+  orders,
+  pvcTypes,
+}: {
+  orders: ReturnType<typeof useAllOrders>["orders"];
+  pvcTypes: ReturnType<typeof usePvcTypes>["pvcTypes"];
+}) {
+  const months = useMemo(() => availableMonths(orders), [orders]);
+  const [period, setPeriod] = useState<string | null>(() => months[0] ?? null);
+
+  const usage = useMemo(
+    () => computePvcUsage({ orders, pvcTypes, period }),
+    [orders, pvcTypes, period],
+  );
+
+  const periodName = period ? monthName(period) : "Барлық уақыт";
+
+  const exportRows = () => [
+    ...usage.rows.map((r) => ({
+      Түсі: r.colorName,
+      "Қалыңдығы, мм": r.thicknessMm,
+      "Метр": Number(r.meters.toFixed(2)),
+      "1 м бағасы": r.pricePerMeterTiyn / 100,
+      Сомасы: r.costTiyn / 100,
+      Заказ: r.orderCount,
+    })),
+    ...(usage.unattributedMeters > 0
+      ? [{ Түсі: "Түрі көрсетілмеген", "Қалыңдығы, мм": "", Метр: Number(usage.unattributedMeters.toFixed(2)), "1 м бағасы": "", Сомасы: "", Заказ: usage.unattributedOrderCount }]
+      : []),
+  ];
+
+  return (
+    <div>
+      <div className="panel-card">
+        <div className="chart-card-head">
+          <h3>ПВХ шығыны — {periodName}</h3>
+          <select
+            className="form-select-material"
+            value={period ?? "all"}
+            onChange={(e) => setPeriod(e.target.value === "all" ? null : e.target.value)}
+          >
+            <option value="all">Барлық уақыт</option>
+            {months.map((m) => (
+              <option key={m} value={m}>{monthName(m)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div className="number">{usage.totalMeters.toFixed(1)} м</div>
+            <div className="label">Барлық ПВХ</div>
+          </div>
+          <div className="stat-card">
+            <div className="number">{formatMoney(usage.totalCostTiyn)}</div>
+            <div className="label">ПВХ сомасы</div>
+          </div>
+          <div className="stat-card">
+            <div className="number">{usage.rows.length}</div>
+            <div className="label">Қолданылған түс</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel-card">
+        <div className="panel-head">
+          <h3>Түсі бойынша</h3>
+        </div>
+        {usage.rows.length === 0 && usage.unattributedMeters === 0 ? (
+          <div className="empty-state">
+            <div className="icon">📭</div>
+            <p>Бұл кезеңде ПВХ қолданылмаған</p>
+          </div>
+        ) : (
+          <div className="data-table-wrap">
+            <table className="data-table stack-mobile stack-compact">
+              <thead>
+                <tr>
+                  <th>Түсі</th>
+                  <th className="num">Метр</th>
+                  <th className="num">1 м бағасы</th>
+                  <th className="num">Сомасы</th>
+                  <th className="num">Заказ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.rows.map((r) => (
+                  <tr key={r.pvcTypeId}>
+                    <td data-label="Түсі">
+                      <strong>{r.colorName}</strong> <span className="jt-muted">{r.thicknessMm} мм</span>
+                    </td>
+                    <td className="num" data-label="Метр">{r.meters.toFixed(2)} м</td>
+                    <td className="num" data-label="1 м бағасы">{formatMoney(r.pricePerMeterTiyn)}</td>
+                    <td className="num" data-label="Сомасы">{formatMoney(r.costTiyn)}</td>
+                    <td className="num" data-label="Заказ">{r.orderCount}</td>
+                  </tr>
+                ))}
+                {usage.unattributedMeters > 0 && (
+                  <tr>
+                    <td data-label="Түсі">
+                      <strong>Түрі көрсетілмеген</strong>
+                    </td>
+                    <td className="num" data-label="Метр">{usage.unattributedMeters.toFixed(2)} м</td>
+                    <td className="num" data-label="1 м бағасы">—</td>
+                    <td className="num" data-label="Сомасы">—</td>
+                    <td className="num" data-label="Заказ">{usage.unattributedOrderCount}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {usage.unattributedMeters > 0 && (
+          <p className="finance-note">
+            ℹ️ «Түрі көрсетілмеген» — журналға қолмен енгізілген заказдар: оларда жалпы метр ғана
+            жазылған, ПВХ түсі таңдалмаған. Түсін көрсету үшін заказды толық ашып, бөлшектердің
+            қырларына ПВХ түрін таңдаңыз.
+          </p>
+        )}
+      </div>
+
+      <div className="wizard-actions" style={{ marginTop: 12 }}>
+        <button className="btn btn-outline btn-sm" onClick={() => exportCsv(`пвх-${period ?? "барлығы"}`, exportRows())}>
+          📄 CSV экспорт
+        </button>
+        <button className="btn btn-outline btn-sm" onClick={() => exportXlsx(`пвх-${period ?? "барлығы"}`, exportRows())}>
+          📊 XLSX экспорт
+        </button>
       </div>
     </div>
   );

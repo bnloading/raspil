@@ -21,6 +21,10 @@ export function computePartPvcMeters(part: CuttingPart): number {
 
 export interface PvcBreakdownRow {
   key: string;
+  /** The first pvcType that contributed to this row. Rows group by thickness+colour, so if two
+   *  pvcType documents describe the same product this names whichever was seen first — enough to
+   *  attribute usage, not a claim that only one id contributed. */
+  pvcTypeId: string;
   thicknessMm: number;
   colorName: string;
   meters: number;
@@ -46,7 +50,14 @@ export function computePvcBreakdown(
         existing.meters += meters;
         existing.costTiyn += costTiyn;
       } else {
-        map.set(key, { key, thicknessMm: pvcType.thicknessMm, colorName: pvcType.colorName, meters, costTiyn });
+        map.set(key, {
+          key,
+          pvcTypeId: e.pvcTypeId,
+          thicknessMm: pvcType.thicknessMm,
+          colorName: pvcType.colorName,
+          meters,
+          costTiyn,
+        });
       }
     }
   }

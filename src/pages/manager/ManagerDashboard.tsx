@@ -149,7 +149,7 @@ export default function ManagerDashboard() {
                 <p className="chart-empty">Заказдар жоқ</p>
               ) : (
                 <div className="data-table-wrap">
-                  <table className="data-table stack-mobile">
+                  <table className="data-table stack-mobile stack-compact">
                     <thead>
                       <tr>
                         <th>№</th>

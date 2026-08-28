@@ -183,7 +183,7 @@ export default function AdminHome() {
                 <p className="chart-empty">Кезекте заказ жоқ</p>
               ) : (
                 <div className="data-table-wrap">
-                  <table className="data-table stack-mobile">
+                  <table className="data-table stack-mobile stack-compact">
                     <thead>
                       <tr>
                         <th>№</th>

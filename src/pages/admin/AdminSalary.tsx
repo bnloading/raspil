@@ -7,6 +7,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { MoneyInput } from "../../components/MoneyInput";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
+import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
 import { availablePeriods } from "../../lib/salary";
@@ -41,6 +42,7 @@ const STATUS_TONE: Record<string, string> = {
 export default function AdminSalary() {
   const { user, userData } = useAuth();
   const { orders } = useAllOrders();
+  const { materials } = useMaterials(false);
   const { records: attendance } = useAttendance();
   const { rules } = useAllSalaryRules();
   const { entries } = useSalaryEntries();
@@ -59,6 +61,11 @@ export default function AdminSalary() {
   }, []);
 
   const periods = useMemo(() => availablePeriods(orders, attendance), [orders, attendance]);
+  // Piece rates differ per category, so recalculation needs to know what each sheet was.
+  const categoryByMaterialId = useMemo(
+    () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
+    [materials],
+  );
   const rulesByUid = useMemo(() => new Map(rules.map((r) => [r.userId, r])), [rules]);
   const entryFor = (uid: string) => entries.find((e) => e.userId === uid && e.periodKey === period);
   const adjustmentTotal = (uid: string) =>
@@ -86,6 +93,7 @@ export default function AdminSalary() {
         rule: rulesByUid.get(member.id),
         orders,
         attendance,
+        categoryByMaterialId,
         adjustmentTiyn: adjustmentTotal(member.id),
         existing: entryFor(member.id),
       });
@@ -216,7 +224,7 @@ export default function AdminSalary() {
 
               {entry && (
                 <div className="salary-work-row">
-                  <span>Лист: {entry.sheetsCut}</span>
+                  <span>Лист: {entry.sheetsCut}{entry.hdfSheets || entry.countertopSheets ? ` (ЛДСП ${entry.ldspSheets ?? 0} · ХДФ ${entry.hdfSheets ?? 0} · Столешница ${entry.countertopSheets ?? 0})` : ""}</span>
                   <span>ПВХ: {entry.pvcMeters.toFixed(1)} м</span>
                   <span>Заказ: {entry.ordersCompleted}</span>
                   <span>Күн: {entry.presentDays}</span>
@@ -291,6 +299,8 @@ function SalaryRuleEditor({
     mode: rule?.mode ?? "MANUAL",
     fixedMonthlyTiyn: rule?.fixedMonthlyTiyn ?? 0,
     perSheetTiyn: rule?.perSheetTiyn ?? 0,
+    perHdfSheetTiyn: rule?.perHdfSheetTiyn ?? 0,
+    perCountertopTiyn: rule?.perCountertopTiyn ?? 0,
     perPvcMeterTiyn: rule?.perPvcMeterTiyn ?? 0,
     perOrderTiyn: rule?.perOrderTiyn ?? 0,
     hourlyTiyn: rule?.hourlyTiyn ?? 0,

@@ -21,7 +21,15 @@ import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
 import { recordInventoryMovement } from "../../lib/warehouse";
-import type { InventoryMovement, LeftoverPiece, Material, MaterialCost, PvcType } from "../../types/domain";
+import { MATERIAL_CATEGORY_LABELS } from "../../types/domain";
+import type {
+  InventoryMovement,
+  LeftoverPiece,
+  Material,
+  MaterialCategory,
+  MaterialCost,
+  PvcType,
+} from "../../types/domain";
 
 type Tab = "materials" | "pvc" | "leftovers";
 
@@ -172,7 +180,7 @@ function MaterialsTab({
         </div>
       ) : (
         <div className="data-table-wrap">
-          <table className="data-table stack-mobile">
+          <table className="data-table stack-mobile stack-compact">
             <thead>
               <tr>
                 <th>Атауы</th>
@@ -193,7 +201,7 @@ function MaterialsTab({
                         {m.name} {m.article ? `(${m.article})` : ""}
                       </strong>
                       <div>
-                        {m.color} · {m.thicknessMm} мм · {m.sheetLengthMm}×{m.sheetWidthMm} мм
+                        {MATERIAL_CATEGORY_LABELS[m.category ?? "ldsp"]} · {m.color} · {m.thicknessMm} мм · {m.sheetLengthMm}×{m.sheetWidthMm} мм
                       </div>
                     </td>
                     <td data-label="Қалдық" className={low ? "warehouse-low" : undefined}>
@@ -246,6 +254,8 @@ function MaterialModal({
   const [color, setColor] = useState(material?.color ?? "");
   const [manufacturer, setManufacturer] = useState(material?.manufacturer ?? "");
   const [thicknessMm, setThicknessMm] = useState(String(material?.thicknessMm ?? 16));
+  // Drives the cutter's piece rate (ЛДСП / ХДФ / столешница are paid differently).
+  const [category, setCategory] = useState<MaterialCategory>(material?.category ?? "ldsp");
   const [sheetLengthMm, setSheetLengthMm] = useState(String(material?.sheetLengthMm ?? 2800));
   const [sheetWidthMm, setSheetWidthMm] = useState(String(material?.sheetWidthMm ?? 2070));
   const [sellingPrice, setSellingPrice] = useState(
@@ -282,6 +292,7 @@ function MaterialModal({
         color: color.trim(),
         manufacturer: manufacturer.trim(),
         thicknessMm: parseFloat(thicknessMm) || 0,
+        category,
         sheetLengthMm: parseInt(sheetLengthMm, 10) || 0,
         sheetWidthMm: parseInt(sheetWidthMm, 10) || 0,
         sellingPriceTiyn: parseMoneyInput(sellingPrice),
@@ -357,6 +368,22 @@ function MaterialModal({
           <div className="form-group">
             <label>Өндіруші/Коллекция</label>
             <input className="form-input" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} />
+          </div>
+          <div className="form-group">
+            {/* Drives the cutter's piece rate — ЛДСП, ХДФ and столешница are paid at different
+                rates, and that cannot be inferred from the material name. */}
+            <label>Түрі</label>
+            <select
+              className="form-input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as MaterialCategory)}
+            >
+              {(Object.keys(MATERIAL_CATEGORY_LABELS) as MaterialCategory[]).map((c) => (
+                <option key={c} value={c}>
+                  {MATERIAL_CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label>Қалыңдығы (мм)</label>
@@ -521,7 +548,7 @@ function PvcTab({
         </div>
       ) : (
         <div className="data-table-wrap">
-          <table className="data-table stack-mobile">
+          <table className="data-table stack-mobile stack-compact">
             <thead>
               <tr>
                 <th>Түсі / Қалыңдығы</th>
@@ -736,7 +763,7 @@ function LeftoversTab({ materials, showToast }: { materials: Material[]; showToa
         </div>
       ) : (
         <div className="data-table-wrap">
-          <table className="data-table stack-mobile">
+          <table className="data-table stack-mobile stack-compact">
             <thead>
               <tr>
                 <th>Материал</th>

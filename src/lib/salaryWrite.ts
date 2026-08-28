@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import type {
   AttendanceRecord,
   AttendanceStatus,
+  MaterialCategory,
   Order,
   SalaryEntry,
   SalaryRule,
@@ -114,6 +115,8 @@ export async function recalculateSalary(
     rule: SalaryRule | undefined;
     orders: Order[];
     attendance: AttendanceRecord[];
+    /** Material category per materialId, so per-sheet pay uses the right rate for ХДФ/столешница. */
+    categoryByMaterialId?: Map<string, MaterialCategory>;
     adjustmentTiyn: number;
     bonusTiyn?: number;
     existing?: SalaryEntry;
@@ -130,6 +133,7 @@ export async function recalculateSalary(
     rule: params.rule,
     orders: params.orders,
     attendance: params.attendance,
+    categoryByMaterialId: params.categoryByMaterialId,
     bonusTiyn: params.bonusTiyn,
     adjustmentTiyn: params.adjustmentTiyn,
   });

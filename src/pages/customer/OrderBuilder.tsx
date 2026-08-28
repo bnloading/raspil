@@ -18,6 +18,7 @@ import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { MoneyInput } from "../../components/MoneyInput";
+import type { ScannedPart } from "../../lib/ocrDimensions";
 import { DimensionScanner } from "../../components/DimensionScanner";
 import { BulkPartsEditor } from "../../components/BulkPartsEditor";
 import { formatMoney } from "../../lib/money";
@@ -171,9 +172,20 @@ export default function OrderBuilder() {
   // BulkPartsEditor now — this page only owns adding, importing and persisting.
   const addPart = () => setParts((prev) => [...prev, newPart()]);
 
-  const handleScannedDimensions = ({ lengthMm, widthMm }: { lengthMm: number; widthMm: number }) => {
-    const part = { ...newPart(), lengthMm, widthMm };
-    setParts((prev) => [...prev, part]);
+  /**
+   * A photo of a cut list yields every row on it, not one pair, so this appends them all. Blank
+   * placeholder rows are dropped first — the same rule the CSV/Excel imports use, so a scan into a
+   * fresh order doesn't leave an empty part sitting above the scanned ones.
+   */
+  const handleScannedDimensions = (scanned: ScannedPart[]) => {
+    const added = scanned.map((s) => ({
+      ...newPart(),
+      lengthMm: s.lengthMm,
+      widthMm: s.widthMm,
+      qty: Math.max(1, s.qty),
+    }));
+    setParts((prev) => [...prev.filter((p) => p.name || p.lengthMm || p.widthMm), ...added]);
+    showToast(`✅ ${added.length} деталь қосылды`);
   };
 
   /**
@@ -331,6 +343,15 @@ export default function OrderBuilder() {
         priority: 0,
         estimatedSheets: totals?.estimatedSheets ?? 0,
         pvcMetersTotal: totals?.pvcMetersTotal ?? totalPvcMeters(validParts),
+        // Denormalized colour split, so "how many metres of Ақ / Серый went out" is answerable
+        // from the orders collection alone rather than by reading every parts subcollection.
+        pvcByType: computePvcBreakdown(validParts, pvcTypesById).map((row) => ({
+          pvcTypeId: row.pvcTypeId,
+          colorName: row.colorName,
+          thicknessMm: row.thicknessMm,
+          meters: row.meters,
+          costTiyn: row.costTiyn,
+        })),
         materialCostTiyn: totals?.materialCostTiyn ?? 0,
         cuttingCostTiyn: totals?.cuttingCostTiyn ?? 0,
         pvcCostTiyn: totals?.pvcCostTiyn ?? 0,
