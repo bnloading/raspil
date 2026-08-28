@@ -485,15 +485,18 @@ export default function OrderBuilder() {
                         className={`material-pick-card${materialId === m.id ? " selected" : ""}`}
                         onClick={() => setMaterialId(m.id)}
                       >
-                        {/* Colour is the thing a customer is actually choosing, so lead with it. */}
-                        <MaterialThumb material={m} size="md" />
-                        <strong>{m.name}</strong>
-                        <span>{m.color} · {m.thicknessMm} мм</span>
-                        <span>{m.sheetLengthMm}×{m.sheetWidthMm} мм</span>
-                        <span>{formatMoney(m.sellingPriceTiyn)} / лист</span>
-                        <span className={available > 0 ? "in-stock" : "out-of-stock"}>
-                          {available > 0 ? "Қоймада бар" : "Қоймада жоқ"}
+                        {/* Colour is the thing a customer is actually choosing, so the photo leads
+                            and the numbers collapse to two lines — five stacked lines of text made
+                            every card tall enough that only two fitted on a phone screen. */}
+                        <span className="material-pick-media">
+                          <MaterialThumb material={m} size="md" />
+                          {available <= 0 && <span className="material-pick-badge">Қоймада жоқ</span>}
                         </span>
+                        <strong>{m.name}</strong>
+                        <span className="material-pick-meta">
+                          {m.thicknessMm} мм · {m.sheetLengthMm}×{m.sheetWidthMm}
+                        </span>
+                        <span className="material-pick-price">{formatMoney(m.sellingPriceTiyn)}</span>
                       </button>
                     );
                   })}

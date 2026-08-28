@@ -10,6 +10,7 @@ import { WorkshopActivityBoard } from "../../components/WorkshopActivityBoard";
 import { useOrderDetail } from "../../hooks/useOrderDetail";
 import { useToast } from "../../hooks";
 import { isCancellable } from "../../lib/statuses";
+import { customerOrderCode } from "../../lib/orderCode";
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -45,7 +46,7 @@ export default function OrderDetail() {
   };
 
   return (
-    <AppShell title={`Заказ №${order.orderNumber}`} back="/orders" contentWidth="wide">
+    <AppShell title={`Заказ ${customerOrderCode(order.orderNumber)}`} back="/orders" contentWidth="wide">
       <div className="detail-layout">
         <div>
           <CustomerStatusCard order={order} />

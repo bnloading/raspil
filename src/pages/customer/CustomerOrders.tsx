@@ -10,6 +10,7 @@ import { OrderProgress } from "../../components/OrderProgress";
 import { useCustomerOrders } from "../../hooks/useOrders";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
+import { customerOrderCode } from "../../lib/orderCode";
 import { formatDateDMY } from "../../lib/dates";
 import { isCancellable } from "../../lib/statuses";
 import { progressSummary } from "../../lib/orderProgress";
@@ -176,7 +177,7 @@ export default function CustomerOrders() {
                     button nested inside an anchor is neither valid nor reliably clickable. */}
                 <Link to={`/order/${o.id}`} className="ocard-link">
                   <div className="ocard-top">
-                    <span className="otable-num">{o.orderNumber}</span>
+                    <span className="otable-num">{customerOrderCode(o.orderNumber)}</span>
                     <span className="otable-sub">{o.createdAt ? formatDateDMY(o.createdAt) : "—"}</span>
                   </div>
                   <div className="ocard-mid">

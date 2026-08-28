@@ -15,6 +15,7 @@ import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
+import { journalDefaultsFor } from "../../lib/journalPricing";
 import {
   createJournalOrder,
   draftFromOrder,
@@ -725,7 +726,15 @@ function JournalRow({
           value={draft.materialId}
           onChange={(e) => {
             const m = materials.find((x) => x.id === e.target.value);
-            patch({ materialId: e.target.value, sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn });
+            // Picking a material fills in the shop's standing rates: ПВХ 200 for Ақ, 220 for the
+            // rest, and 1600/лист + 160/м of labour on a customer's own board. All stay editable.
+            const rates = journalDefaultsFor(m);
+            patch({
+              materialId: e.target.value,
+              sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn,
+              pvcPricePerMeterTiyn: rates.pvcPricePerMeterTiyn,
+              cuttingCostTiyn: rates.cuttingPerSheetTiyn * (draft.sheetQty || 0),
+            });
           }}
         >
           <option value="">{order.materialSnapshot.name || "Лист түрі"}</option>
@@ -849,7 +858,15 @@ function NewJournalRow({
         <select className="jt-input" value={draft.materialId}
           onChange={(e) => {
             const m = materials.find((x) => x.id === e.target.value);
-            patch({ materialId: e.target.value, sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn });
+            // Picking a material fills in the shop's standing rates: ПВХ 200 for Ақ, 220 for the
+            // rest, and 1600/лист + 160/м of labour on a customer's own board. All stay editable.
+            const rates = journalDefaultsFor(m);
+            patch({
+              materialId: e.target.value,
+              sheetPriceTiyn: m?.sellingPriceTiyn ?? draft.sheetPriceTiyn,
+              pvcPricePerMeterTiyn: rates.pvcPricePerMeterTiyn,
+              cuttingCostTiyn: rates.cuttingPerSheetTiyn * (draft.sheetQty || 0),
+            });
           }}>
           <option value="">Лист түрін таңдаңыз</option>
           {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}

@@ -741,26 +741,63 @@ textarea.form-input {
 }
 .material-pick-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  /* Two per row on a phone: the photo is what a customer compares, so more cards on screen at
+     once beats bigger text on each. */
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
 }
 .material-pick-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   text-align: left;
-  padding: 14px;
+  padding: 8px;
   border-radius: var(--radius-sm);
   border: 2px solid var(--border);
   background: var(--card);
   cursor: pointer;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--text-light);
   font-family: inherit;
+  overflow: hidden;
 }
 .material-pick-card strong {
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+.material-pick-media {
+  position: relative;
+  display: block;
+}
+.material-pick-media .mthumb.is-md {
+  height: 92px;
+  margin-bottom: 4px;
+}
+/* Only out-of-stock is called out; "in stock" is the normal case and needs no badge. */
+.material-pick-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.material-pick-meta {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.material-pick-price {
+  margin-top: 2px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.82rem;
 }
 .material-pick-card.selected {
   border-color: var(--primary);

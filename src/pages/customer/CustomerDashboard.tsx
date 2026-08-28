@@ -8,6 +8,7 @@ import { getCustomerStageLabel } from "../../components/CustomerStatusCard";
 import { WorkshopActivityBoard } from "../../components/WorkshopActivityBoard";
 import { useCustomerOrders } from "../../hooks/useOrders";
 import { formatMoney } from "../../lib/money";
+import { customerOrderCode } from "../../lib/orderCode";
 import { formatDateDMY } from "../../lib/dates";
 
 export default function CustomerDashboard() {
@@ -79,7 +80,7 @@ export default function CustomerDashboard() {
           {drafts.map((o) => (
             <Link key={o.id} to={`/order/${o.id}`} className="track-card">
               <div className="track-card-header">
-                <span className="track-card-num">{o.orderNumber}</span>
+                <span className="track-card-num">{customerOrderCode(o.orderNumber)}</span>
                 <ProductionStatusBadge status={o.productionStatus} />
               </div>
             </Link>
@@ -107,7 +108,7 @@ export default function CustomerDashboard() {
           orders.slice(0, 5).map((o) => (
             <Link key={o.id} to={`/order/${o.id}`} className="track-card">
               <div className="track-card-header">
-                <span className="track-card-num">{o.orderNumber}</span>
+                <span className="track-card-num">{customerOrderCode(o.orderNumber)}</span>
                 <ProductionStatusBadge status={o.productionStatus} />
               </div>
               <div className="track-card-meta-row">

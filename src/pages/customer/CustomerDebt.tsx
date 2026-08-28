@@ -7,6 +7,7 @@ import { PaymentStatusBadge } from "../../components/StatusBadge";
 import { useCustomerOrders } from "../../hooks/useOrders";
 import { usePaymentsForOrders } from "../../hooks/usePayments";
 import { formatMoney } from "../../lib/money";
+import { customerOrderCode } from "../../lib/orderCode";
 import { formatDateDMY, formatDateTimeDMY } from "../../lib/dates";
 
 /**
@@ -74,7 +75,7 @@ export default function CustomerDebt() {
           unpaid.map((o) => (
             <Link key={o.id} to={`/order/${o.id}`} className="track-card">
               <div className="track-card-header">
-                <span className="track-card-num">{o.orderNumber}</span>
+                <span className="track-card-num">{customerOrderCode(o.orderNumber)}</span>
                 <PaymentStatusBadge status={o.paymentStatus} />
               </div>
               <div className="track-card-meta-row">
