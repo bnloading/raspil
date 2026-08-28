@@ -37,3 +37,6 @@ firestore-debug.log
 ui-debug.log
 firebase-debug.log
 service-account.json
+
+# Firestore backups — contain every customer record; must never be committed.
+backups/

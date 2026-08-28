@@ -16,7 +16,9 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-workshop-rules-test \"vitest run --config vitest.rules.config.ts\"",
     "seed": "node scripts/seed.mjs",
     "seed:csv-templates": "node --env-file=.env.local scripts/seed-csv-templates.mjs",
-    "verify:pdf": "node scripts/verify-invoice-pdf.mjs"
+    "verify:pdf": "node scripts/verify-invoice-pdf.mjs",
+    "backup": "node --env-file=.env.local scripts/backup-firestore.mjs",
+    "restore": "node --env-file=.env.local scripts/restore-firestore.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
