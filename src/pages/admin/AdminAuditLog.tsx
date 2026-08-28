@@ -62,7 +62,7 @@ export default function AdminAuditLog() {
                     <td data-label="Уақыты">{e.createdAt ? formatDateTimeDMY(e.createdAt) : "—"}</td>
                     <td data-label="Қолданушы">{e.userName}</td>
                     <td data-label="Әрекет"><strong>{e.action}</strong></td>
-                    <td data-label="Мәлімет">
+                    <td data-label="Мәлімет" className="audit-detail">
                       {e.entityType} · {e.entityId}
                       {e.comment && <div>💬 {e.comment}</div>}
                     </td>

@@ -7140,3 +7140,16 @@ body {
   font-weight: 600;
   line-height: 1.45;
 }
+
+/* A Firestore document id has no spaces, so it will not wrap on its own and pushes out of the
+   card on a phone. Break it anywhere rather than letting it overflow. */
+.audit-detail {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Tables that stay tabular on a phone scroll inside their own wrapper, so the wrapper — not the
+   page — is what must be scrollable, and it needs to be reachable by touch. */
+.data-table-wrap {
+  -webkit-overflow-scrolling: touch;
+}

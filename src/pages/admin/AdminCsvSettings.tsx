@@ -465,7 +465,7 @@ export default function AdminCsvSettings() {
                   </span>
                 </div>
                 <div className="data-table-wrap">
-                  <table className="data-table">
+                  <table className="data-table stack-mobile stack-compact">
                     {draft.includeHeaders && (
                       <thead>
                         <tr>

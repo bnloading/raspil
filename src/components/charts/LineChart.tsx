@@ -53,7 +53,10 @@ export function LineChart({
 
   return (
     <div>
-      <svg className="line-chart-svg" viewBox={`0 0 ${VIEW_WIDTH} ${height}`} width="100%" height="auto">
+      {/* No height="auto": that is a CSS keyword, not an SVG length, and the browser rejects the
+          attribute with a console error. The viewBox plus `height: auto` in the stylesheet is what
+          actually scales it. */}
+      <svg className="line-chart-svg" viewBox={`0 0 ${VIEW_WIDTH} ${height}`} width="100%">
         {gridLines.map((g, i) => (
           <g key={i}>
             <line x1={PAD_LEFT} y1={g.y} x2={VIEW_WIDTH - PAD_RIGHT} y2={g.y} stroke="var(--chart-grid)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
