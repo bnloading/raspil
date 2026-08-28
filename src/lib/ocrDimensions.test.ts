@@ -77,6 +77,25 @@ describe("parseScannedParts — reading a photographed cut list", () => {
     ]);
   });
 
+  it("recovers TrOCR's repeated-digit misreads", () => {
+    // Captured verbatim from Xenova/trocr-small-handwritten reading a handwritten list: the model
+    // doubled the trailing digits of the first row and appended a stray "000".
+    const real = "6000x4500 000\n720x380 000\n1200x600";
+    expect(parseScannedParts(real)).toEqual([
+      { lengthMm: 600, widthMm: 450, qty: 1 },
+      { lengthMm: 720, widthMm: 380, qty: 1 },
+      { lengthMm: 1200, widthMm: 600, qty: 1 },
+    ]);
+  });
+
+  it("only trims a 4-digit number, never a longer one", () => {
+    expect(parseScannedParts("60000x450")).toEqual([]);
+  });
+
+  it("leaves a valid 4-digit dimension alone", () => {
+    expect(parseScannedParts("2750x1830")).toEqual([{ lengthMm: 2750, widthMm: 1830, qty: 1 }]);
+  });
+
   it("reads a realistic noisy list end to end", () => {
     const ocr = [
       "ЦЕХ - размерлер",

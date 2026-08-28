@@ -53,7 +53,23 @@ function toMm(token: string): number | null {
   const repaired = repairDigits(token);
   if (!/^\d{2,4}$/.test(repaired)) return null;
   const n = parseInt(repaired, 10);
-  return n >= MIN_MM && n <= MAX_MM ? n : null;
+  if (n >= MIN_MM && n <= MAX_MM) return n;
+
+  /*
+   * TrOCR repeats digits when it is unsure — a handwritten "600 x 450" comes back as
+   * "6000x4500". The tell is a 4-digit number that is impossible as a part size but whose first
+   * three digits are perfectly ordinary, so drop the last digit and re-check.
+   *
+   * Deliberately narrow: only exactly 4 digits (so a 5-digit misread stays rejected rather than
+   * being whittled down to anything), and only when the full number is already out of range, so a
+   * real 2750 is never touched. The recovered row still lands in the review table like every
+   * other, where a wrong guess is visible and editable rather than silently applied.
+   */
+  if (repaired.length === 4) {
+    const trimmed = parseInt(repaired.slice(0, 3), 10);
+    if (trimmed >= MIN_MM && trimmed <= MAX_MM) return trimmed;
+  }
+  return null;
 }
 
 /**

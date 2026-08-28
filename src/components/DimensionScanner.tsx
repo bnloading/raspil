@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Spinner } from "../components";
 import { NumberField } from "./NumberField";
 import { parseScannedParts, type ScannedPart } from "../lib/ocrDimensions";
+import { isHandwritingModelLoaded } from "../lib/handwritingOcr";
 
 interface DimensionScannerProps {
   /** Every row the photo yielded, already reviewed and corrected by the user. */
@@ -10,6 +11,8 @@ interface DimensionScannerProps {
 }
 
 type Stage = "pick" | "recognizing" | "result" | "error";
+/** "handwritten" = TrOCR (reads handwriting, ~60 MB once); "printed" = Tesseract (small, fast). */
+type Engine = "handwritten" | "printed";
 
 /** A failed scan still needs somewhere to type, so the manual fallback opens with one empty row. */
 const BLANK_ROW = (): ScannedPart => ({ lengthMm: 0, widthMm: 0, qty: 1 });
@@ -85,7 +88,17 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
   const [rawText, setRawText] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressNote, setProgressNote] = useState("");
+  /** Which recogniser to use. Remembered: a shop that writes lists by hand always writes by hand. */
+  const [engine, setEngine] = useState<Engine>(
+    () => (localStorage.getItem("scanEngine") as Engine) || "handwritten",
+  );
+  useEffect(() => {
+    localStorage.setItem("scanEngine", engine);
+  }, [engine]);
   const [rows, setRows] = useState<ScannedPart[]>([]);
+  /** Skips the download warning once the weights are already in memory this session. */
+  const modelReady = isHandwritingModelLoaded();
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
@@ -118,36 +131,64 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
     if (cameraRef.current) cameraRef.current.value = "";
   };
 
+  const finish = (text: string) => {
+    setRawText(text.trim());
+    const parsed = parseScannedParts(text);
+    setRows(parsed.length > 0 ? parsed : [BLANK_ROW()]);
+    setStage(parsed.length > 0 ? "result" : "error");
+  };
+
+  /** Printed lists: Tesseract, small and fast, already bundled. */
+  const runPrinted = async (source: Blob) => {
+    const Tesseract = await import("tesseract.js");
+    const worker = await Tesseract.createWorker("eng", 1, {
+      logger: (m: { status: string; progress: number }) => {
+        if (m.status === "recognizing text") setProgress(Math.round(m.progress * 100));
+      },
+    });
+    try {
+      // No tessedit_char_whitelist here on purpose. It constrains the legacy engine, but the
+      // LSTM engine tesseract.js runs by default degrades badly under one — it was the reason
+      // this scanner returned nothing at all. Misread letters are repaired in ocrDimensions.ts
+      // instead, where the surrounding context makes the correction safe.
+      const { data } = await worker.recognize(source);
+      return data.text ?? "";
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  /** Handwritten lists: TrOCR, which is what Tesseract's printed-text models cannot do. */
+  const runHandwritten = async (source: Blob) => {
+    const { recognizeHandwriting } = await import("../lib/handwritingOcr");
+    return await recognizeHandwriting(source, (p) => {
+      if (p.stage === "download") {
+        setProgress(Math.round((p.progress ?? 0) * 100));
+        setProgressNote("Модель жүктелуде (бір рет қана)…");
+      } else if (p.stage === "segment") {
+        setProgressNote("Жолдарға бөлінуде…");
+      } else {
+        setProgress(Math.round((p.progress ?? 0) * 100));
+        setProgressNote(p.detail ?? "Оқылуда…");
+      }
+    });
+  };
+
   const handleRecognize = async () => {
     if (!file) return;
     setStage("recognizing");
     setProgress(0);
+    setProgressNote("");
     try {
-      const Tesseract = await import("tesseract.js");
-      const worker = await Tesseract.createWorker("eng", 1, {
-        logger: (m: { status: string; progress: number }) => {
-          if (m.status === "recognizing text") setProgress(Math.round(m.progress * 100));
-        },
-      });
-      try {
-        // No tessedit_char_whitelist here on purpose. It constrains the legacy engine, but the
-        // LSTM engine tesseract.js runs by default degrades badly under one — it was the reason
-        // this scanner returned nothing at all. Misread letters are repaired in ocrDimensions.ts
-        // instead, where the surrounding context makes the correction safe.
-        const source = await preprocess(file).catch(() => file); // a preprocessing failure must not lose the scan
-        const { data } = await worker.recognize(source);
-        const text = data.text ?? "";
-        setRawText(text.trim());
-        const parsed = parseScannedParts(text);
-        setRows(parsed.length > 0 ? parsed : [BLANK_ROW()]);
-        setStage(parsed.length > 0 ? "result" : "error");
-      } finally {
-        await worker.terminate();
-      }
-    } catch {
-      setRawText("");
+      const source = await preprocess(file).catch(() => file); // preprocessing failure must not lose the scan
+      const text = engine === "handwritten" ? await runHandwritten(source) : await runPrinted(source);
+      finish(text);
+    } catch (err) {
+      setRawText(err instanceof Error ? err.message : "");
       setRows([BLANK_ROW()]);
       setStage("error");
+    } finally {
+      setProgressNote("");
     }
   };
 
@@ -259,7 +300,37 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
             {stage === "recognizing" && (
               <div style={{ textAlign: "center" }}>
                 <Spinner />
-                <p className="scan-hint">Танылуда… {progress}%</p>
+                <p className="scan-hint">
+                  {progressNote || "Танылуда…"} {progress > 0 && `${progress}%`}
+                </p>
+              </div>
+            )}
+
+            {previewUrl && stage === "pick" && (
+              <div className="form-group">
+                <label>Жазу түрі</label>
+                <div className="pay-method-grid">
+                  <button
+                    type="button"
+                    className={`pay-method-option${engine === "handwritten" ? " is-active" : ""}`}
+                    onClick={() => setEngine("handwritten")}
+                  >
+                    ✍️ Қолжазба
+                  </button>
+                  <button
+                    type="button"
+                    className={`pay-method-option${engine === "printed" ? " is-active" : ""}`}
+                    onClick={() => setEngine("printed")}
+                  >
+                    🖨 Басылған
+                  </button>
+                </div>
+                {engine === "handwritten" && !modelReady && (
+                  <p className="form-hint">
+                    Қолжазбаны тану моделі бірінші рет ~60 МБ жүктеледі. Кейін интернетсіз де
+                    жұмыс істейді.
+                  </p>
+                )}
               </div>
             )}
 
