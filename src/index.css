@@ -7128,3 +7128,15 @@ body {
   white-space: nowrap;
 }
 .jt-merged:hover { background: var(--primary-soft); }
+
+/* Salary: the advance overdraw warning */
+.salary-overdrawn {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-xs);
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}

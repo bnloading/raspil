@@ -393,6 +393,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /advances/{id} {
+      // A worker must be able to see what they have drawn — that is the whole point of the
+      // feature — so read is theirs plus Admin/Manager. Listing is per-document, so a worker's
+      // query must filter where('userId','==',uid) for the whole result set to be provable.
+      allow get, list: if isAdminOrManager() || (isSignedIn() && resource.data.userId == uid());
+      // The Manager hands the cash over at the counter, so unlike salaryAdjustments this is not
+      // Admin-only. The recorder is pinned to the caller so an entry can never be attributed to
+      // someone else, and a non-positive amount is rejected outright.
+      allow create: if isAdminOrManager()
+        && request.resource.data.recordedByUid == uid()
+        && request.resource.data.amountTiyn is int
+        && request.resource.data.amountTiyn > 0;
+      // Correcting a mistake means reversing it, which only Admin may do, and the amount itself
+      // can never be edited afterwards.
+      allow update: if isAdmin()
+        && request.resource.data.amountTiyn == resource.data.amountTiyn
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if false; // money records are never deleted
+    }
+
     match /salaryAdjustments/{id} {
       allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
       // Adjustments are Admin-only and immutable once written: correcting one means adding

@@ -16,6 +16,7 @@ const AdminOrderDetail = lazy(() => import("./pages/admin/AdminOrderDetail"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMaterials = lazy(() => import("./pages/admin/AdminMaterials"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 const AdminCsvSettings = lazy(() => import("./pages/admin/AdminCsvSettings"));
 const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance"));
@@ -290,6 +291,14 @@ export default function App() {
               element={
                 <RouteGuard roles={["manager", "admin"]}>
                   <ManagerOrderDetail />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/manager/advances"
+              element={
+                <RouteGuard roles={["manager", "admin"]}>
+                  <ManagerAdvances />
                 </RouteGuard>
               }
             />

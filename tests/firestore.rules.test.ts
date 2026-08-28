@@ -746,6 +746,82 @@ describe("salary adjustments always carry a reason and are never rewritten", () 
   });
 });
 
+describe("advances: the manager hands them over, the worker sees their own, nobody edits the amount", () => {
+  const advance = (over = {}) => ({
+    userId: CUTTER_UID, userName: "Cutter", periodKey: "2026-08", amountTiyn: 5000000,
+    recordedByUid: MANAGER_UID, recordedByName: "Manager", ...over,
+  });
+
+  it("a manager CAN record an advance — unlike a salary adjustment, which is Admin-only", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "advances", "adv-1"), advance()));
+  });
+
+  it("an admin can record one too", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "advances", "adv-2"), advance({ recordedByUid: ADMIN_UID, recordedByName: "Admin" })),
+    );
+  });
+
+  it("the recorder cannot be attributed to someone else", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(setDoc(doc(db, "advances", "adv-3"), advance({ recordedByUid: ADMIN_UID })));
+  });
+
+  it("a zero or negative advance is refused", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(setDoc(doc(db, "advances", "adv-4"), advance({ amountTiyn: 0 })));
+    await assertFails(setDoc(doc(db, "advances", "adv-5"), advance({ amountTiyn: -5000000 })));
+  });
+
+  it("a worker cannot record an advance for themselves", async () => {
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(
+      setDoc(doc(db, "advances", "adv-6"), advance({ recordedByUid: CUTTER_UID, recordedByName: "Cutter" })),
+    );
+  });
+
+  it("a worker CAN read their own advances", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "advances", "adv-7"), advance());
+    });
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "advances", "adv-7")));
+    await assertSucceeds(getDocs(query(collection(db, "advances"), where("userId", "==", CUTTER_UID))));
+  });
+
+  it("a worker CANNOT read another worker's advances", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "advances", "adv-8"), advance({ userId: PVC_UID }));
+    });
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(getDoc(doc(db, "advances", "adv-8")));
+    // An unfiltered list must fail too, or one query would leak the whole collection.
+    await assertFails(getDocs(collection(db, "advances")));
+  });
+
+  it("the amount can never be edited, even by an admin reversing it", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "advances", "adv-9"), advance());
+    });
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(updateDoc(doc(db, "advances", "adv-9"), { reversed: true, reversalReason: "Қате" }));
+    await assertFails(updateDoc(doc(db, "advances", "adv-9"), { amountTiyn: 1 }));
+  });
+
+  it("a manager cannot reverse, and nobody can delete", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "advances", "adv-10"), advance());
+    });
+    const { deleteDoc } = await import("firebase/firestore");
+    const mgr = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(mgr, "advances", "adv-10"), { reversed: true }));
+    const admin = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertFails(deleteDoc(doc(admin, "advances", "adv-10")));
+  });
+});
+
 describe("public workshop board hides customer identities", () => {
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

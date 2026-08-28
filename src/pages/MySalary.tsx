@@ -4,6 +4,8 @@ import { Spinner } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { useSalaryEntries, useSalaryAdjustments } from "../hooks/useSalary";
 import { formatMoney } from "../lib/money";
+import { useAdvances } from "../hooks/useAdvances";
+import { summariseAdvances } from "../lib/advances";
 import { formatDateTimeDMY, monthKey, monthLabel } from "../lib/dates";
 import { SALARY_MODE_LABELS, SALARY_STATUS_LABELS } from "../types/domain";
 
@@ -30,6 +32,13 @@ export default function MySalary() {
   }, [entries]);
 
   const entry = entries.find((e) => e.periodKey === period);
+  const { advances } = useAdvances(user?.uid);
+  const advanceInfo = summariseAdvances({
+    advances,
+    userId: user?.uid ?? "",
+    periodKey: period,
+    earnedTiyn: entry?.finalTiyn ?? 0,
+  });
   const periodAdjustments = adjustments.filter((a) => a.periodKey === period);
 
   if (!user || !userData) return <Spinner />;
@@ -48,11 +57,43 @@ export default function MySalary() {
         </select>
       </div>
 
+      {/* Advances are shown whether or not the month has been calculated yet: they are handed over
+          mid-month, so a worker asking "how much have I already taken?" must get an answer before
+          payday, not only after the Admin runs the calculation. */}
+        {advanceInfo.entries.length > 0 && (
+          <section className="panel-card">
+            <div className="panel-head">
+              <h3>Алынған аванс</h3>
+              <strong>{formatMoney(advanceInfo.totalTiyn)}</strong>
+            </div>
+            <div className="data-list">
+              {advanceInfo.entries.map((a) => (
+                <div key={a.id} className="data-row">
+                  <div className="data-row-main">
+                    <strong>{formatMoney(a.amountTiyn)}</strong>
+                    <span>
+                      {a.paidAt ? formatDateTimeDMY(a.paidAt) : ""}
+                      {a.note ? ` · ${a.note}` : ""}
+                    </span>
+                  </div>
+                  <span className="jt-muted">{a.recordedByName}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
       {!entry ? (
         <div className="empty-state">
           <div className="icon">🧾</div>
           <p>
             {monthLabel(period)} айына айлық әлі есептелмеген.
+            {advanceInfo.totalTiyn > 0 && (
+              <>
+                <br />
+                Бұл айда {formatMoney(advanceInfo.totalTiyn)} аванс алдыңыз.
+              </>
+            )}
             <br />
             Есептелген соң осы жерде көрінеді.
           </p>
@@ -60,8 +101,23 @@ export default function MySalary() {
       ) : (
         <>
           <div className="panel-card salary-hero">
-            <span className="worker-field-label">Айлық сомасы</span>
-            <div className="salary-total">{formatMoney(entry.finalTiyn)}</div>
+            {/* The headline is what is still coming, because that is the question a worker who has
+                already drawn an advance is actually asking. The earned figure stays visible below
+                it — an advance reduces what is owed, never what was earned. */}
+            <span className="worker-field-label">
+              {advanceInfo.totalTiyn > 0 ? "Қолға тиетін сома" : "Айлық сомасы"}
+            </span>
+            <div className="salary-total">{formatMoney(advanceInfo.remainingTiyn)}</div>
+            {advanceInfo.totalTiyn > 0 && (
+              <div className="worker-field-label">
+                Айлық {formatMoney(entry.finalTiyn)} − аванс {formatMoney(advanceInfo.totalTiyn)}
+              </div>
+            )}
+            {advanceInfo.overdrawn && (
+              <div className="salary-overdrawn">
+                Алынған аванс айлықтан асып тұр — менеджерге хабарласыңыз
+              </div>
+            )}
             <span className={`jt-pill jt-tone-${STATUS_TONE[entry.status] ?? "muted"}`}>
               {SALARY_STATUS_LABELS[entry.status]}
             </span>
@@ -91,7 +147,11 @@ export default function MySalary() {
               {entry.deductionTiyn > 0 && (
                 <div className="confirm-row"><span>Ұстамалар</span><strong>−{formatMoney(entry.deductionTiyn)}</strong></div>
               )}
-              <div className="confirm-row confirm-total"><span>Қорытынды</span><strong>{formatMoney(entry.finalTiyn)}</strong></div>
+              <div className="confirm-row"><span>Қорытынды айлық</span><strong>{formatMoney(entry.finalTiyn)}</strong></div>
+              {advanceInfo.totalTiyn > 0 && (
+                <div className="confirm-row"><span>Алынған аванс</span><strong>−{formatMoney(advanceInfo.totalTiyn)}</strong></div>
+              )}
+              <div className="confirm-row confirm-total"><span>Қолға тиеді</span><strong>{formatMoney(advanceInfo.remainingTiyn)}</strong></div>
             </div>
           </section>
 

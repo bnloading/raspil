@@ -497,6 +497,32 @@ export interface SalaryAdjustment {
   createdAt?: Timestamp;
 }
 
+/**
+ * Money handed to a worker before payday.
+ *
+ * Kept separate from SalaryAdjustment, which records a decision (a bonus, a fine). An advance is
+ * cash that physically changed hands: the Manager records it at the counter, the worker sees it on
+ * their own salary page, and it comes off what is still owed at month end rather than off what was
+ * earned. Mistakes are reversed, never deleted — this is a money record.
+ */
+export interface SalaryAdvance {
+  id: string;
+  userId: string;
+  userName: string;
+  /** YYYY-MM in Asia/Almaty — the month the advance counts against. */
+  periodKey: string;
+  /** Always positive: the amount handed over. */
+  amountTiyn: number;
+  note?: string;
+  paidAt?: Timestamp;
+  recordedByUid: string;
+  recordedByName: string;
+  reversed?: boolean;
+  reversalReason?: string;
+  reversedByName?: string;
+  createdAt?: Timestamp;
+}
+
 export interface StatusHistoryEntry {
   id: string;
   field: "production" | "payment";
