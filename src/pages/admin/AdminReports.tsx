@@ -9,7 +9,8 @@ import { useExpenseCategories } from "../../hooks/useExpenseCategories";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useToast } from "../../hooks";
 import { BarChart } from "../../components/BarChart";
-import { formatMoney, tengeToTiyn } from "../../lib/money";
+import { formatMoney } from "../../lib/money";
+import { dayKey, formatDateDMY, monthKey } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { PRODUCTION_STATUS_LABELS } from "../../lib/statuses";
 import { addExpenseCategory, deleteExpenseCategory, updateExpenseCategory } from "../../lib/expenseCategories";
@@ -27,7 +28,6 @@ import {
   computeKpis,
   computeLowStock,
   computeMaterialCutBreakdown,
-  computeMethodBreakdown,
   computeMonthlyRevenue,
   computePaymentSummary,
   computePvcProductivity,
@@ -69,7 +69,7 @@ export default function AdminReports() {
           {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} />}
           {tab === "pvc" && <PvcTab orders={orders} pvcTypes={pvcTypes} />}
           {tab === "sales" && <SalesTab orders={orders} />}
-          {tab === "payments" && <PaymentsTab payments={payments} />}
+          {tab === "payments" && <PaymentsTab payments={payments} orders={orders} />}
           {tab === "production" && <ProductionTab orders={orders} movements={movements} materials={materials} />}
           {tab === "warehouse" && <WarehouseTab movements={movements} materials={materials} />}
           {tab === "expenses" && (
@@ -679,51 +679,172 @@ function SalesTab({ orders }: { orders: ReturnType<typeof useAllOrders>["orders"
   );
 }
 
-const METHOD_LABELS = ["Нал / Қолма-қол", "Kaspi", "Pay", "Нұр", "Бәлім", "Аралас"];
+function PaymentsTab({
+  payments,
+  orders,
+}: {
+  payments: ReturnType<typeof useAllPayments>["payments"];
+  orders: ReturnType<typeof useAllOrders>["orders"];
+}) {
+  const valid = useMemo(() => payments.filter((p) => !p.reversed), [payments]);
 
-function PaymentsTab({ payments }: { payments: ReturnType<typeof useAllPayments>["payments"] }) {
-  const valid = payments.filter((p) => !p.reversed);
-  const reversed = payments.filter((p) => p.reversed);
+  const money = useMemo(() => {
+    const today = dayKey(new Date());
+    const month = monthKey(new Date());
+    const on = (p: (typeof valid)[number]) => (p.paymentDate ? dayKey(p.paymentDate) : "");
+    const inMonth = (p: (typeof valid)[number]) => (p.paymentDate ? monthKey(p.paymentDate) : "");
+    const live = orders.filter((o) => o.productionStatus !== "draft" && o.productionStatus !== "cancelled");
+    return {
+      today: valid.filter((p) => on(p) === today).reduce((s, p) => s + p.amountTiyn, 0),
+      month: valid.filter((p) => inMonth(p) === month).reduce((s, p) => s + p.amountTiyn, 0),
+      unpaid: live.reduce((s, o) => s + Math.max(0, o.totalTiyn - o.paidTiyn), 0),
+      debt: live.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0),
+      reversed: payments.filter((p) => p.reversed).reduce((s, p) => s + p.amountTiyn, 0),
+    };
+  }, [valid, payments, orders]);
 
-  const chartData = useMemo(() => computeMethodBreakdown(payments), [payments]);
-  const byMethod = useMemo(() => new Map(chartData.map((r) => [r.label, tengeToTiyn(r.value)])), [chartData]);
+  /* Share of income per method, largest first — the bar makes the split readable at a glance in a
+     way a column of numbers does not. */
+  const byMethod = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of valid) map.set(p.methodName, (map.get(p.methodName) ?? 0) + p.amountTiyn);
+    const total = [...map.values()].reduce((s, v) => s + v, 0);
+    return {
+      total,
+      rows: [...map.entries()]
+        .map(([name, tiyn]) => ({ name, tiyn, pct: total > 0 ? (tiyn / total) * 100 : 0 }))
+        .sort((a, b) => b.tiyn - a.tiyn),
+    };
+  }, [valid]);
 
-  const totalReceived = valid.reduce((s, p) => s + p.amountTiyn, 0);
-  const totalReversed = reversed.reduce((s, p) => s + p.amountTiyn, 0);
+  const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
+  const recent = useMemo(
+    () => [...valid].sort((a, b) => (b.paymentDate?.seconds ?? 0) - (a.paymentDate?.seconds ?? 0)).slice(0, 25),
+    [valid],
+  );
 
   const exportRows = () =>
     valid.map((p) => ({
+      Күні: p.paymentDate ? formatDateDMY(p.paymentDate) : "",
+      Заказ: ordersById.get(p.orderId)?.orderNumber ?? p.orderId,
+      Клиент: ordersById.get(p.orderId)?.customerName ?? "",
       Сома: p.amountTiyn / 100,
-      Әдіс: p.methodName,
+      "Төлем түрі": p.methodName,
       Кім: p.recordedByName,
-      Күні: p.paymentDate ? new Date(p.paymentDate.seconds * 1000).toISOString() : "",
     }));
 
   return (
     <div>
-      <div className="panel-card">
-        <div className="chart-card-head">
-          <h3>Төлем әдістері бойынша</h3>
-        </div>
-        <BarChart data={chartData} valueFormatter={(v) => `${Math.round(v / 1000)}к`} />
-      </div>
-      <div className="stat-grid" style={{ marginTop: 16 }}>
-        {METHOD_LABELS.map((m) => (
-          <div key={m} className="stat-card">
-            <div className="number">{formatMoney(byMethod.get(m) || 0)}</div>
-            <div className="label">{m}</div>
+      <div className="kpi-row">
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Бүгінгі кіріс</div>
+            <div className="kpi-value">{formatMoney(money.today)}</div>
           </div>
-        ))}
-        <div className="stat-card"><div className="number">{formatMoney(totalReceived)}</div><div className="label">Барлығы түсті</div></div>
-        <div className="stat-card"><div className="number">{formatMoney(totalReversed)}</div><div className="label">Қайтарылған</div></div>
+          <span className="kpi-icon is-green">📈</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Айлық кіріс</div>
+            <div className="kpi-value">{formatMoney(money.month)}</div>
+          </div>
+          <span className="kpi-icon is-blue">🗓</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Төленбеген</div>
+            <div className="kpi-value is-danger">{formatMoney(money.unpaid)}</div>
+          </div>
+          <span className="kpi-icon is-red">🧾</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Жалпы қарыз</div>
+            <div className="kpi-value is-danger">{formatMoney(money.debt)}</div>
+          </div>
+          <span className="kpi-icon is-red">⚠️</span>
+        </div>
       </div>
-      <div className="wizard-actions" style={{ marginTop: 12 }}>
-        <button className="btn btn-outline btn-sm" onClick={() => exportCsv("payments-report", exportRows())}>
-          📄 CSV экспорт
-        </button>
-        <button className="btn btn-outline btn-sm" onClick={() => exportXlsx("payments-report", exportRows())}>
-          📊 XLSX экспорт
-        </button>
+
+      <div className="panel-card">
+        <div className="panel-head">
+          <h3>Төлем түрлері бойынша кіріс</h3>
+          <span className="jt-muted">{formatMoney(byMethod.total)}</span>
+        </div>
+        {byMethod.rows.length === 0 ? (
+          <div className="empty-state">
+            <div className="icon">📭</div>
+            <p>Төлем жоқ</p>
+            <p className="empty-state-hint">Тіркелген төлемдер осында түр бойынша бөлініп көрсетіледі.</p>
+          </div>
+        ) : (
+          <div className="mbreak">
+            {byMethod.rows.map((r) => (
+              <div className="mbreak-row" key={r.name}>
+                <span className="mbreak-name">{r.name}</span>
+                <span className="mbreak-track">
+                  <span className="mbreak-fill" style={{ width: `${r.pct}%` }} />
+                </span>
+                <span className="mbreak-money">{formatMoney(r.tiyn)}</span>
+                <span className="mbreak-pct">{Math.round(r.pct)}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="panel-card">
+        <div className="panel-head">
+          <h3>Соңғы төлемдер</h3>
+          {money.reversed > 0 && <span className="jt-muted">Қайтарылған: {formatMoney(money.reversed)}</span>}
+        </div>
+        {recent.length === 0 ? (
+          <div className="empty-state">
+            <div className="icon">📭</div>
+            <p>Төлем жоқ</p>
+          </div>
+        ) : (
+          <div className="data-table-wrap">
+            <table className="data-table stack-mobile stack-compact">
+              <thead>
+                <tr>
+                  <th>Күні</th>
+                  <th>Заказ / Клиент</th>
+                  <th className="num">Сома</th>
+                  <th>Төлем түрі</th>
+                  <th>Кім тіркеді</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((p) => {
+                  const o = ordersById.get(p.orderId);
+                  return (
+                    <tr key={p.id}>
+                      <td data-label="Күні">{p.paymentDate ? formatDateDMY(p.paymentDate) : "—"}</td>
+                      <td data-label="Заказ / Клиент">
+                        <strong>{o?.orderNumber ?? "—"}</strong>
+                        <div className="wh-sub">{o?.customerName ?? ""}</div>
+                      </td>
+                      <td className="num" data-label="Сома">
+                        <span className="jt-paid">{formatMoney(p.amountTiyn)}</span>
+                      </td>
+                      <td data-label="Төлем түрі">{p.methodName}</td>
+                      <td data-label="Кім тіркеді" className="wh-sub">{p.recordedByName}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="wizard-actions" style={{ marginTop: 12 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => exportCsv("payments-report", exportRows())}>
+            📄 CSV экспорт
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={() => exportXlsx("payments-report", exportRows())}>
+            📊 XLSX экспорт
+          </button>
+        </div>
       </div>
     </div>
   );

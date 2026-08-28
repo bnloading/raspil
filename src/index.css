@@ -6598,12 +6598,14 @@ body {
 /* Label-left / icon-right KPI tiles. Two columns on a phone, four once there is room. */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* minmax(0, 1fr), not 1fr: a bare 1fr takes its minimum from the content, so a long money value
+     like "242 500 ₸" pushed both columns past a 390px screen instead of ellipsising. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
 @media (min-width: 900px) {
-  .kpi-row { grid-template-columns: repeat(4, 1fr); }
+  .kpi-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 .kpi-card {
   display: flex;
@@ -6915,3 +6917,43 @@ body {
 /* Money and size columns must not break mid-value. */
 .data-table td.num,
 .data-table th.num { white-space: nowrap; }
+
+/* Төлемдер: share of income by payment method */
+.mbreak { display: grid; gap: 10px; }
+.mbreak-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto 42px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+.mbreak-name {
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mbreak-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.mbreak-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--gradient, var(--primary));
+}
+.mbreak-money { font-weight: 700; white-space: nowrap; }
+.mbreak-pct {
+  text-align: right;
+  color: var(--text-light);
+  font-size: 0.78rem;
+}
+@media (max-width: 599px) {
+  /* Two lines on a phone: name over bar, money and percent beneath. */
+  .mbreak-row { grid-template-columns: 1fr auto 42px; }
+  .mbreak-name { grid-column: 1 / -1; }
+}
