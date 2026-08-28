@@ -746,6 +746,55 @@ describe("salary adjustments always carry a reason and are never rewritten", () 
   });
 });
 
+describe("PVC stock: the roll is drawn down by work, never repriced by it", () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "pvcTypes", "pvc-1-white"), {
+        colorName: "Ақ", thicknessMm: 1, pricePerMeterTiyn: 20000,
+        active: true, metersOnHand: 100, minStockMeters: 20,
+      });
+    });
+  });
+
+  it("a PVC worker CAN draw the roll down when finishing a job", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertSucceeds(updateDoc(doc(db, "pvcTypes", "pvc-1-white"), { metersOnHand: 88 }));
+  });
+
+  it("a manager CAN receive new stock", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(updateDoc(doc(db, "pvcTypes", "pvc-1-white"), { metersOnHand: 300 }));
+  });
+
+  it("neither may change the price, the colour or whether it is active", async () => {
+    const pvc = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertFails(updateDoc(doc(pvc, "pvcTypes", "pvc-1-white"), { pricePerMeterTiyn: 1 }));
+    await assertFails(updateDoc(doc(pvc, "pvcTypes", "pvc-1-white"), { colorName: "Қара" }));
+    await assertFails(updateDoc(doc(pvc, "pvcTypes", "pvc-1-white"), { active: false }));
+    const mgr = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(mgr, "pvcTypes", "pvc-1-white"), { pricePerMeterTiyn: 1 }));
+    // The floor is a purchasing decision, so it stays Admin-only too.
+    await assertFails(updateDoc(doc(mgr, "pvcTypes", "pvc-1-white"), { minStockMeters: 0 }));
+  });
+
+  it("a cutter has no business touching edge banding", async () => {
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(updateDoc(doc(db, "pvcTypes", "pvc-1-white"), { metersOnHand: 5 }));
+  });
+
+  it("a customer can neither read an archived colour nor write any", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(updateDoc(doc(db, "pvcTypes", "pvc-1-white"), { metersOnHand: 5 }));
+  });
+
+  it("an admin may still change everything", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "pvcTypes", "pvc-1-white"), { pricePerMeterTiyn: 22000, minStockMeters: 30 }),
+    );
+  });
+});
+
 describe("advances: the manager hands them over, the worker sees their own, nobody edits the amount", () => {
   const advance = (over = {}) => ({
     userId: CUTTER_UID, userName: "Cutter", periodKey: "2026-08", amountTiyn: 5000000,

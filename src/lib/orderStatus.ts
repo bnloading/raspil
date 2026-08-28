@@ -15,6 +15,7 @@ import {
 import type { User } from "firebase/auth";
 import type { Material, Order, UserDoc } from "../types/domain";
 import { canEnterCuttingQueue } from "./statuses";
+import { pvcConsumption, applyConsumption } from "./pvcStock";
 import { reserveStock, releaseReservation, consumeForCutting } from "./warehouse";
 import { syncWorkshopBoard, clearWorkshopBoard } from "./workshopActivity";
 
@@ -340,10 +341,22 @@ export async function updatePvcEstimate(db: Firestore, actor: Actor, order: Orde
 /** Step 14-15: PVC worker finishes — idempotent (guarded by pvcCompletedAt), always ends in READY. */
 export async function completePvc(db: Firestore, actor: Actor, order: Order): Promise<{ alreadyCompleted: boolean }> {
   const orderRef = doc(db, "orders", order.id);
+  // Metres of each colour this order used, from the breakdown denormalized onto it. Empty for a
+  // walk-in typed into the journal, which records a blended total with no colour attached.
+  const consumption = pvcConsumption(order);
+
   const result = await runTransaction(db, async (tx) => {
+    // Every read first: Firestore rejects a transaction that reads after it has written.
     const snap = await tx.get(orderRef);
     if (!snap.exists()) throw new Error("Заказ табылмады");
     if (snap.data().pvcCompletedAt) return { alreadyCompleted: true };
+
+    const rolls = await Promise.all(
+      [...consumption.keys()].map(async (pvcTypeId) => {
+        const ref = doc(db, "pvcTypes", pvcTypeId);
+        return { ref, snap: await tx.get(ref) };
+      }),
+    );
 
     const now = new Date();
     const startedAtMs = order.pvcStartedAt ? order.pvcStartedAt.toMillis() : undefined;
@@ -355,6 +368,15 @@ export async function completePvc(db: Firestore, actor: Actor, order: Order): Pr
       readyAt: serverTimestamp(),
       ...(actualMinutes !== undefined ? { pvcActualMinutes: actualMinutes } : {}),
     });
+
+    // Draw the rolls down. Guarded by pvcCompletedAt above, so finishing twice cannot double-count.
+    for (const { ref, snap: rollSnap } of rolls) {
+      if (!rollSnap.exists()) continue; // colour deleted since the order was priced
+      const used = consumption.get(ref.id) ?? 0;
+      const before = (rollSnap.data() as { metersOnHand?: number }).metersOnHand ?? 0;
+      tx.update(ref, { metersOnHand: applyConsumption(before, used) });
+    }
+
     return { alreadyCompleted: false };
   });
   if (result.alreadyCompleted) return result;

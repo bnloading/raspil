@@ -112,6 +112,10 @@ export interface PvcType {
   colorName: string;
   pricePerMeterTiyn: number;
   active: boolean;
+  /** Metres of this colour in the warehouse. Undefined on colours added before stock was tracked. */
+  metersOnHand?: number;
+  /** Warn at or below this many metres. 0 disables the warning for this colour. */
+  minStockMeters?: number;
 }
 
 export interface PaymentMethodDef {

@@ -18,6 +18,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { stockStatus, lowStockCount } from "../../lib/stockStatus";
+import { pvcStockStatus } from "../../lib/pvcStock";
 import { RowMenu } from "../../components/RowMenu";
 import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
@@ -589,6 +590,24 @@ function PvcTab({
   onEdit: (p: PvcType | "new") => void;
   showToast: (msg: string) => void;
 }) {
+  /** Receiving a roll. Metres only — the rule forbids this path from touching colour or price. */
+  const handlePvcReceipt = async (p: PvcType) => {
+    const raw = prompt(`"${p.colorName} ${p.thicknessMm} мм" қабылдау мөлшері (метр):`);
+    if (raw === null) return;
+    const meters = parseFloat(raw.replace(",", "."));
+    if (!Number.isFinite(meters) || meters <= 0) {
+      showToast("Метрді дұрыс енгізіңіз");
+      return;
+    }
+    try {
+      const next = Math.round(((p.metersOnHand ?? 0) + meters) * 100) / 100;
+      await updateDoc(doc(db, "pvcTypes", p.id), { metersOnHand: next });
+      showToast(`✅ +${meters} м қабылданды — барлығы ${next} м`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
   const handleToggleActive = async (p: PvcType) => {
     try {
       await updateDoc(doc(db, "pvcTypes", p.id), { active: !p.active });
@@ -612,7 +631,10 @@ function PvcTab({
             <thead>
               <tr>
                 <th>Түсі / Қалыңдығы</th>
+                <th>Қоймада</th>
+                <th className="num">Мин. қор</th>
                 <th className="num">Бағасы</th>
+                <th>Күйі</th>
                 <th>Әрекеттер</th>
               </tr>
             </thead>
@@ -629,18 +651,33 @@ function PvcTab({
                       </strong>
                     </div>
                   </td>
+                  <td data-label="Қоймада">
+                    <div className="wh-qty">
+                      <strong>{pvcStockStatus(p).metersOnHand}</strong> <span className="wh-sub">м</span>
+                    </div>
+                    <div className="wh-bar">
+                      <span className={`wh-bar-fill is-${pvcStockStatus(p).level}`}
+                        style={{ width: `${pvcStockStatus(p).ratio * 100}%` }} />
+                    </div>
+                  </td>
+                  <td className="num" data-label="Мин. қор">{p.minStockMeters ?? 0}</td>
                   <td className="num" data-label="Бағасы">
                     {formatMoney(p.pricePerMeterTiyn)} / метр
                   </td>
+                  <td data-label="Күйі">
+                    <span className={`wh-pill is-${pvcStockStatus(p).level}`}>{pvcStockStatus(p).label}</span>
+                  </td>
                   <td data-label="Әрекеттер">
-                    <div className="data-row-actions">
-                      <button className="btn btn-outline btn-sm" onClick={() => onEdit(p)}>
-                        Өзгерту
+                    <RowMenu
+                      items={[
+                        { label: "Өзгерту", onClick: () => onEdit(p) },
+                        { label: p.active ? "Архивке" : "Белсендіру", onClick: () => handleToggleActive(p) },
+                      ]}
+                    >
+                      <button className="btn btn-outline btn-sm" onClick={() => handlePvcReceipt(p)}>
+                        + Қабылдау
                       </button>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleToggleActive(p)}>
-                        {p.active ? "Архивке" : "Белсендіру"}
-                      </button>
-                    </div>
+                    </RowMenu>
                   </td>
                 </tr>
               ))}

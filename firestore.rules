@@ -117,7 +117,13 @@ service cloud.firestore {
 
     match /pvcTypes/{id} {
       allow read: if resource.data.active == true || isStaff();
-      allow write: if isAdmin();
+      allow write: if isAdmin(); // colour/price/active: Admin-only, as for materials
+      // The same narrow, field-scoped exception sheets already have: finishing a PVC job draws the
+      // roll down (lib/orderStatus.ts completePvc) and the Manager receives new stock, but neither
+      // may touch the colour, its price or whether it is active.
+      allow update: if (isPvc() || isManager()) && unchanged([
+        'thicknessMm', 'colorName', 'pricePerMeterTiyn', 'active', 'minStockMeters'
+      ]);
     }
 
     match /paymentMethods/{id} {
