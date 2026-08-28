@@ -6,6 +6,7 @@ import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { ProductionStatusBadge, PaymentStatusBadge } from "../../components/StatusBadge";
+import { OrderProgress } from "../../components/OrderProgress";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
@@ -70,18 +71,34 @@ export default function AdminOrders() {
         placeholder: "Заказ №, аты немесе телефон бойынша іздеу...",
       }}
     >
-      <div className="stats-bar">
-        <div className="stat-card">
-          <div className="number">{totals.total}</div>
-          <div className="label">Барлығы</div>
+      <div className="kpi-row">
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Барлығы</div>
+            <div className="kpi-value">{totals.total}</div>
+          </div>
+          <span className="kpi-icon is-indigo">📋</span>
         </div>
-        <div className="stat-card">
-          <div className="number">{totals.inProgress}</div>
-          <div className="label">Жұмыста</div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Жұмыста</div>
+            <div className="kpi-value">{totals.inProgress}</div>
+          </div>
+          <span className="kpi-icon is-blue">⚙</span>
         </div>
-        <div className="stat-card">
-          <div className="number">{formatMoney(totals.debt)}</div>
-          <div className="label">Жалпы қарыз</div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Дайын</div>
+            <div className="kpi-value">{totals.done}</div>
+          </div>
+          <span className="kpi-icon is-green">✓</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Жалпы қарыз</div>
+            <div className="kpi-value is-danger">{formatMoney(totals.debt)}</div>
+          </div>
+          <span className="kpi-icon is-red">💼</span>
         </div>
       </div>
 
@@ -132,9 +149,41 @@ export default function AdminOrders() {
           <div className="empty-state">
             <div className="icon">📭</div>
             <p>Заказдар жоқ</p>
+            <p className="empty-state-hint">
+              Іздеуді немесе сүзгіні өзгертіп көріңіз — бұл шартқа сай заказ табылмады.
+            </p>
           </div>
         ) : (
-          pageItems.map((order) => <AdminOrderRow key={order.id} order={order} />)
+          <>
+            {/* Desktop: the full ledger with the production strip. Phones get the card list
+                below — the same data, stacked, since ten columns cannot fit a 390px screen. */}
+            <div className="otable-wrap">
+              <table className="otable">
+                <thead>
+                  <tr>
+                    <th>Заказ / Күні</th>
+                    <th>Клиент</th>
+                    <th>Материал</th>
+                    <th className="num">Сома</th>
+                    <th>Төлем</th>
+                    <th>Өндіріс барысы</th>
+                    <th>Жауапты</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map((order) => (
+                    <OrderTableRow key={order.id} order={order} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="ocards">
+              {pageItems.map((order) => (
+                <OrderCard key={order.id} order={order} />
+              ))}
+            </div>
+          </>
         )}
         {statusFilter !== "cutting_queue" && totalPages > 1 && (
           <div className="pagination-row">
@@ -157,6 +206,74 @@ export default function AdminOrders() {
 
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/** Initials for the assignee bubble — two letters, so "Нұрбақыт Асанов" reads as НА. */
+function initials(name: string | undefined): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+/** "6 лист · 89 м ПВХ" — what the order is made of, in one line. */
+function materialLine(order: Order): string {
+  const sheets = order.confirmedSheets ?? order.estimatedSheets ?? 0;
+  const bits = [`${sheets} лист`];
+  if (order.pvcMetersTotal > 0) {
+    // Metres are a sum of per-edge millimetre divisions, so binary floating point leaks through
+    // as "3.3000000000000003". Round to centimetres, then drop a trailing ".00"/".50" zero.
+    bits.push(`${Number(order.pvcMetersTotal.toFixed(2))} м ПВХ`);
+  }
+  return bits.join(" · ");
+}
+
+function assignee(order: Order): string | undefined {
+  return order.assignedCutterName ?? order.assignedPvcName ?? order.assignedManagerName;
+}
+
+function OrderTableRow({ order }: { order: Order }) {
+  return (
+    <tr className="otable-row">
+      <td>
+        <Link to={`/admin/order/${order.id}`} className="otable-num">{order.orderNumber}</Link>
+        <div className="otable-sub">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</div>
+      </td>
+      <td>
+        <div className="otable-strong">{order.customerName}</div>
+        <div className="otable-sub">{order.customerPhone || "—"}</div>
+      </td>
+      <td className="otable-sub">{materialLine(order)}</td>
+      <td className="num otable-money">{formatMoney(order.totalTiyn)}</td>
+      <td><PaymentStatusBadge status={order.paymentStatus} /></td>
+      <td><OrderProgress order={order} /></td>
+      <td>
+        <span className="otable-avatar" title={assignee(order) ?? "Тағайындалмаған"}>
+          {initials(assignee(order))}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function OrderCard({ order }: { order: Order }) {
+  return (
+    <Link to={`/admin/order/${order.id}`} className="ocard">
+      <div className="ocard-top">
+        <span className="otable-num">{order.orderNumber}</span>
+        <span className="otable-sub">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</span>
+      </div>
+      <div className="ocard-mid">
+        <span className="otable-strong">{order.customerName}</span>
+        <span className="otable-money">{formatMoney(order.totalTiyn)}</span>
+      </div>
+      <div className="ocard-meta">
+        <span className="otable-sub">{materialLine(order)}</span>
+        <PaymentStatusBadge status={order.paymentStatus} />
+      </div>
+      <OrderProgress order={order} />
+    </Link>
   );
 }
 
@@ -242,36 +359,5 @@ function QueueReorder({
         </button>
       )}
     </div>
-  );
-}
-
-function AdminOrderRow({ order }: { order: Order }) {
-  return (
-    <Link to={`/admin/order/${order.id}`} className="track-card">
-      <div className="track-card-header">
-        <span className="track-card-num">{order.orderNumber}</span>
-        <ProductionStatusBadge status={order.productionStatus} />
-      </div>
-      <div className="order-client">{order.customerName}</div>
-      <div className="track-card-meta-row">
-        <span>{formatMoney(order.totalTiyn)}</span>
-        <PaymentStatusBadge status={order.paymentStatus} />
-      </div>
-      <div className="track-card-meta-row">
-        <span>Төленді: {formatMoney(order.paidTiyn)}</span>
-        <span>Қарыз: {formatMoney(order.debtTiyn)}</span>
-      </div>
-      <div className="track-card-meta-row">
-        <span>Лист: {order.confirmedSheets ?? order.estimatedSheets} (болжам)</span>
-        <span>ПВХ: {order.pvcMetersTotal.toFixed(2)} м</span>
-      </div>
-      <div className="track-card-meta-row">
-        <span>
-          {order.assignedCutterName ? `🪚 ${order.assignedCutterName}` : "🪚 тағайындалмаған"}
-        </span>
-        <span>{order.assignedPvcName ? `🪟 ${order.assignedPvcName}` : ""}</span>
-      </div>
-      {order.createdAt && <div className="order-date">{formatDateDMY(order.createdAt)}</div>}
-    </Link>
   );
 }
