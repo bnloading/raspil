@@ -7009,3 +7009,38 @@ body {
   .kpi-icon { display: none; }
   .kpi-value { font-size: 1.05rem; }
 }
+
+/* "Цех жұмысы" as cards. Someone else's row is a plain card; the viewer's own is a link and is
+   tinted, so their order stands out on a shared board without needing a legend. */
+.workshop-cards { gap: 10px; margin-top: 12px; }
+.workshop-cards .ocard {
+  position: relative;
+  padding: 13px 14px;
+}
+.workshop-cards .ocard.is-mine {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-color: var(--primary-light);
+  background: var(--primary-soft);
+  padding-right: 26px;
+}
+.workshop-cards .ocard-meta { margin-bottom: 10px; }
+.workshop-mine-tag {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* On a phone the live badge squeezed the heading into "Цех / жұмысы" — give it its own line. */
+@media (max-width: 480px) {
+  .workshop-board .panel-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .workshop-board .panel-head h3 { flex: 1 0 100%; }
+}

@@ -1,41 +1,11 @@
+import { Link } from "react-router-dom";
 import { useWorkshopActivity } from "../hooks/useWorkshopActivity";
-import type { WorkshopActivityEntry, WorkshopBoardStage } from "../types/domain";
+import { boardProgress, boardSummary } from "../lib/boardProgress";
+import { formatMoney } from "../lib/money";
+import type { Order, WorkshopActivityEntry } from "../types/domain";
 
-interface StageCell {
-  label: string;
-  tone: "green" | "blue" | "amber" | "muted";
-}
-
-/** Per-stage indicator for one board row. Completed stages go green, exactly as the spec requires. */
-function cuttingCell(stage: WorkshopBoardStage): StageCell {
-  switch (stage) {
-    case "queue":
-      return { label: "Кезекте", tone: "amber" };
-    case "cutting":
-      return { label: "Кесіліп жатыр", tone: "blue" };
-    default:
-      return { label: "Кесілді ✓", tone: "green" };
-  }
-}
-
-function pvcCell(stage: WorkshopBoardStage, needsPvc: boolean): StageCell {
-  if (!needsPvc) return { label: "ПВХ жоқ", tone: "muted" };
-  switch (stage) {
-    case "queue":
-    case "cutting":
-      return { label: "Распил күтілуде", tone: "muted" };
-    case "pvc_wait":
-      return { label: "ПВХ кезегінде", tone: "amber" };
-    case "pvc":
-      return { label: "ПВХ жасалып жатыр", tone: "blue" };
-    default:
-      return { label: "ПВХ дайын ✓", tone: "green" };
-  }
-}
-
-function readyCell(stage: WorkshopBoardStage): StageCell {
-  return stage === "ready" ? { label: "Дайын ✓", tone: "green" } : { label: "Дайын емес", tone: "amber" };
-}
+/** What each state draws in its circle — mirrors OrderProgress so the two strips read alike. */
+const GLYPH: Record<string, string> = { done: "✓", active: "", problem: "!", pending: "", skipped: "–" };
 
 /** Remaining minutes for whichever stage is actually running, or null when nothing is in progress. */
 function remainingMinutes(entry: WorkshopActivityEntry): number | null {
@@ -52,13 +22,18 @@ function publicCode(orderNumber: string): string {
 }
 
 /**
- * "Цех жұмысы" — the live, anonymized workshop board every signed-in customer can see. Rows carry
- * no name/phone/price/dimensions (see WorkshopActivityEntry); the viewer's own orders are
- * highlighted purely by matching order numbers they already own, passed in via `myOrderNumbers`.
+ * "Цех жұмысы" — the live workshop board every signed-in customer can see, as cards with the same
+ * progress strip the order lists use.
+ *
+ * The board itself is anonymous by construction: WorkshopActivityEntry carries no name, phone,
+ * price or dimensions, so a row about someone else's order can only ever show a short public code
+ * and which stage it is at. The viewer's OWN rows are matched by order number against orders they
+ * already hold, and only those are enriched with the sum and sheet count — data they own anyway.
+ * That is why `myOrders` is passed in rather than the board fetching anything richer.
  */
-export function WorkshopActivityBoard({ myOrderNumbers = [] }: { myOrderNumbers?: string[] }) {
+export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] }) {
   const { entries, loading } = useWorkshopActivity();
-  const mine = new Set(myOrderNumbers);
+  const mineByNumber = new Map(myOrders.map((o) => [o.orderNumber, o]));
 
   if (loading) return null;
 
@@ -86,43 +61,59 @@ export function WorkshopActivityBoard({ myOrderNumbers = [] }: { myOrderNumbers?
       {entries.length === 0 ? (
         <p className="workshop-board-empty">Қазір цехта белсенді заказ жоқ.</p>
       ) : (
-        <div className="workshop-board-scroll">
-          <table className="workshop-board-table">
-            <thead>
-              <tr>
-                <th>Заказ №</th>
-                <th>Кезек</th>
-                <th>Распил</th>
-                <th>ПВХ</th>
-                <th>Дайын</th>
-                <th>Уақыт</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => {
-                const isMine = mine.has(e.orderNumber);
-                const cut = cuttingCell(e.stage);
-                const pvc = pvcCell(e.stage, e.needsPvc);
-                const ready = readyCell(e.stage);
-                const mins = remainingMinutes(e);
-                return (
-                  <tr key={e.id} className={isMine ? "is-mine" : ""}>
-                    <td>
-                      <span className="workshop-code">{publicCode(e.orderNumber)}</span>
-                      {isMine && <span className="workshop-mine-tag">Сіздің заказыңыз</span>}
-                    </td>
-                    <td>{e.stage === "queue" ? `№${e.queuePosition + 1}` : "—"}</td>
-                    <td><span className={`jt-pill jt-tone-${cut.tone}`}>{cut.label}</span></td>
-                    <td><span className={`jt-pill jt-tone-${pvc.tone}`}>{pvc.label}</span></td>
-                    <td><span className={`jt-pill jt-tone-${ready.tone}`}>{ready.label}</span></td>
-                    <td className="workshop-time">{mins === null ? "—" : `${mins} мин`}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="ocards workshop-cards">
+          {entries.map((e) => {
+            const own = mineByNumber.get(e.orderNumber);
+            const steps = boardProgress(e.stage, e.needsPvc);
+            const mins = remainingMinutes(e);
+            const card = (
+              <>
+                <div className="ocard-top">
+                  <span className="otable-num">{own ? own.orderNumber : publicCode(e.orderNumber)}</span>
+                  <span className="otable-sub">{mins === null ? "" : `${mins} мин`}</span>
+                </div>
+
+                {/* Only the viewer's own rows carry money and sheet counts. */}
+                {own && (
+                  <div className="ocard-mid">
+                    <span className="otable-strong">
+                      {own.confirmedSheets ?? own.estimatedSheets ?? 0} лист
+                      {own.pvcMetersTotal > 0 && ` · ${Number(own.pvcMetersTotal.toFixed(2))} м ПВХ`}
+                    </span>
+                    <span className="otable-money">{formatMoney(own.totalTiyn)}</span>
+                  </div>
+                )}
+
+                <div className="ocard-meta">
+                  <span className="otable-sub">{boardSummary(e.stage, e.queuePosition)}</span>
+                  {own && <span className="workshop-mine-tag">Сіздің заказыңыз</span>}
+                </div>
+
+                <div className="oprog">
+                  {steps.map((step, i) => (
+                    <div className="oprog-step" key={step.key}>
+                      {i > 0 && <span className={`oprog-line is-${steps[i - 1].state}`} aria-hidden="true" />}
+                      <span className={`oprog-dot is-${step.state}`}>{GLYPH[step.state]}</span>
+                      <span className="oprog-label">{step.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+
+            // Someone else's row is not a link — there is nothing the viewer may open.
+            return own ? (
+              <Link key={e.id} to={`/order/${own.id}`} className="ocard is-mine">
+                {card}
+                <span className="ocard-chev" aria-hidden="true">›</span>
+              </Link>
+            ) : (
+              <div key={e.id} className="ocard">{card}</div>
+            );
+          })}
         </div>
       )}
+
     </section>
   );
 }

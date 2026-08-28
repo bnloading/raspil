@@ -28,7 +28,6 @@ export default function CustomerDashboard() {
         .reduce((sum, o) => sum + Math.max(0, o.debtTiyn || 0), 0),
     [orders],
   );
-  const myOrderNumbers = useMemo(() => orders.map((o) => o.orderNumber), [orders]);
 
   if (!user || !userData) return <Spinner />;
 
@@ -60,7 +59,7 @@ export default function CustomerDashboard() {
       {/* The workshop board leads: a customer who never places an order online still gets a
           useful page — live shop progress, their own orders highlighted. Submitting dimensions
           is offered below as an option, never forced. */}
-      <WorkshopActivityBoard myOrderNumbers={myOrderNumbers} />
+      <WorkshopActivityBoard myOrders={orders} />
 
       <div className="orders-section customer-optional-actions">
         <Link to="/order/new" className="btn btn-primary">

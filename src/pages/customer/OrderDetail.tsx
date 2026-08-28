@@ -51,7 +51,7 @@ export default function OrderDetail() {
           <CustomerStatusCard order={order} />
           <div style={{ marginTop: 20 }}>
             {/* Highlights this order's own row on the shared board. */}
-            <WorkshopActivityBoard myOrderNumbers={[order.orderNumber]} />
+            <WorkshopActivityBoard myOrders={[order]} />
           </div>
           <div style={{ marginTop: 20 }}>
             <OrderView
