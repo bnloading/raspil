@@ -17,12 +17,13 @@ export default function ManagerPvcQueue() {
   return (
     <SimpleOrderList
       title="ПВХ кезегі"
-      subtitle="ПВХ жабыстыруға жіберілген және жабыстырылып жатқан заказдар"
+      subtitle="ПВХ кезегіндегі және жасалып жатқан заказдар"
       back="/manager"
       orders={list}
       loading={loading}
       detailPath={(o) => `/manager/order/${o.id}`}
       emptyText="ПВХ кезегінде заказ жоқ"
+      emptyHint="Распил аяқталған, ПВХ керек заказдар осында көрінеді."
     />
   );
 }

@@ -23,6 +23,7 @@ export default function ManagerReady() {
       loading={loading}
       detailPath={(o) => `/manager/order/${o.id}`}
       emptyText="Дайын заказ жоқ"
+      emptyHint="ПВХ бітіп, дайын болған заказдар осында жиналады."
     />
   );
 }

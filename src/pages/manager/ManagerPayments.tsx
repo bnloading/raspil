@@ -35,6 +35,7 @@ export default function ManagerPayments() {
       loading={loading}
       detailPath={(o) => `/manager/order/${o.id}`}
       emptyText="Төлем күтетін заказ жоқ"
+      emptyHint="Толық төленбеген заказдар осында тізіледі."
     />
   );
 }

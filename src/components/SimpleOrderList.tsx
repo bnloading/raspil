@@ -19,6 +19,7 @@ export function SimpleOrderList({
   loading,
   detailPath,
   emptyText = "Заказдар жоқ",
+  emptyHint,
 }: {
   title: string;
   subtitle?: string;
@@ -27,6 +28,8 @@ export function SimpleOrderList({
   loading: boolean;
   detailPath: (order: Order) => string;
   emptyText?: string;
+  /** One line explaining what puts orders on this page — an empty list is otherwise a dead end. */
+  emptyHint?: string;
 }) {
   const navigate = useNavigate();
 
@@ -38,6 +41,7 @@ export function SimpleOrderList({
         <div className="empty-state">
           <div className="icon">📭</div>
           <p>{emptyText}</p>
+          {emptyHint && <p className="empty-state-hint">{emptyHint}</p>}
         </div>
       ) : (
         <div className="data-table-wrap">

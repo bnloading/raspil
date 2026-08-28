@@ -1950,6 +1950,17 @@ textarea.form-input {
 }
 .empty-state p {
   font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+/* Says what would put something here, so an empty page is an explanation rather than a dead end. */
+.empty-state .empty-state-hint {
+  margin: 6px auto 0;
+  max-width: 34ch;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-light);
 }
 
 /* ── Loading ── */
@@ -2683,11 +2694,15 @@ textarea.form-input {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-width: 44px;
+  /* Every item now carries a label, so they share the bar evenly and truncate rather than
+     letting one long name push the others off. 14px of side padding per item was 28px each —
+     affordable when only the active item had text, not when all six do. */
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 44px;
   text-decoration: none;
   color: var(--text-secondary);
-  padding: 4px 14px;
+  padding: 4px 2px;
   border-radius: 12px;
   transition: color 0.2s ease;
   -webkit-tap-highlight-color: transparent;
@@ -2725,22 +2740,15 @@ textarea.form-input {
   letter-spacing: 0.01em;
   line-height: 1.2;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Admin's bar carries six items. At 360px that already leaves only a couple of pixels spare, so
-   on smaller phones the touch target and the active label give a little back rather than letting
-   the bar overflow. 40px is still an acceptable target for an icon this size. */
+/* Six labelled items on a 320px screen: shave the label rather than the touch target. */
 @media (max-width: 380px) {
-  .bottom-nav-item {
-    min-width: 40px;
-    padding-left: 2px;
-    padding-right: 2px;
-  }
   .bottom-nav-label {
     font-size: 0.6rem;
-    max-width: 62px;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 }
 
@@ -4024,6 +4032,29 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The subtitle is the one line telling you what a page is for, and on a phone it was being cut
+   off mid-word ("Кесуге жіберілген және кесі…"). Let it use two lines instead — clipping the
+   explanation to save 16px of height is the wrong trade. */
+@media (max-width: 767px) {
+  .topbar-subtitle {
+    white-space: normal;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* Same reasoning for the title: "ЛДСП — ТАПСЫРЫС ЖУРНАЛЫ" was being cut mid-word. */
+  .topbar-title {
+    white-space: normal;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
 }
 .topbar-search {
   flex: 1;

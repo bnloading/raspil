@@ -23,6 +23,7 @@ export default function ManagerCuttingQueue() {
       loading={loading}
       detailPath={(o) => `/manager/order/${o.id}`}
       emptyText="Распил кезегінде заказ жоқ"
+      emptyHint="Заказ төленген соң автоматты түрде осы кезекке түседі."
     />
   );
 }

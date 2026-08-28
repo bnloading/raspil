@@ -25,6 +25,7 @@ export default function AdminOversightCutting() {
       loading={loading}
       detailPath={(o) => `/admin/order/${o.id}`}
       emptyText="Распилде заказ жоқ"
+      emptyHint="Распилшілер жұмыс істеп жатқан заказдар осында көрінеді."
     />
   );
 }

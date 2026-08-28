@@ -24,6 +24,7 @@ export default function AdminOversightPvc() {
       loading={loading}
       detailPath={(o) => `/admin/order/${o.id}`}
       emptyText="ПВХ-та заказ жоқ"
+      emptyHint="ПВХ шеберлері жұмыс істеп жатқан заказдар осында көрінеді."
     />
   );
 }

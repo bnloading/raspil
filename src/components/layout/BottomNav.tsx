@@ -44,7 +44,10 @@ export function BottomNav({ items, activeKey, fab }: BottomNavProps) {
               <span className="bottom-nav-icon">
                 <Icon />
               </span>
-              {active && <span className="bottom-nav-label">{item.label}</span>}
+              {/* Every item is named, not just the active one. Showing the label only on the
+                  current tab left the other five as unlabelled icons — on a page outside the bar
+                  nothing was labelled at all, so the whole nav was a row of guesses. */}
+              <span className="bottom-nav-label">{item.short ?? item.label}</span>
             </Link>
           );
         })}

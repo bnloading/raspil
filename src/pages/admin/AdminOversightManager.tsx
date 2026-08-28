@@ -33,6 +33,7 @@ export default function AdminOversightManager() {
       loading={loading}
       detailPath={(o) => `/admin/order/${o.id}`}
       emptyText="Менеджер жұмысындағы заказ жоқ"
+      emptyHint="Менеджер қабылдаған, әлі өндіріске кетпеген заказдар."
     />
   );
 }
