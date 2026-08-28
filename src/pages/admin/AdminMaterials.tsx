@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   addDoc,
   collection,
@@ -17,6 +17,8 @@ import { Toast, Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
+import { stockStatus, lowStockCount } from "../../lib/stockStatus";
+import { RowMenu } from "../../components/RowMenu";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
@@ -43,6 +45,16 @@ export default function AdminMaterials() {
   const [editingMaterial, setEditingMaterial] = useState<Material | "new" | null>(null);
   const [editingPvc, setEditingPvc] = useState<PvcType | "new" | null>(null);
 
+  const stockTotals = useMemo(
+    () => ({
+      materials: materials.length,
+      sheets: materials.reduce((s, m) => s + (m.qtyOnHand ?? 0), 0),
+      reserved: materials.reduce((s, m) => s + (m.reservedQty ?? 0), 0),
+      low: lowStockCount(materials),
+    }),
+    [materials],
+  );
+
   if (!auth.userData) return <Spinner />;
 
   return (
@@ -61,6 +73,37 @@ export default function AdminMaterials() {
         ) : undefined
       }
     >
+      <div className="kpi-row">
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Барлығы</div>
+            <div className="kpi-value">{stockTotals.materials} материал</div>
+          </div>
+          <span className="kpi-icon is-indigo">📦</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Қоймада</div>
+            <div className="kpi-value">{stockTotals.sheets} лист</div>
+          </div>
+          <span className="kpi-icon is-green">🧱</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Аз қалған</div>
+            <div className={`kpi-value${stockTotals.low > 0 ? " is-danger" : ""}`}>{stockTotals.low}</div>
+          </div>
+          <span className="kpi-icon is-red">⚠️</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Резервте</div>
+            <div className="kpi-value">{stockTotals.reserved} лист</div>
+          </div>
+          <span className="kpi-icon is-blue">🔖</span>
+        </div>
+      </div>
+
       <div className="tab-pill-row">
         <button className={`tab-pill${tab === "materials" ? " active" : ""}`} onClick={() => setTab("materials")}>
           Материалдар
@@ -183,50 +226,61 @@ function MaterialsTab({
           <table className="data-table stack-mobile stack-compact">
             <thead>
               <tr>
-                <th>Атауы</th>
-                <th>Қалдық</th>
-                <th>Мин. қор</th>
+                <th>Материал</th>
+                <th>Өлшемі</th>
+                <th>Қоймада</th>
+                <th className="num">Резерв</th>
+                <th className="num">Мин. қор</th>
                 <th className="num">Бағасы</th>
+                <th>Күйі</th>
                 <th>Әрекеттер</th>
               </tr>
             </thead>
             <tbody>
               {materials.map((m) => {
-                const available = m.qtyOnHand - m.reservedQty;
-                const low = available <= m.minStock;
+                const stock = stockStatus(m);
                 return (
                   <tr key={m.id} className={!m.active ? "blocked" : undefined}>
-                    <td data-label="Атауы">
-                      <strong>
-                        {m.name} {m.article ? `(${m.article})` : ""}
-                      </strong>
-                      <div>
-                        {MATERIAL_CATEGORY_LABELS[m.category ?? "ldsp"]} · {m.color} · {m.thicknessMm} мм · {m.sheetLengthMm}×{m.sheetWidthMm} мм
+                    <td data-label="Материал">
+                      <strong>{m.name}</strong>
+                      <div className="wh-sub">
+                        {m.article || MATERIAL_CATEGORY_LABELS[m.category ?? "ldsp"]}
                       </div>
                     </td>
-                    <td data-label="Қалдық" className={low ? "warehouse-low" : undefined}>
-                      {available} / {m.qtyOnHand}
-                      {low ? " ⚠️" : ""}
+                    <td data-label="Өлшемі" className="wh-sub">
+                      {m.sheetLengthMm}×{m.sheetWidthMm} · {m.thicknessMm} мм
                     </td>
-                    <td data-label="Мин. қор">{m.minStock}</td>
+                    <td data-label="Қоймада">
+                      <div className="wh-qty">
+                        <strong>{stock.available}</strong> <span className="wh-sub">лист</span>
+                      </div>
+                      {/* Bar repeats the Күйі pill in a form you can scan down a column. */}
+                      <div className="wh-bar">
+                        <span className={`wh-bar-fill is-${stock.level}`} style={{ width: `${stock.ratio * 100}%` }} />
+                      </div>
+                    </td>
+                    <td className="num" data-label="Резерв">{m.reservedQty}</td>
+                    <td className="num" data-label="Мин. қор">{m.minStock}</td>
                     <td className="num" data-label="Бағасы">
                       {formatMoney(m.sellingPriceTiyn)}
                     </td>
+                    <td data-label="Күйі">
+                      <span className={`wh-pill is-${stock.level}`}>{stock.label}</span>
+                    </td>
+                    {/* Receiving stock is the everyday action, so it stays visible; the rest fold
+                        into the overflow menu rather than spending four buttons of width per row. */}
                     <td data-label="Әрекеттер">
-                      <div className="data-row-actions">
-                        <button className="btn btn-outline btn-sm" onClick={() => onLedger(m)}>
-                          Тарих
-                        </button>
+                      <RowMenu
+                        items={[
+                          { label: "Тарих", onClick: () => onLedger(m) },
+                          { label: "Түзету", onClick: () => handleCorrection(m) },
+                          { label: "Өзгерту", onClick: () => onEdit(m) },
+                        ]}
+                      >
                         <button className="btn btn-outline btn-sm" onClick={() => handleReceipt(m)}>
                           + Қабылдау
                         </button>
-                        <button className="btn btn-outline btn-sm" onClick={() => handleCorrection(m)}>
-                          Түзету
-                        </button>
-                        <button className="btn btn-outline btn-sm" onClick={() => onEdit(m)}>
-                          Өзгерту
-                        </button>
-                      </div>
+                      </RowMenu>
                     </td>
                   </tr>
                 );

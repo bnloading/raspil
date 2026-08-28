@@ -6825,3 +6825,93 @@ body {
 .otable td:nth-child(6) { min-width: 216px; }
 .otable .oprog { gap: 2px; }
 .orders-title-row .form-select-material { min-width: 168px; }
+
+/* ── Қойма table: stock bar and level pill ── */
+.wh-sub {
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+.wh-qty { white-space: nowrap; }
+.wh-bar {
+  margin-top: 5px;
+  height: 4px;
+  width: 100%;
+  max-width: 120px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.wh-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+.wh-bar-fill.is-ok { background: var(--success); }
+.wh-bar-fill.is-low { background: var(--warning); }
+.wh-bar-fill.is-critical { background: var(--danger); }
+.wh-bar-fill.is-out { background: var(--danger); }
+.wh-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.wh-pill.is-ok { background: var(--success-light); color: var(--success); }
+.wh-pill.is-low { background: var(--warning-light); color: #b45309; }
+.wh-pill.is-critical,
+.wh-pill.is-out { background: var(--danger-light); color: var(--danger); }
+
+/* Row overflow menu (⋯) */
+.rowmenu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rowmenu-trigger {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rowmenu-trigger:hover { border-color: var(--primary); color: var(--primary); }
+.rowmenu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.rowmenu-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.rowmenu-item:hover { background: var(--bg); color: var(--primary); }
+.rowmenu-item.is-danger { color: var(--danger); }
+
+/* Money and size columns must not break mid-value. */
+.data-table td.num,
+.data-table th.num { white-space: nowrap; }
