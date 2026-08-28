@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -16,6 +16,7 @@ import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
 import { journalDefaultsFor } from "../../lib/journalPricing";
+import { planMerge, describeLines, linesOf } from "../../lib/orderMerge";
 import {
   createJournalOrder,
   draftFromOrder,
@@ -126,6 +127,16 @@ export default function ManagerJournal() {
     () => localStorage.getItem("journalDefaultMethod") ?? "",
   );
 
+  /** Rows ticked for merging into one order. */
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const togglePick = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const [newRow, setNewRow] = useState<JournalDraft | null>(null);
   const newRowNameRef = useRef<HTMLInputElement>(null);
 
@@ -152,6 +163,9 @@ export default function ManagerJournal() {
 
     return orders.filter((o) => {
       if (o.productionStatus === "draft") return false; // never submitted — not journal material
+      // Folded into another order by "Біріктіру": kept in the database, but it is that order's
+      // business now, not a row of its own.
+      if (o.mergedIntoOrderId) return false;
       if (q && !(o.orderNumber.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q) || o.customerPhone.includes(q))) {
         return false;
       }
@@ -212,6 +226,47 @@ export default function ManagerJournal() {
    * Un-marking reverses every live payment on the order. firestore.rules keeps reversal
    * Admin-only, so a Manager is told rather than shown a write that would be rejected.
    */
+  /**
+   * "Біріктіру" — folds the ticked rows into one order.
+   *
+   * The journal is a row-per-material ledger, so a walk-in buying Ақ + ХДФ + Кашемир produces
+   * three rows and, before this, three separate orders reaching the cutter. Merging keeps the
+   * earliest row (so the customer keeps the number they were told), moves the rest in as material
+   * lines, and cancels the absorbed rows rather than deleting them — a number that was quoted to
+   * a customer should stay findable, and deleting financial records is not something this app does.
+   */
+  const handleMerge = async () => {
+    const rows = orders.filter((o) => picked.has(o.id));
+    const result = planMerge(rows);
+    if ("refusal" in result) {
+      showToast(result.refusal);
+      return;
+    }
+    const { plan } = result;
+    const keep = rows.find((o) => o.id === plan.keepId);
+    const summary = describeLines(plan.update.items);
+    if (!confirm(`${rows.length} жол «${keep?.orderNumber}» заказына біріктіріледі:\n\n${summary}\n\nЖалғастырасыз ба?`)) return;
+
+    setSaving(true);
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "orders", plan.keepId), plan.update);
+      for (const id of plan.absorbedIds) {
+        batch.update(doc(db, "orders", id), {
+          productionStatus: "cancelled",
+          cancelReason: `${keep?.orderNumber} заказына біріктірілді`,
+          mergedIntoOrderId: plan.keepId,
+        });
+      }
+      await batch.commit();
+      setPicked(new Set());
+      showToast(`✅ ${rows.length} жол біріктірілді`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+    setSaving(false);
+  };
+
   const handleTogglePaid = async (order: Order) => {
     const settled = order.paymentStatus === "paid" || order.paymentStatus === "overpaid";
 
@@ -309,6 +364,16 @@ export default function ManagerJournal() {
       <button className="btn btn-success btn-sm" onClick={() => setNewRow(newRow ? null : emptyJournalDraft())}>
         ＋ Жаңа заказ қосу
       </button>
+      {picked.size > 0 && (
+        <>
+          <button className="btn btn-primary btn-sm" disabled={saving} onClick={handleMerge}>
+            ⧉ {picked.size} жолды біріктіру
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={() => setPicked(new Set())}>
+            Таңдауды алу
+          </button>
+        </>
+      )}
       <input
         className="journal-search"
         placeholder="Клиент немесе заказ №"
@@ -399,6 +464,7 @@ export default function ManagerJournal() {
               <tr>
                 {/* Headers are abbreviated so the fixed-width columns hold real values rather
                     than being sized by their own titles. Each carries its full text as a title. */}
+                <th className="jt-w-pick" title="Біріктіру үшін таңдау"></th>
                 <th className="jt-sticky jt-col-num">№</th>
                 <th className="jt-sticky jt-col-name">Клиент</th>
                 <th className="jt-w-phone">Телефон</th>
@@ -422,9 +488,9 @@ export default function ManagerJournal() {
             </thead>
             <tbody>
               {loading || paymentsLoading ? (
-                <tr><td colSpan={16} className="jt-empty">Жүктелуде…</td></tr>
+                <tr><td colSpan={17} className="jt-empty">Жүктелуде…</td></tr>
               ) : pageItems.length === 0 && !newRow ? (
-                <tr><td colSpan={16} className="jt-empty">Заказдар табылмады</td></tr>
+                <tr><td colSpan={17} className="jt-empty">Заказдар табылмады</td></tr>
               ) : (
                 pageItems.map((order) => (
                   <JournalRow
@@ -434,6 +500,8 @@ export default function ManagerJournal() {
                     methods={methods}
                     payments={byOrder.get(order.id) ?? []}
                     actor={actor}
+                    selected={picked.has(order.id)}
+                    onToggleSelect={() => togglePick(order.id)}
                     onOpen={() => navigate(`/manager/order/${order.id}`)}
                     onAddPayment={() => setPayFor(order)}
                     onTogglePaid={() => handleTogglePaid(order)}
@@ -614,13 +682,15 @@ const AUTOSAVE_MS = 900;
  * — or leaving one half-typed while you look at another — behave sensibly.
  */
 function JournalRow({
-  order, materials, payments, actor, onOpen, onAddPayment, onTogglePaid, onError,
+  order, materials, payments, actor, selected, onToggleSelect, onOpen, onAddPayment, onTogglePaid, onError,
 }: {
   order: Order;
   materials: Material[];
   methods: PaymentMethodDef[];
   payments: import("../../types/domain").Payment[];
   actor: Parameters<typeof saveJournalRow>[1];
+  selected: boolean;
+  onToggleSelect: () => void;
   onOpen: () => void;
   /** Opens the payment dialog for this row; the method and amount are chosen there. */
   onAddPayment: () => void;
@@ -700,9 +770,19 @@ function JournalRow({
   });
 
   const shortNum = order.orderNumber.match(/(\d+)$/)?.[1]?.replace(/^0+/, "") ?? order.orderNumber;
+  const lines = linesOf(order);
 
   return (
-    <tr className="jt-row">
+    <tr className={`jt-row${selected ? " is-picked" : ""}`}>
+      <td className="jt-w-pick">
+        <input
+          type="checkbox"
+          className="jt-pick"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`${order.orderNumber} — біріктіру үшін таңдау`}
+        />
+      </td>
       <td className="jt-sticky jt-col-num">
         <button className="jt-num-link" onClick={onOpen} title={order.orderNumber}>{shortNum}</button>
       </td>
@@ -721,6 +801,14 @@ function JournalRow({
       </td>
 
       <td className="jt-tint-material">
+        {/* A merged order covers several sheet types, so a single-material dropdown would be a
+            lie — and picking from it would silently discard the other lines. It shows its
+            contents instead; the lines are edited by opening the order. */}
+        {lines.length > 1 ? (
+          <button className="jt-merged" onClick={onOpen} title={describeLines(lines)}>
+            {lines.length} материал
+          </button>
+        ) : (
         <select
           className="jt-input"
           value={draft.materialId}
@@ -740,6 +828,7 @@ function JournalRow({
           <option value="">{order.materialSnapshot.name || "Лист түрі"}</option>
           {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
+        )}
       </td>
 
       <td className="jt-tint-material jt-num">
@@ -845,6 +934,7 @@ function NewJournalRow({
         if (e.key === "Enter") { e.preventDefault(); onSave(); }
         if (e.key === "Escape") { e.preventDefault(); onCancel(); }
       }}>
+      <td className="jt-w-pick" />
       <td className="jt-sticky jt-col-num jt-muted">жаңа</td>
       <td className="jt-sticky jt-col-name">
         <input className="jt-input" placeholder="Клиент аты" value={draft.customerName}

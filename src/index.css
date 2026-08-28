@@ -4305,9 +4305,9 @@ body {
    shrinks the narrowest column — the actions cell — until its buttons no longer fit. */
 @media (min-width: 768px) {
   .journal-table .jt-col-num { width: 3.2%; }
-  .journal-table .jt-col-name { width: 9.6%; }
-  .journal-table .jt-w-phone { width: 7.6%; }
-  .journal-table .jt-w-mat { width: 8%; }
+  .journal-table .jt-col-name { width: 8.8%; }
+  .journal-table .jt-w-phone { width: 7%; }
+  .journal-table .jt-w-mat { width: 7.4%; }
   .journal-table .jt-w-qty { width: 3.8%; }
   .journal-table .jt-w-money { width: 6.7%; }
   .journal-table .jt-w-status { width: 5.8%; }
@@ -7106,3 +7106,25 @@ body {
 }
 .wh-material > span { min-width: 0; }
 .wh-material .wh-sub { display: block; }
+
+/* Journal row selection + merged-order cell */
+.journal-table .jt-w-pick { width: 3%; text-align: center; }
+.jt-pick { width: 16px; height: 16px; cursor: pointer; }
+.jt-row.is-picked td { background: var(--primary-soft); }
+/* A merged order shows how many sheet types it covers instead of a single-material dropdown. */
+.jt-merged {
+  width: 100%;
+  height: 26px;
+  border: 1px dashed var(--primary-light);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  font: inherit;
+  font-size: var(--jt-font);
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jt-merged:hover { background: var(--primary-soft); }

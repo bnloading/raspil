@@ -87,6 +87,16 @@ export interface MaterialCost {
   purchasePriceTiyn: number;
 }
 
+/** One sheet type inside a multi-material order (see Order.items). */
+export interface OrderMaterialLine {
+  materialId: string;
+  materialName: string;
+  sheetQty: number;
+  sheetPriceTiyn: number;
+  pvcMeters: number;
+  pvcPricePerMeterTiyn: number;
+}
+
 /** One colour's consumption on a single order (see Order.pvcByType). */
 export interface PvcUsage {
   pvcTypeId: string;
@@ -210,6 +220,23 @@ export interface Order {
    * reported rather than silently dropped.
    */
   pvcByType?: PvcUsage[];
+  /**
+   * Material lines when one order covers several sheet types — "5 лист Ақ + 3 лист ХДФ + 5 лист
+   * Кашемир" is one order to the customer and one job to the cutter, even though the journal is
+   * a row-per-material ledger and produced it as several rows.
+   *
+   * Absent, or a single entry, means the order is exactly what materialId/materialSnapshot say —
+   * which is every order created before merging existed, so those keep working untouched.
+   */
+  items?: OrderMaterialLine[];
+  /**
+   * Set when this order was folded into another by the journal's "Біріктіру". The row is cancelled
+   * rather than deleted — a number quoted to a customer should stay findable, and this app does not
+   * delete financial records — but it is no longer separate business, so the ledger hides it.
+   */
+  mergedIntoOrderId?: string;
+
+
   materialCostTiyn: number;
   cuttingCostTiyn: number;
   pvcCostTiyn: number;
