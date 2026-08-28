@@ -88,7 +88,11 @@ export default function Login() {
         fireErr.code === "auth/wrong-password" ||
         fireErr.code === "auth/invalid-credential"
       ) {
-        msg = "Телефон/email немесе құпия сөз қате";
+        // Customers who registered with an email sign in with that email, not their number, so a
+        // failed phone attempt is most often the wrong identifier rather than the wrong password.
+        msg = identifier.includes("@")
+          ? "Email немесе құпия сөз қате"
+          : "Телефон немесе құпия сөз қате. Тіркелгенде email жазған болсаңыз, сол email арқылы кіріңіз.";
       } else if (fireErr.code === "auth/too-many-requests") {
         msg = "Тым көп әрекет. Кейінірек қайталаңыз";
       }

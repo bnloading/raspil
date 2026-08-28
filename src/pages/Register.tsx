@@ -49,13 +49,17 @@ export default function Register() {
 
     setSubmitting(true);
     try {
-      const synthEmail = phoneToSyntheticEmail(normalized);
-      const cred = await createUserWithEmailAndPassword(auth, synthEmail, password);
+      // The email the customer actually typed becomes their sign-in identity, so the account
+      // carries their real address instead of a machine-made one and password reset works. Only
+      // customers who leave the field blank fall back to the phone-derived synthetic address.
+      const realEmail = email.trim().toLowerCase();
+      const authEmail = realEmail || phoneToSyntheticEmail(normalized);
+      const cred = await createUserWithEmailAndPassword(auth, authEmail, password);
       await setDoc(doc(db, "users", cred.user.uid), {
         name: name.trim(),
         phone: normalized,
-        email: email.trim() || null,
-        authEmail: synthEmail,
+        email: realEmail || null,
+        authEmail,
         role: "customer",
         blocked: false,
         createdAt: serverTimestamp(),
@@ -65,7 +69,11 @@ export default function Register() {
       const fireErr = err as { code?: string };
       let msg = "Тіркелу кезінде қате шықты";
       if (fireErr.code === "auth/email-already-in-use") {
-        msg = "Бұл телефон нөмірі бұрыннан тіркелген";
+        msg = email.trim()
+          ? "Бұл email бұрыннан тіркелген"
+          : "Бұл телефон нөмірі бұрыннан тіркелген";
+      } else if (fireErr.code === "auth/invalid-email") {
+        msg = "Email дұрыс емес";
       } else if (fireErr.code === "auth/weak-password") {
         msg = "Құпия сөз тым қысқа (мин. 6 таңба)";
       }
@@ -98,16 +106,12 @@ export default function Register() {
           <div className="form-group">
             <label>Телефон нөмірі</label>
             <PhoneInput value={phone} onChange={setPhone} required />
-            {/* Sign-in is by phone, so registration mints a synthetic auth address from the number
-                (see lib/phone.ts). People who also enter a real email were reading that synthetic
-                address in the Firebase console as "my email was changed" — saying so up front. */}
             <p className="form-hint">
-              Сайтқа осы нөмір арқылы кіресіз. Жүйе оны ішкі мекенжайға айналдырады
-              («…@customers.workshop.local») — бұл қалыпты жағдай, сіздің email-іңіз өзгермейді.
+              Email жазбасаңыз, сайтқа осы нөмір арқылы кіресіз.
             </p>
           </div>
           <div className="form-group">
-            <label>Email (міндетті емес, құпия сөзді қалпына келтіру үшін)</label>
+            <label>Email (міндетті емес)</label>
             <input
               type="email"
               className="form-input"
@@ -115,6 +119,10 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
+            <p className="form-hint">
+              Email жазсаңыз — сайтқа осы email арқылы кіресіз және құпия сөзді ұмытсаңыз, оны
+              осы поштаға қалпына келтіре аласыз.
+            </p>
           </div>
           <div className="form-group">
             <label>Құпия сөз</label>
