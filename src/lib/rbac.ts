@@ -24,7 +24,10 @@ export const canOverridePaymentGate = isAdmin; // admin-only, requires reason + 
 // Admin), and firestore.rules enforces exactly that — Manager may WRITE entries for its own
 // actions but can never browse the log, and nobody can delete it.
 export const canViewAuditLog = isAdmin;
-export const canReversePayment = isAdmin; // reversal needs a reason + audit entry; Manager records, Admin corrects
+// Reversal always writes a reason and an audit entry. Manager may reverse too: the journal's
+// Статус column lets a row be moved back to "Қарыз" at any time, and the money has to follow the
+// status — a payment can only ever be marked reversed, never un-reversed or edited.
+export const canReversePayment = isAdminOrManager;
 export const canAdjustDebt = isAdmin; // debt corrections create an adjustment record, never edit history
 export const canManageAttendance = isAdmin;
 export const canConfigureSalary = isAdmin;

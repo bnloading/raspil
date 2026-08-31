@@ -1,5 +1,7 @@
 import { monthKey } from "./dates";
-import type { ExpenseCategory, Order, Payment } from "../types/domain";
+import { monthlyExpensesTotal } from "./expenses";
+import { linesOf } from "./orderMerge";
+import type { Expense, ExpenseCategory, Order, Payment } from "../types/domain";
 
 /**
  * The shop's standing rule: 5% of each month's gross profit is set aside for the machine and for
@@ -31,7 +33,9 @@ export interface FinanceSummary {
   grossProfitTiyn: number;
   /** One row per active expense category, including the machine/waste set-aside. */
   allocations: Allocation[];
-  /** Gross profit less every allocation above. */
+  /** Sum of the period's hand-logged one-off expenses (Мусор, жөндеу, …) — see lib/expenses.ts. */
+  fixedExpensesTiyn: number;
+  /** Gross profit less every allocation above, and less fixedExpensesTiyn. */
   netProfitTiyn: number;
   orderCount: number;
 }
@@ -52,9 +56,14 @@ function isBillable(order: Order): boolean {
  * only because the alternative — inventing a cost — would be untraceable.
  */
 function orderCostTiyn(order: Order, purchaseByMaterialId: Map<string, number>): number {
-  const sheets = order.confirmedSheets ?? order.estimatedSheets ?? 0;
-  const perSheet = purchaseByMaterialId.get(order.materialId) ?? 0;
-  return sheets * perSheet;
+  // Line by line: a merged order carries several materials at several purchase prices, and
+  // costing all of its sheets at the first material's rate is how a 7 500 ₸ ХДФ sheet used to be
+  // booked as an ЛДСП one. linesOf() returns the single material for an unmerged order, so this
+  // is the same arithmetic as before wherever there is only one.
+  return linesOf(order).reduce(
+    (sum, line) => sum + line.sheetQty * (purchaseByMaterialId.get(line.materialId) ?? 0),
+    0,
+  );
 }
 
 /**
@@ -69,12 +78,16 @@ export function computeFinanceSummary({
   payments,
   purchaseByMaterialId,
   categories,
+  expenses = [],
   period,
 }: {
   orders: Order[];
   payments: Payment[];
   purchaseByMaterialId: Map<string, number>;
   categories: ExpenseCategory[];
+  /** Hand-logged one-off expenses (see lib/expenses.ts) — defaults to none for callers that don't
+   *  have them loaded, so the percentage-only summary still works everywhere it used to. */
+  expenses?: Expense[];
   /** YYYY-MM in Asia/Almaty, or null for all time. */
   period: string | null;
 }): FinanceSummary {
@@ -110,6 +123,8 @@ export function computeFinanceSummary({
     amountTiyn: Math.round((grossProfitTiyn * c.percentage) / 100),
   }));
 
+  const fixedExpensesTiyn = monthlyExpensesTotal(expenses, period);
+
   return {
     monthKey: period,
     billedTiyn,
@@ -118,7 +133,8 @@ export function computeFinanceSummary({
     costTiyn,
     grossProfitTiyn,
     allocations,
-    netProfitTiyn: grossProfitTiyn - allocations.reduce((s, a) => s + a.amountTiyn, 0),
+    fixedExpensesTiyn,
+    netProfitTiyn: grossProfitTiyn - allocations.reduce((s, a) => s + a.amountTiyn, 0) - fixedExpensesTiyn,
     orderCount: billedOrders.length,
   };
 }

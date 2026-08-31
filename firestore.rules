@@ -102,12 +102,15 @@ service cloud.firestore {
       // Two narrow, field-scoped exceptions to the admin-only write above — both only ever move
       // qtyOnHand/reservedQty, driven by src/lib/warehouse.ts's transactions, never anything else
       // about the material (price, name, active flag, ...):
-      //  - cutter: consumeForCutting (cutting-completion stock decrement)
-      //  - manager: reserveStock/releaseReservation (queue-entry reservation, order cancellation)
+      //  - cutter: consumeForCutting (settles the confirmed sheet count at cutting completion)
+      //  - manager: consumeStockOnQueue/returnStockToWarehouse (sheets leave when the order is
+      //    queued for cutting and come back if it is cancelled before the saw)
+      // `stockTracked` sits with the price/spec fields: whether a material is counted at all is a
+      // catalogue decision, not something a workflow write may flip.
       allow update: if (isCutter() || isManager()) && unchanged([
         'name', 'article', 'color', 'manufacturer', 'thicknessMm', 'sheetLengthMm', 'sheetWidthMm',
         'sellingPriceTiyn', 'initialQty', 'minStock', 'active', 'archived', 'imageUrl', 'note',
-        'grainDirectionRequired'
+        'grainDirectionRequired', 'stockTracked'
       ]);
     }
 
@@ -133,6 +136,23 @@ service cloud.firestore {
 
     match /expenseCategories/{id} {
       allow read, write: if isAdmin();
+    }
+
+    // One-off logged expenses (Мусор, Лист алуға, жөндеу, …) — the money leaving the shop's two
+    // pots, listed on the Касса page.
+    //
+    // The Manager writes these: they are the person standing at the counter when the rubbish is
+    // taken away and the sheets are bought, and an expense nobody is there to log is an expense
+    // that never reaches the books. What stays Admin-only is the *profit* side — expenseCategories
+    // and materialCosts — so a Manager can record what was spent without being shown the margin.
+    // A Manager may delete only their own entry (their own typo, minutes old); correcting anyone
+    // else's is the Admin's call, as it was before.
+    match /expenses/{id} {
+      allow read: if isAdminOrManager();
+      allow create: if isAdmin()
+        || (isManager() && request.resource.data.createdByUid == uid());
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isManager() && resource.data.createdByUid == uid());
     }
 
     match /workshopActivity/{id} {
@@ -185,7 +205,19 @@ service cloud.firestore {
           || order().assignedCutterId == uid()
         );
       }
+      // Read access starts one stage earlier than write access: a PVC worker needs to see the
+      // orders heading their way while the sheets are still being cut (the dashboard's "Распил
+      // күтілуде" list), but must not be able to touch an order the cutter still owns.
       function pvcCanSee() {
+        return isPvc() && (
+          order().productionStatus in [
+            'cutting_queue', 'cutting_started', 'cutting_completed',
+            'pvc_queue', 'pvc_started', 'pvc_completed'
+          ]
+          || order().assignedPvcId == uid()
+        );
+      }
+      function pvcCanEdit() {
         return isPvc() && (
           order().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed']
           || order().assignedPvcId == uid()
@@ -232,9 +264,18 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         // Manager drives almost the entire workflow (review, price, publish, payments, assign,
-        // deliver) with one restriction: it can never be the one to push an unpaid/partially-paid
-        // order into the cutting queue.
-        isManager() && (!enteringCuttingQueue() || paymentGateOk())
+        // deliver). Pushing an unpaid/partially-paid order into the cutting queue anyway ("кесуге
+        // жіберу — қарызға", cutting on credit for a trusted customer) is normally blocked, but the
+        // owner wants Manager able to do this too, same as Admin — provided the write is the same
+        // audited shape lib/orderStatus.ts's enterCuttingQueue always produces for an override: the
+        // paymentGateOverride flag plus a non-empty typed reason, both permanent on the order.
+        isManager() && (
+          !enteringCuttingQueue() || paymentGateOk() || (
+            request.resource.data.paymentGateOverride == true
+            && request.resource.data.paymentGateOverrideReason is string
+            && request.resource.data.paymentGateOverrideReason.size() > 0
+          )
+        )
       ) || (
         isOwner()
         && order().productionStatus in ['draft', 'submitted']
@@ -254,18 +295,18 @@ service cloud.firestore {
         // transition — cutting_started -> cutting_completed (warehouse.consumeForCutting also
         // advances straight to pvc_queue/ready in the same transaction) — never an arbitrary jump.
         && (
-          unchanged(['cuttingConsumedAt', 'cuttingConsumedMovementId'])
+          unchanged(['cuttingConsumedAt', 'cuttingConsumedMovementId', 'cuttingConsumedQty'])
           || (
             order().productionStatus == 'cutting_started'
             && request.resource.data.productionStatus in ['pvc_queue', 'ready']
           )
         )
       ) || (
-        pvcCanSee()
+        pvcCanEdit()
         && unchanged([
           'customerId', 'materialId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
           'assignedCutterId', 'discountTiyn', 'adminNote', 'confirmedSheets',
-          'cuttingConsumedAt', 'cuttingConsumedMovementId'
+          'cuttingConsumedAt', 'cuttingConsumedMovementId', 'cuttingConsumedQty'
         ])
       );
 
@@ -313,7 +354,35 @@ service cloud.firestore {
       allow list: if isAdminOrManager() || (isCustomer() && relatedOrder().customerId == uid());
       allow create: if isAdminOrManager() && request.resource.data.recordedByUid == uid();
       // Reversal ("Reverse incorrect payment... with a required reason") is Admin-only, per spec.
-      allow update: if isAdmin();
+      // Correcting WHICH method the money came in by is not a reversal: it moves no money, only
+      // relabels a record, and the journal's Төлем түрі column is where that mistake is spotted —
+      // so a Manager may change exactly those two fields and nothing else.
+      allow update: if isAdmin() || (
+        isManager() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['methodId', 'methodName'])
+          // Reversal, too: the journal's Статус column is a choice ("Төленді / Жартылай / Қарыз")
+          // and moving a row back to Қарыз has to take its payments with it. A Manager may only
+          // ever set `reversed` — never clear it, and never touch the amount — and the reason and
+          // the reverser's name are written with it, so the trail is the same as an Admin's.
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['reversed', 'reversalReason', 'reversedByUid', 'reversedByName'])
+            && request.resource.data.reversed == true
+            && request.resource.data.reversedByUid == uid()
+          )
+          // Re-filing a payment under the order it belongs to. The journal's "Біріктіру" folds
+          // several rows into one order and cancels the rest; the payments taken on those rows
+          // have to follow, or the surviving row reads as still owing money it was already paid.
+          // No money moves — the amount, method, date and taker are all untouched by hasOnly —
+          // and the row it came from is kept on `mergedFromOrderId`, so the move is traceable.
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['orderId', 'mergedFromOrderId'])
+            && request.resource.data.mergedFromOrderId == resource.data.orderId
+            && request.resource.data.orderId != resource.data.orderId
+          )
+        )
+      );
       allow delete: if false; // reverse via `reversed` flag, never delete a financial record
     }
 
@@ -321,11 +390,16 @@ service cloud.firestore {
     match /inventoryMovements/{id} {
       allow read: if isAdminOrManager();
       allow create: if (isAdmin() && request.resource.data.userId == uid())
-        // Manager may only ever create the reservation/release entries its own workflow produces
-        // (enterCuttingQueue / cancelOrder) — never a manual correction or receipt.
-        || (isManager() && request.resource.data.userId == uid() && request.resource.data.type in ['reservation', 'reservation_release'])
-        // Cutter may only ever create the one movement type their own workflow produces.
-        || (isCutter() && request.resource.data.userId == uid() && request.resource.data.type == 'cutting_consumption');
+        // Manager may only ever create the entries its own workflow produces: sending an order to
+        // the saw takes the sheets out (cutting_consumption), cancelling it before the saw puts
+        // them back (return), and the two reservation types remain for orders queued under the
+        // older reserve-first flow. Never a manual correction or a receipt.
+        || (isManager() && request.resource.data.userId == uid()
+            && request.resource.data.type in ['reservation', 'reservation_release', 'cutting_consumption', 'return'])
+        // Cutter may only ever create what completing a cut produces: the sheets used, or the
+        // ones handed back when the job took fewer than were taken to the saw.
+        || (isCutter() && request.resource.data.userId == uid()
+            && request.resource.data.type in ['cutting_consumption', 'return']);
       allow update, delete: if false; // immutable ledger; corrections are new movements
     }
 

@@ -1,4 +1,4 @@
-import type { Order, OrderMaterialLine } from "../types/domain";
+import type { Order, OrderMaterialLine, Payment } from "../types/domain";
 
 /**
  * Merging several journal rows into one order.
@@ -136,4 +136,59 @@ export function describeLines(lines: OrderMaterialLine[]): string {
     .filter((l) => l.sheetQty > 0 || l.materialName)
     .map((l) => `${l.sheetQty} лист ${l.materialName}`.trim())
     .join(" · ");
+}
+
+/**
+ * A payment left pointing at an order that has since been folded into another one.
+ *
+ * Merging sums the absorbed rows' `paidTiyn` onto the surviving order, but the payment documents
+ * themselves stayed attached to the absorbed (now cancelled, now hidden) rows. The journal reads
+ * money from the payments, so a fully-settled merged order showed only the surviving row's own
+ * payments and reported the rest as outstanding debt — the phantom "қалдық" on a row that was
+ * paid in full. A payment belongs to the order that is live, so merging moves it now, and this is
+ * what finds the ones stranded by every merge done before it did.
+ */
+export interface StrandedPayment {
+  paymentId: string;
+  /** The absorbed order it is still attached to. */
+  fromOrderId: string;
+  /** The surviving order it belongs to. */
+  toOrderId: string;
+}
+
+/**
+ * Where an order's money lives now: itself, or the order it was merged into.
+ *
+ * Merges can chain (A folded into B, B later folded into C), so this walks to the end. A cycle
+ * would be corrupt data rather than anything the UI can create — it stops rather than hanging.
+ */
+export function liveOrderIdFor(orderId: string, mergedInto: ReadonlyMap<string, string>): string {
+  let current = orderId;
+  const seen = new Set<string>([current]);
+  for (;;) {
+    const next = mergedInto.get(current);
+    if (!next || seen.has(next)) return current;
+    seen.add(next);
+    current = next;
+  }
+}
+
+/** Every payment whose order was merged away, with the order it should be moved onto. */
+export function findStrandedPayments(orders: Order[], payments: Payment[]): StrandedPayment[] {
+  const mergedInto = new Map<string, string>();
+  for (const o of orders) {
+    if (o.mergedIntoOrderId) mergedInto.set(o.id, o.mergedIntoOrderId);
+  }
+  if (mergedInto.size === 0) return [];
+
+  const known = new Set(orders.map((o) => o.id));
+  const stranded: StrandedPayment[] = [];
+  for (const p of payments) {
+    if (!mergedInto.has(p.orderId)) continue;
+    const toOrderId = liveOrderIdFor(p.orderId, mergedInto);
+    // A chain whose end is missing from the loaded orders would move money into thin air.
+    if (toOrderId === p.orderId || !known.has(toOrderId)) continue;
+    stranded.push({ paymentId: p.id, fromOrderId: p.orderId, toOrderId });
+  }
+  return stranded;
 }

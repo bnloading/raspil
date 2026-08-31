@@ -49,12 +49,13 @@ export interface CuttingPart {
  * What kind of sheet this is. Drives piece-rate pay, which differs per category (a cutter earns
  * more per ЛДСП sheet than per ХДФ), so it cannot be inferred from the name alone.
  */
-export type MaterialCategory = "ldsp" | "hdf" | "countertop" | "other";
+export type MaterialCategory = "ldsp" | "hdf" | "countertop" | "mdf" | "other";
 
 export const MATERIAL_CATEGORY_LABELS: Record<MaterialCategory, string> = {
   ldsp: "ЛДСП",
   hdf: "ХДФ",
   countertop: "Столешница",
+  mdf: "МДФ",
   other: "Басқа",
 };
 
@@ -73,6 +74,14 @@ export interface Material {
   initialQty: number;
   qtyOnHand: number; // physical full sheets currently in the warehouse (includes reserved)
   reservedQty: number; // subset of qtyOnHand earmarked for approved-but-not-yet-cut orders
+  /**
+   * Whether cutting this material takes sheets out of the warehouse. Undefined means yes — every
+   * sheet the shop owns is counted. Set to false for lines that are not shop stock: a customer's
+   * own board ("Сырттан келетін…"), offcuts sold from the leftovers rack ("Остаток"), or a
+   * material bought per order. Those rows are priced and cut like any other but never move a
+   * warehouse balance, so an empty count can never block them.
+   */
+  stockTracked?: boolean;
   minStock: number;
   active: boolean;
   archived: boolean;
@@ -87,6 +96,37 @@ export interface MaterialCost {
   purchasePriceTiyn: number;
 }
 
+/**
+ * The production half of one material line — what the shop floor does to it, kept apart from the
+ * priced line itself (Order.items) so a cutter's write can never touch a price. Index-aligned with
+ * `items`, and carrying enough of the line (material, sheets, metres) to be shown on its own.
+ */
+export interface OrderLineJob {
+  index: number;
+  materialId: string;
+  materialName: string;
+  sheetQty: number;
+  pvcMeters: number;
+  /** Sheets taken out of the warehouse for this line when the order was queued. */
+  consumedQty?: number;
+  cuttingStartedAt?: Timestamp;
+  cuttingEstimatedMinutes?: number;
+  cuttingExpectedCompletionAt?: Timestamp;
+  cuttingCompletedAt?: Timestamp;
+  cuttingActualMinutes?: number;
+  cuttingByUid?: string;
+  cuttingByName?: string;
+  /** What the cutter counted when finishing this line. */
+  confirmedSheets?: number;
+  pvcStartedAt?: Timestamp;
+  pvcEstimatedMinutes?: number;
+  pvcExpectedCompletionAt?: Timestamp;
+  pvcCompletedAt?: Timestamp;
+  pvcActualMinutes?: number;
+  pvcByUid?: string;
+  pvcByName?: string;
+}
+
 /** One sheet type inside a multi-material order (see Order.items). */
 export interface OrderMaterialLine {
   materialId: string;
@@ -95,6 +135,16 @@ export interface OrderMaterialLine {
   sheetPriceTiyn: number;
   pvcMeters: number;
   pvcPricePerMeterTiyn: number;
+  /**
+   * Which edge-banding colour this line used (a pvcTypes doc id), and its name kept alongside so
+   * the line still says what it was even if the colour is later removed from the catalogue.
+   *
+   * Optional because it is a later addition: rows typed before the journal asked for a colour
+   * carry metres with no colour, and those metres show up in the ПВХ report as
+   * "Түрі көрсетілмеген" rather than being guessed onto a roll they may not have come off.
+   */
+  pvcTypeId?: string;
+  pvcColorName?: string;
 }
 
 /** One colour's consumption on a single order (see Order.pvcByType). */
@@ -118,11 +168,28 @@ export interface PvcType {
   minStockMeters?: number;
 }
 
+/**
+ * Where the shop's money physically sits.
+ *
+ * Two pots, kept apart because they are apart in real life: the owner's deposit account, which is
+ * where every transfer lands, and the cash in the drawer. Mixing them into one "revenue" figure
+ * answers no question the shop actually has - "how much is on the card" and "how much is in the
+ * box" are separate questions with separate answers.
+ */
+export type CashAccount = "deposit" | "cash";
+
 export interface PaymentMethodDef {
   id: string;
   name: string;
   active: boolean;
   isMixed: boolean;
+  /**
+   * Which pot money taken by this method lands in. Unset falls back to the rule in
+   * lib/cashbox.ts: the cash method is cash, every other method is a transfer and lands on the
+   * deposit. Set explicitly when a method does not follow that (a card terminal paying out to a
+   * different account, cash handed over by a courier).
+   */
+  account?: CashAccount;
 }
 
 /** Admin-managed monthly-income allocation config — e.g. "5% of revenue goes to equipment upkeep". */
@@ -131,6 +198,28 @@ export interface ExpenseCategory {
   name: string; // e.g. "Станок", "Жалақы", "Жалдау ақысы"
   percentage: number; // 0-100, this category's share of monthly revenue
   active: boolean;
+  createdAt?: Timestamp;
+}
+
+/**
+ * A one-off real expense the admin logs by hand — "Мусор шығарту 12 500 ₸", a repair, a delivery
+ * fee. Unlike ExpenseCategory (a standing % of revenue), this is one actual named cost on one
+ * actual day, and it is subtracted from that month's net profit on the Есептер page as its own
+ * line, on top of the percentage allocations.
+ */
+export interface Expense {
+  id: string;
+  name: string; // e.g. "Мусор", "Станок жөндеу"
+  amountTiyn: number;
+  date: string; // YYYY-MM-DD in Asia/Almaty
+  comment?: string;
+  /**
+   * Which pot the money came out of. Unset means cash: every expense logged before the two pots
+   * were separated was paid out of the drawer, which is what "мусорға 15 000" is.
+   */
+  account?: CashAccount;
+  createdByUid: string;
+  createdByName: string;
   createdAt?: Timestamp;
 }
 
@@ -298,6 +387,14 @@ export interface Order {
   expectedCompletionAt?: Timestamp;
   cuttingConsumedAt?: Timestamp;
   cuttingConsumedMovementId?: string;
+  /** Sheets already taken out of the warehouse for this order (at cutting-queue entry). */
+  cuttingConsumedQty?: number;
+  /**
+   * Per-material progress on the shop floor, written when the order enters the cutting queue. A
+   * merged order (5 sheets of Ақ + 3 of ХДФ) is cut and edged one material at a time, so each line
+   * starts and finishes on its own — and each is taken from its own warehouse balance.
+   */
+  lineJobs?: OrderLineJob[];
   cancelledAt?: Timestamp;
   cancelReason?: string;
 }
@@ -441,6 +538,10 @@ export interface SalaryRule {
    *  a countertop than for ЛДСП. Each falls back to perSheetTiyn when not set. */
   perHdfSheetTiyn?: number;
   perCountertopTiyn?: number;
+  /** МДФ is priced with ЛДСП in the shop's actual pay rule (both 600 ₸/лист) — a separate field
+   *  rather than folding МДФ sheets into ldspSheets so a cutter's own material breakdown stays
+   *  honest even though the two categories happen to share one rate today. */
+  perMdfSheetTiyn?: number;
   perPvcMeterTiyn?: number;
   perOrderTiyn?: number;
   hourlyTiyn?: number;
@@ -474,6 +575,7 @@ export interface SalaryEntry {
   ldspSheets?: number;
   hdfSheets?: number;
   countertopSheets?: number;
+  mdfSheets?: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;
@@ -554,6 +656,12 @@ export interface Payment {
   reversed: boolean;
   reversalReason?: string;
   reversalOf?: string;
+  /**
+   * Set when the journal's "Біріктіру" moved this payment onto the surviving order — the id of
+   * the absorbed row it was originally taken on. No money changed; see lib/payments.ts's
+   * reattachPayments and the narrow diff firestore.rules allows for it.
+   */
+  mergedFromOrderId?: string;
   createdAt?: Timestamp;
 }
 

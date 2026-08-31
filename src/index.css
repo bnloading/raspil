@@ -205,7 +205,8 @@
   --jt-tint-pvc: #f6fbf8;
   --jt-tint-total: #f2f6ff;
   --jt-tint-pay: #fdf9f3;
-  --jt-tint-debt: #fdf5f5;
+  /* A merged order's child rows: quieter than the parent so one order still reads as one block. */
+  --jt-tint-subrow: #fafbfd;
 
   /* Charts */
   --chart-green: #16a34a;
@@ -226,6 +227,42 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/*
+ * One focus ring for the whole app.
+ *
+ * Most controls here were falling back to the browser's own outline, which differs between
+ * Chrome, Safari and Firefox and reads as an accident rather than a design. A handful had it
+ * switched off with no replacement at all — the journal's "Төлем түрі" button among them — which
+ * leaves anyone driving the ledger from the keyboard with no idea where they are.
+ *
+ * `:focus-visible`, not `:focus`, so a mouse click never draws a ring the pointer already
+ * answered — the ring appears when tabbing, which is when it is needed. Drawn as an outline with
+ * an offset rather than a box-shadow so it stays visible over any background and never changes
+ * layout, and at 2px/3:1 contrast per WCAG 2.2's focus-appearance guidance.
+ *
+ * Controls that define a richer indicator of their own (the ledger cells' border + soft ring, the
+ * payment-status pill) override this from their own rule; this is the floor, not a ceiling.
+ *
+ * Measured in Chromium: this lands on most controls, while a few (.btn, plain links) keep the
+ * browser's own 3px currentColor ring instead, for a cascade reason I could not pin down. Both
+ * are visible and high-contrast, so the accessibility floor holds either way — but it is worth
+ * knowing that the ring is not pixel-identical everywhere before someone "fixes" it twice.
+ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* Inside the dense ledger an offset ring would overlap the neighbouring cell, so it sits tight. */
+.journal-table :focus-visible {
+  outline-offset: 0;
 }
 
 html {
@@ -611,6 +648,23 @@ textarea.form-input {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Тарих (cutter history): a day sub-header inside a week's panel-card, above that day's rows. */
+.cutter-history-day {
+  margin-top: 14px;
+}
+.cutter-history-day:first-of-type {
+  margin-top: 8px;
+}
+.cutter-history-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
 }
 .warehouse-low {
   color: var(--danger);
@@ -3071,6 +3125,20 @@ body {
   gap: 6px;
   margin-bottom: 10px;
 }
+/* A fixed, small set of tabs (customer's 4 order buckets) that must always show every option at
+ * once — unlike the open-ended per-status row on Admin/Manager Заказдар (which can have a dozen
+ * buttons and genuinely needs to scroll), so it must never inherit that row's scroll behaviour.
+ *
+ * Flex items get an implicit `min-width: auto` — the width of their own text — which is exactly
+ * what lets the scrollable row hold its buttons at readable size and overflow instead of
+ * squeezing them. For a row that must always fit, that same default is the bug: on a narrow phone
+ * the four buttons' natural widths summed past the viewport, so the last one (Қарыз) was clipped
+ * at the screen edge with no visible hint that it was reachable by a horizontal swipe. `min-width:
+ * 0` lets `flex: 1` actually do its job and shrink each button to its fair equal share.
+ */
+.status-filter-row.is-compact .status-filter-btn {
+  min-width: 0;
+}
 .status-filter-btn {
   flex: 1;
   padding: 8px 4px;
@@ -4300,20 +4368,30 @@ body {
 /* Balanced against real content: money needs room for "65 000", the name and material columns for
    actual names, the counts almost none.
 
-   These sum to 100 across the 16 actual columns (2 × qty, 6 × money, one each of the rest).
+   These sum to ~100 across the 17 actual columns (2 × qty, 5 × money, one each of the rest).
    Overshooting the total makes the browser rescale everything proportionally, which quietly
    shrinks the narrowest column — the actions cell — until its buttons no longer fit. */
 @media (min-width: 768px) {
   .journal-table .jt-col-num { width: 3.2%; }
-  .journal-table .jt-col-name { width: 8.8%; }
-  .journal-table .jt-w-phone { width: 7%; }
-  .journal-table .jt-w-mat { width: 7.4%; }
+  .journal-table .jt-col-name { width: 8%; }
+  .journal-table .jt-w-phone { width: 5.2%; }
+  .journal-table .jt-w-mat { width: 6.4%; }
   .journal-table .jt-w-qty { width: 3.8%; }
-  .journal-table .jt-w-money { width: 6.7%; }
+  .journal-table .jt-w-money { width: 5.8%; }
+  /* ПВХ түсі: a colour name and its thickness, ellipsised — the picker's full list is readable
+     when it opens, so the cell only has to be wide enough to recognise the colour already on it. */
+  .journal-table .jt-w-pvc { width: 6.2%; }
+  /* Wide enough for the whole word: "Жартылай" abbreviated to "Жарт." was unreadable, and a
+     payment status that cannot be read is worse than a column that costs 0.8%. */
   .journal-table .jt-w-status { width: 5.8%; }
-  .journal-table .jt-w-date { width: 6.3%; }
-  .journal-table .jt-w-method { width: 7.3%; }
-  .journal-table .jt-w-act { width: 5.4%; }
+  /* The widest column after the client name: the Қалдық figure gave up its place to a real
+     button, and a button labelled "Распилға жіберу" has to fit that label. */
+  .journal-table .jt-w-cut { width: 9.2%; }
+  /* Wider than it was: the cell holds a real date picker now, not a printed date. */
+  .journal-table .jt-w-date { width: 6.4%; }
+  .journal-table .jt-w-method { width: 6.2%; }
+  /* Three controls now — the save dot, ＋ (add a material to this order) and ↗. */
+  .journal-table .jt-w-act { width: 6.4%; }
 }
 /* Nothing may spill out of its column, or the ellipsis never happens. */
 .journal-table td,
@@ -4372,7 +4450,6 @@ body {
 .jt-tint-pvc { background: var(--jt-tint-pvc); }
 .jt-tint-total { background: var(--jt-tint-total); }
 .jt-tint-pay { background: var(--jt-tint-pay); }
-.jt-tint-debt { background: var(--jt-tint-debt); }
 
 .jt-num { text-align: right; }
 .jt-num input { text-align: right; }
@@ -4469,6 +4546,15 @@ body {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
+/* The Статус cell is a <select> now, but it has to keep reading as the pill it replaced: the
+   native chrome is dropped and the colour still comes from the .jt-pay-<status> class. */
+.jt-pay-select {
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+  text-align-last: center;
+  padding-inline: 4px;
+}
 
 /* "Төлем түрі" reads as a plain cell until hovered, then as the button it is. */
 .jt-method-btn {
@@ -4490,11 +4576,23 @@ body {
   color: var(--text-secondary);
   font-weight: 600;
 }
-.jt-method-btn:hover,
-.jt-method-btn:focus {
+/* Hover only. This used to also match :focus and kill the outline, which left the one control in
+   the row that opens a dialog with no keyboard indicator at all — the global :focus-visible ring
+   above is what it gets now. */
+.jt-method-btn:hover {
   border-color: var(--primary-light);
   background: var(--card);
-  outline: none;
+}
+
+/* "Кесу" column — the .btn-sm base is sized for a panel, not a table cell this narrow. */
+.jt-cut-btn {
+  width: 100%;
+  height: 26px;
+  padding: 0 4px;
+  font-size: var(--jt-font-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Payment dialog — methods as tap targets rather than a dropdown. */
@@ -4519,6 +4617,22 @@ body {
   border-color: var(--primary);
   background: var(--primary);
   color: #fff;
+}
+/* One recorded payment inside the dialog: the sum is fixed, the method beside it is not. */
+.pay-recorded-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pay-recorded-row .form-input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.pay-recorded-sum {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .jt-paid {
   color: var(--emerald);
@@ -6768,6 +6882,75 @@ body {
 .ocard-mid { margin: 6px 0 4px; }
 .ocard-meta { margin-bottom: 12px; }
 
+/* ── Worker job cards (Распил кезегі): an order card that can be acted on, not just opened ── */
+.job-card-list {
+  display: grid;
+  gap: 10px;
+}
+.worker-current-money {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.job-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+/* Choosing a duration replaces the start button with the picker, which needs the whole width
+   rather than the half-row the button was sitting in. */
+.job-card-actions .wizard-actions {
+  flex: 1 0 100%;
+}
+
+/* Cutting/PVC action panel: one row per material line on a merged order, so ЛДСП and ХДФ (say)
+   each get their own start/finish rather than being forced through as a single blended job. */
+.cutting-actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cutting-line-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.cutting-line-row.is-done {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  opacity: 0.75;
+}
+.cutting-line-material {
+  font-weight: 600;
+}
+.cutting-line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cutting-line-row .form-group {
+  margin-bottom: 0;
+}
+/* The start control comes from CuttingActionsPanel, whose button is full-width by default —
+   inside a card it shares the row with "Размерлер". The duration picker that replaces it on
+   click needs the whole row instead, so the wrapper grows rather than the button. */
+.job-card-actions > :last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.job-card-actions .btn-full {
+  width: 100%;
+}
+
 /* ── Өндіріс барысы strip ── */
 .oprog {
   display: flex;
@@ -7129,6 +7312,90 @@ body {
 }
 .jt-merged:hover { background: var(--primary-soft); }
 
+/* ── Journal: merged rows, and the cells that were reading wrong ──────────────────────────────
+   A merged order is a parent row plus one sub-row per material. The sub-rows are indented and
+   quieter than the parent so the eye still reads one order per block, not two orders. */
+.jt-row.is-parent td {
+  border-bottom-color: transparent;
+}
+.jt-subrow td {
+  height: 32px;
+  background: var(--jt-tint-subrow);
+}
+.jt-subrow .jt-tint-material { background: var(--jt-tint-material); }
+.jt-subrow .jt-tint-pvc { background: var(--jt-tint-pvc); }
+.jt-subrow .jt-tint-total { background: var(--jt-tint-total); }
+.jt-subrow-label {
+  font-size: var(--jt-font-sm);
+  padding-left: 16px !important;
+}
+.jt-subtotal {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The aggregate a parent row shows in place of an editable cell: same alignment as the input it
+   replaces, but plainly not a field you can type in. */
+.jt-agg {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Overpayment, on the phone card beside the debt figure. The ledger table has no Қалдық column
+   any more (the Статус cell answers it, and its tooltip carries the figure), but a card has room
+   to say "Артық 9 500" outright rather than leaving it to a hover nobody has on a phone. */
+.jt-over {
+  color: var(--info);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Төленген is an input now; it keeps the green of the figure it replaced once money is on it. */
+.journal-table .jt-input-num.is-paid {
+  color: var(--emerald);
+  font-weight: 600;
+}
+.journal-table .jt-input-date {
+  font-size: var(--jt-font-sm);
+  padding: 0 2px;
+}
+
+/* One-click repair for payments a pre-fix merge left on a row the ledger no longer shows. Amber,
+   not red: nothing is broken for the shop, the numbers on screen are already right — this is
+   what makes the stored data agree with them. */
+.journal-repair {
+  border-color: var(--warning);
+  color: #b45309;
+  background: var(--warning-light);
+}
+/* The one-line keyboard hint under the ledger. Muted on purpose: it is read once and then
+   ignored, so it must never compete with the numbers above it. */
+.journal-keys {
+  margin: 8px 2px 0;
+  font-size: 0.72rem;
+  color: var(--text-light);
+}
+.journal-keys kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--card);
+  font: inherit;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+@media print {
+  .journal-keys { display: none; }
+}
+
+.journal-repair:hover {
+  background: var(--warning);
+  color: #fff;
+}
+
 /* Salary: the advance overdraw warning */
 .salary-overdrawn {
   margin-top: 10px;
@@ -7152,4 +7419,202 @@ body {
    page — is what must be scrollable, and it needs to be reachable by touch. */
 .data-table-wrap {
   -webkit-overflow-scrolling: touch;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────────────────────
+   Касса — the shop's two money pots and the expense log (src/pages/manager/ManagerCashbox.tsx) */
+.cashbox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.cashbox-period {
+  width: auto;
+  min-width: 160px;
+  margin-right: auto;
+}
+
+/* Two cards side by side on anything wider than a phone: the whole point of the page is reading
+   the deposit against the drawer, and stacking them puts one off screen. */
+.cashbox-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.cashbox-card {
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.cashbox-card.is-deposit { border-left-color: var(--info); }
+.cashbox-card.is-cash { border-left-color: var(--emerald); }
+.cashbox-card header h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+.cashbox-card header p {
+  margin: 2px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-light);
+}
+.cashbox-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cashbox-balance-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.cashbox-balance strong {
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* Spending a pot past what came into it that month is real and is shown, not clamped. */
+.cashbox-balance strong.is-negative { color: var(--danger); }
+
+.cashbox-flow {
+  display: flex;
+  gap: 22px;
+  margin: 0;
+}
+.cashbox-flow div { flex: 1 1 0; }
+.cashbox-flow dt {
+  font-size: 0.74rem;
+  color: var(--text-light);
+}
+.cashbox-flow dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cashbox-flow dd.is-in { color: var(--emerald); }
+.cashbox-flow dd.is-out { color: var(--danger); }
+.cashbox-count {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-light);
+}
+
+/* The split behind "Түсті" — which method actually brought the money in. */
+.cashbox-methods {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px dashed var(--border);
+}
+.cashbox-methods li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.82rem;
+}
+.cashbox-methods strong { font-variant-numeric: tabular-nums; }
+
+.cashbox-total {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+  padding: 12px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+}
+.cashbox-total strong {
+  margin-left: 6px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cashbox-total strong.is-in { color: var(--emerald); }
+.cashbox-total strong.is-out { color: var(--danger); }
+
+/* One row, not a modal: an expense is written between two customers, and a dialog that has to be
+   opened first is the reason expenses stop being written down. */
+.cashbox-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.cashbox-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cashbox-field.is-wide { grid-column: span 2; }
+.cashbox-field > span {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.cashbox-submit { white-space: nowrap; }
+
+.cashbox-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.cashbox-tag.is-deposit { background: var(--info-light); color: var(--info); }
+.cashbox-tag.is-cash { background: var(--emerald-light); color: var(--emerald); }
+
+.cashbox-groups,
+.cashbox-mapping {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cashbox-groups li,
+.cashbox-mapping li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cashbox-groups li:last-child,
+.cashbox-mapping li:last-child { border-bottom: none; }
+.cashbox-group-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+.cashbox-groups strong { font-variant-numeric: tabular-nums; }
+.cashbox-mapping li > span {
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+.cashbox-mapping .form-input {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 140px;
+}
+
+@media (max-width: 640px) {
+  .cashbox-field.is-wide { grid-column: span 1; }
+  .cashbox-total { gap: 14px; }
+}
+
+/* A 24px icon button is fine under a mouse and awkward under a thumb. Inside the stacked mobile
+   tables — where the Касса's delete button lives — the hit area grows to the 44px a finger
+   actually needs, without the glyph itself changing size. */
+@media (max-width: 767px) {
+  .data-table .jt-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
 }

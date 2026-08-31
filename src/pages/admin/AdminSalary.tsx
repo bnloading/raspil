@@ -295,12 +295,18 @@ function SalaryRuleEditor({
   busy: boolean;
   onSave: (rule: RuleDraft) => void;
 }) {
+  // The engine treats an unset category rate as "same as ЛДСП" (see lib/salary.ts's
+  // pieceRateTotal), but this form always saves every field it shows — so a category field left
+  // untouched has to start out already equal to the base rate, not at 0, or saving would silently
+  // zero out a category the admin never meant to touch.
+  const sameAsBase = rule?.perSheetTiyn ?? 0;
   const [draft, setDraft] = useState<RuleDraft>({
     mode: rule?.mode ?? "MANUAL",
     fixedMonthlyTiyn: rule?.fixedMonthlyTiyn ?? 0,
     perSheetTiyn: rule?.perSheetTiyn ?? 0,
-    perHdfSheetTiyn: rule?.perHdfSheetTiyn ?? 0,
-    perCountertopTiyn: rule?.perCountertopTiyn ?? 0,
+    perHdfSheetTiyn: rule?.perHdfSheetTiyn ?? sameAsBase,
+    perCountertopTiyn: rule?.perCountertopTiyn ?? sameAsBase,
+    perMdfSheetTiyn: rule?.perMdfSheetTiyn ?? sameAsBase,
     perPvcMeterTiyn: rule?.perPvcMeterTiyn ?? 0,
     perOrderTiyn: rule?.perOrderTiyn ?? 0,
     hourlyTiyn: rule?.hourlyTiyn ?? 0,
@@ -336,10 +342,24 @@ function SalaryRuleEditor({
             </div>
           )}
           {(draft.mode === "PER_SHEET" || draft.mode === "MIXED") && (
-            <div className="form-group">
-              <label>Лист үшін (₸)</label>
-              <MoneyInput valueTiyn={draft.perSheetTiyn ?? 0} onChange={(v) => patch({ perSheetTiyn: v })} />
-            </div>
+            <>
+              <div className="form-group">
+                <label>ЛДСП лист үшін (₸)</label>
+                <MoneyInput valueTiyn={draft.perSheetTiyn ?? 0} onChange={(v) => patch({ perSheetTiyn: v })} />
+              </div>
+              <div className="form-group">
+                <label>ХДФ лист үшін (₸)</label>
+                <MoneyInput valueTiyn={draft.perHdfSheetTiyn ?? 0} onChange={(v) => patch({ perHdfSheetTiyn: v })} />
+              </div>
+              <div className="form-group">
+                <label>Столешница үшін (₸)</label>
+                <MoneyInput valueTiyn={draft.perCountertopTiyn ?? 0} onChange={(v) => patch({ perCountertopTiyn: v })} />
+              </div>
+              <div className="form-group">
+                <label>МДФ лист үшін (₸)</label>
+                <MoneyInput valueTiyn={draft.perMdfSheetTiyn ?? 0} onChange={(v) => patch({ perMdfSheetTiyn: v })} />
+              </div>
+            </>
           )}
           {(draft.mode === "PER_PVC_METER" || draft.mode === "MIXED") && (
             <div className="form-group">

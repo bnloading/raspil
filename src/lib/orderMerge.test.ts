@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Timestamp } from "firebase/firestore";
-import { planMerge, linesOf, lineFromOrder, describeLines } from "./orderMerge";
-import type { Order } from "../types/domain";
+import { planMerge, linesOf, lineFromOrder, describeLines, findStrandedPayments, liveOrderIdFor } from "./orderMerge";
+import type { Order, Payment } from "../types/domain";
 
 const T = (n: number) => n * 100;
 const at = (sec: number) => Timestamp.fromMillis(sec * 1000);
@@ -147,5 +147,59 @@ describe("describeLines", () => {
     const r = planMerge([asetAk, asetHdf]);
     if (!("plan" in r)) throw new Error(r.refusal);
     expect(describeLines(r.plan.update.items)).toBe("5 лист ЛДСП Ақ · 3 лист ХДФ");
+  });
+});
+
+
+/**
+ * Payments must follow the order they were taken for.
+ *
+ * The shop's own ledger showed the failure: three merged rows reported 105 500 ₸ still owed while
+ * the page footer, which reads the order's own paidTiyn, said the day was settled. The money was
+ * on payment documents still pointing at the absorbed rows the journal no longer shows.
+ */
+describe("findStrandedPayments", () => {
+  const pay = (overrides: Partial<Payment>): Payment => ({
+    id: "p", orderId: "a", amountTiyn: T(1000), methodId: "cash", methodName: "Нал",
+    paymentDate: at(1000), recordedByUid: "u", recordedByName: "M", reversed: false,
+    ...overrides,
+  });
+
+  const keep = order({ id: "keep" });
+  const absorbed = order({ id: "absorbed", productionStatus: "cancelled", mergedIntoOrderId: "keep" });
+
+  it("finds a payment left on an absorbed row and names the order it belongs to", () => {
+    const stranded = findStrandedPayments([keep, absorbed], [pay({ id: "p1", orderId: "absorbed" })]);
+    expect(stranded).toEqual([{ paymentId: "p1", fromOrderId: "absorbed", toOrderId: "keep" }]);
+  });
+
+  it("leaves payments already on a live order alone", () => {
+    expect(findStrandedPayments([keep, absorbed], [pay({ id: "p1", orderId: "keep" })])).toEqual([]);
+  });
+
+  it("moves a reversed payment too, so an order's history stays in one place", () => {
+    const stranded = findStrandedPayments([keep, absorbed], [pay({ id: "p1", orderId: "absorbed", reversed: true })]);
+    expect(stranded.map((s) => s.paymentId)).toEqual(["p1"]);
+  });
+
+  it("follows a chain of merges to the order that is still live", () => {
+    const middle = order({ id: "middle", productionStatus: "cancelled", mergedIntoOrderId: "keep" });
+    const first = order({ id: "first", productionStatus: "cancelled", mergedIntoOrderId: "middle" });
+    const stranded = findStrandedPayments([keep, middle, first], [pay({ id: "p1", orderId: "first" })]);
+    expect(stranded).toEqual([{ paymentId: "p1", fromOrderId: "first", toOrderId: "keep" }]);
+  });
+
+  it("refuses to move money onto an order that is not loaded", () => {
+    const orphan = order({ id: "orphan", mergedIntoOrderId: "not-here" });
+    expect(findStrandedPayments([orphan], [pay({ id: "p1", orderId: "orphan" })])).toEqual([]);
+  });
+
+  it("does nothing at all when no order was ever merged", () => {
+    expect(findStrandedPayments([keep], [pay({ id: "p1", orderId: "keep" })])).toEqual([]);
+  });
+
+  it("stops on a corrupt merge cycle rather than looping forever", () => {
+    const chain = new Map([["a", "b"], ["b", "a"]]);
+    expect(["a", "b"]).toContain(liveOrderIdFor("a", chain));
   });
 });

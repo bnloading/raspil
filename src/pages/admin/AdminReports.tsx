@@ -6,6 +6,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments, useAllInventoryMovements } from "../../hooks/useReports";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useExpenseCategories } from "../../hooks/useExpenseCategories";
+import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useToast } from "../../hooks";
 import { BarChart } from "../../components/BarChart";
@@ -14,6 +15,8 @@ import { dayKey, formatDateDMY, monthKey } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { PRODUCTION_STATUS_LABELS } from "../../lib/statuses";
 import { addExpenseCategory, deleteExpenseCategory, updateExpenseCategory } from "../../lib/expenseCategories";
+import { addExpense, deleteExpense } from "../../lib/expenses";
+import { MoneyInput } from "../../components/MoneyInput";
 import { useAuth } from "../../AuthContext";
 import { computePvcUsage } from "../../lib/pvcUsage";
 import {
@@ -22,7 +25,8 @@ import {
   MACHINE_WASTE_PCT,
   type FinanceSummary,
 } from "../../lib/finance";
-import type { ExpenseCategory } from "../../types/domain";
+import { CASH_ACCOUNTS, CASH_ACCOUNT_LABELS, accountForExpense } from "../../lib/cashbox";
+import type { CashAccount, Expense, ExpenseCategory } from "../../types/domain";
 import {
   computeCutterProductivity,
   computeKpis,
@@ -33,7 +37,7 @@ import {
   computePvcProductivity,
 } from "../../lib/dashboardStats";
 
-type Tab = "dashboard" | "finance" | "pvc" | "sales" | "payments" | "production" | "warehouse" | "expenses";
+type Tab = "dashboard" | "finance" | "pvc" | "sales" | "payments" | "production" | "warehouse" | "expenses" | "expenselog";
 
 export default function AdminReports() {
   const { userData } = useAuth();
@@ -45,6 +49,7 @@ export default function AdminReports() {
   const { materials } = useMaterials(false);
   const { pvcTypes } = usePvcTypes(false);
   const { categories, loading: categoriesLoading } = useExpenseCategories();
+  const { expenses, loading: expensesLoading } = useExpenses();
   const { message, visible, showToast } = useToast();
 
   const loading = ordersLoading || paymentsLoading || movementsLoading;
@@ -52,9 +57,10 @@ export default function AdminReports() {
   return (
     <AppShell title="Есептер" subtitle="Сату, төлемдер, өндіріс, қойма есептері">
       <div className="tab-pill-row">
-        {/* Editing the allocation percentages writes to an Admin-only collection, so a Manager
-            sees the resulting numbers on Қаржы but is not offered the settings tab. */}
-        {(["dashboard", "finance", "pvc", "sales", "payments", "production", "warehouse", ...(isAdmin ? ["expenses"] : [])] as Tab[]).map((t) => (
+        {/* Editing the allocation percentages (or logging an expense) writes to an Admin-only
+            collection, so a Manager sees the resulting numbers on Қаржы but is not offered either
+            settings tab. */}
+        {(["dashboard", "finance", "pvc", "sales", "payments", "production", "warehouse", ...(isAdmin ? ["expenses", "expenselog"] : [])] as Tab[]).map((t) => (
           <button key={t} className={`tab-pill${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
             {tabLabel(t)}
           </button>
@@ -66,7 +72,7 @@ export default function AdminReports() {
       ) : (
         <>
           {tab === "dashboard" && <DashboardTab orders={orders} payments={payments} movements={movements} materials={materials} />}
-          {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} />}
+          {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} expenses={expenses} />}
           {tab === "pvc" && <PvcTab orders={orders} pvcTypes={pvcTypes} />}
           {tab === "sales" && <SalesTab orders={orders} />}
           {tab === "payments" && <PaymentsTab payments={payments} orders={orders} />}
@@ -74,6 +80,9 @@ export default function AdminReports() {
           {tab === "warehouse" && <WarehouseTab movements={movements} materials={materials} />}
           {tab === "expenses" && (
             <ExpenseCategoriesTab categories={categories} loading={categoriesLoading} showToast={showToast} />
+          )}
+          {tab === "expenselog" && (
+            <ExpenseLogTab expenses={expenses} loading={expensesLoading} orders={orders} showToast={showToast} />
           )}
         </>
       )}
@@ -93,6 +102,7 @@ function tabLabel(t: Tab): string {
     production: "Өндіріс",
     warehouse: "Қойма",
     expenses: "Шығын санаттары",
+    expenselog: "Сыртқа шығын",
   }[t];
 }
 
@@ -271,6 +281,208 @@ function ExpenseCategoryModal({
 }
 
 /**
+ * "Сыртқа шығын" — real, one-off costs the admin types in by hand (мусор, жөндеу, жеткізу…), each
+ * on its own date. Unlike the percentage categories above, this is not a standing rule: it is a
+ * dated log, and every entry here is subtracted from that month's net profit on Қаржы.
+ */
+function ExpenseLogTab({
+  expenses,
+  loading,
+  orders,
+  showToast,
+}: {
+  expenses: Expense[];
+  loading: boolean;
+  orders: ReturnType<typeof useAllOrders>["orders"];
+  showToast: (msg: string) => void;
+}) {
+  const { userData, user } = useAuth();
+  const [adding, setAdding] = useState(false);
+
+  const months = useMemo(() => {
+    // The picker always offers the current month, even before any order or expense exists in it.
+    const set = new Set(availableMonths(orders));
+    set.add(dayKey(new Date()).slice(0, 7));
+    return [...set].sort().reverse();
+  }, [orders]);
+  const [period, setPeriod] = useState<string>(() => months[0]);
+
+  const filtered = useMemo(
+    () => expenses.filter((e) => e.date.startsWith(period)).sort((a, b) => b.date.localeCompare(a.date)),
+    [expenses, period],
+  );
+  const totalTiyn = filtered.reduce((s, e) => s + e.amountTiyn, 0);
+
+  const handleDelete = async (expense: Expense) => {
+    if (!user || !userData) return;
+    if (!confirm(`"${expense.name}" — ${formatMoney(expense.amountTiyn)} жазбасын өшіресіз бе?`)) return;
+    try {
+      await deleteExpense(db, { user, userData }, expense);
+      showToast("✅ Жазба өшірілді");
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  return (
+    <div className="panel-card">
+      <div className="panel-head">
+        <h3>Сыртқа шығын</h3>
+        <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+          + Шығын қосу
+        </button>
+      </div>
+
+      <div className="chart-card-head">
+        <span>Кезең: {monthName(period)}</span>
+        <select className="form-select-material" value={period} onChange={(e) => setPeriod(e.target.value)}>
+          {months.map((m) => (
+            <option key={m} value={m}>{monthName(m)}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="summary-row" style={{ marginBottom: 12 }}>
+        <span>{monthName(period)} — барлық шығын</span>
+        <strong className="jt-debt">{formatMoney(totalTiyn)}</strong>
+      </div>
+
+      {loading ? (
+        <Spinner />
+      ) : filtered.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon">📭</div>
+          <p>Бұл айда шығын жазылмаған</p>
+        </div>
+      ) : (
+        <div className="data-table-wrap">
+          <table className="data-table stack-mobile">
+            <thead>
+              <tr>
+                <th>Күні</th>
+                <th>Атауы</th>
+                <th>Қай кассадан</th>
+                <th className="num">Сомасы</th>
+                <th>Себебі</th>
+                <th>Кім жазды</th>
+                <th>Әрекеттер</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((e) => (
+                <tr key={e.id}>
+                  <td data-label="Күні">{formatDateDMY(new Date(`${e.date}T12:00:00+05:00`))}</td>
+                  <td data-label="Атауы"><strong>{e.name}</strong></td>
+                  <td data-label="Қай кассадан">
+                    <span className={`cashbox-tag is-${accountForExpense(e)}`}>
+                      {CASH_ACCOUNT_LABELS[accountForExpense(e)]}
+                    </span>
+                  </td>
+                  <td className="num jt-debt" data-label="Сомасы">−{formatMoney(e.amountTiyn)}</td>
+                  <td data-label="Себебі" className="otable-sub">{e.comment || "—"}</td>
+                  <td data-label="Кім жазды" className="otable-sub">{e.createdByName}</td>
+                  <td data-label="Әрекеттер">
+                    <button className="btn btn-outline btn-sm" onClick={() => handleDelete(e)}>
+                      Жою
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {adding && <ExpenseModal onClose={() => setAdding(false)} showToast={showToast} />}
+    </div>
+  );
+}
+
+function ExpenseModal({
+  onClose,
+  showToast,
+}: {
+  onClose: () => void;
+  showToast: (msg: string) => void;
+}) {
+  const { user, userData } = useAuth();
+  const [name, setName] = useState("");
+  const [amountTiyn, setAmountTiyn] = useState(0);
+  const [date, setDate] = useState(() => dayKey(new Date()));
+  const [account, setAccount] = useState<CashAccount>("cash");
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || !userData) return;
+    if (!name.trim() || amountTiyn <= 0) {
+      showToast("Атауы мен соманы дұрыс толтырыңыз");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await addExpense(db, { user, userData }, { name: name.trim(), amountTiyn, date, account, comment: comment.trim() });
+      showToast("✅ Шығын жазылды");
+      onClose();
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <h2>➕ Жаңа шығын</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Атауы</label>
+            <input
+              className="form-input"
+              placeholder="Мусор, жөндеу, жеткізу…"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Сомасы (₸)</label>
+            <MoneyInput valueTiyn={amountTiyn} onChange={setAmountTiyn} />
+          </div>
+          {/* Which pot it came out of — the same field the Manager fills in on Касса, so an
+              expense logged from either page lands on the right balance there. */}
+          <div className="form-group">
+            <label>Қай кассадан</label>
+            <select className="form-input" value={account} onChange={(e) => setAccount(e.target.value as CashAccount)}>
+              {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Күні</label>
+            <input type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label>Себебі (міндетті емес)</label>
+            <input className="form-input" value={comment} onChange={(e) => setComment(e.target.value)} />
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Болдырмау
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              Сақтау
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
  * "Жалпы біздегі сумма" — the shop's money in one place, for a month or for all time, ending in
  * the standing rule that a slice of each month's profit is set aside for the machine and waste.
  */
@@ -278,22 +490,24 @@ function FinanceTab({
   orders,
   payments,
   categories,
+  expenses,
 }: {
   orders: ReturnType<typeof useAllOrders>["orders"];
   payments: ReturnType<typeof useAllPayments>["payments"];
   categories: ExpenseCategory[];
+  expenses: Expense[];
 }) {
   const months = useMemo(() => availableMonths(orders), [orders]);
   const [period, setPeriod] = useState<string | null>(() => months[0] ?? null);
   const { costs: purchaseByMaterialId, available: costsVisible } = useMaterialCosts();
 
   const s = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, period }),
-    [orders, payments, purchaseByMaterialId, categories, period],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period }),
+    [orders, payments, purchaseByMaterialId, categories, expenses, period],
   );
   const allTime = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, period: null }),
-    [orders, payments, purchaseByMaterialId, categories],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null }),
+    [orders, payments, purchaseByMaterialId, categories, expenses],
   );
 
   const periodName = period ? monthName(period) : "Барлық уақыт";
@@ -305,6 +519,7 @@ function FinanceTab({
     { Көрсеткіш: "Материал өзіндік құны", Сома: s.costTiyn / 100 },
     { Көрсеткіш: "Жалпы пайда", Сома: s.grossProfitTiyn / 100 },
     ...s.allocations.map((a) => ({ Көрсеткіш: `${a.name} (${a.percentage}%)`, Сома: a.amountTiyn / 100 })),
+    ...(s.fixedExpensesTiyn > 0 ? [{ Көрсеткіш: "Сыртқа шығын", Сома: s.fixedExpensesTiyn / 100 }] : []),
     { Көрсеткіш: "Таза пайда", Сома: s.netProfitTiyn / 100 },
   ];
 
@@ -368,6 +583,15 @@ function FinanceTab({
               <strong>−{formatMoney(a.amountTiyn)}</strong>
             </div>
           ))}
+
+          {/* Only shown when the month actually has a logged expense — an admin who never uses
+              "Сыртқа шығын" sees exactly the breakdown they always saw. */}
+          {s.fixedExpensesTiyn > 0 && (
+            <div className="summary-row">
+              <span>Сыртқа шығын</span>
+              <strong>−{formatMoney(s.fixedExpensesTiyn)}</strong>
+            </div>
+          )}
 
           <div className="summary-row is-final">
             <span>Таза пайда</span>

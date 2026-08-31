@@ -9,11 +9,24 @@ import { computePaymentStatus } from "./statuses";
  * never display one total and save another. See src/lib/journal.test.ts.
  */
 
-export interface JournalRowInput {
+/** One material line of a journal row: sheets at a price, plus its own edge banding. */
+export interface JournalLineInput {
   sheetQty: number;
   sheetPriceTiyn: number;
   pvcMeters: number;
   pvcPricePerMeterTiyn: number;
+}
+
+/**
+ * A journal row is always a list of lines, never a single material.
+ *
+ * A plain walk-in is a one-line row; a merged order ("2 материал") is a two-line row. Before this,
+ * a merged row was priced as `total sheets × the FIRST line's price`, which quietly rewrote the
+ * order's real total the moment anyone touched the row. Summing per line is the only arithmetic
+ * that is right for both shapes, so there is only one shape now.
+ */
+export interface JournalRowInput {
+  lines: JournalLineInput[];
   hdfCostTiyn: number;
   cuttingCostTiyn: number;
   extraServicesTiyn: number;
@@ -22,7 +35,16 @@ export interface JournalRowInput {
   paidTiyn: number;
 }
 
+export interface JournalLineTotals {
+  materialCostTiyn: number;
+  pvcCostTiyn: number;
+  /** What this one line alone is worth — order-level extras and the discount are not in here. */
+  lineTotalTiyn: number;
+}
+
 export interface JournalRowTotals {
+  /** Index-aligned with the input lines, so each sub-row can show its own money. */
+  lineTotals: JournalLineTotals[];
   materialCostTiyn: number;
   pvcCostTiyn: number;
   totalTiyn: number;
@@ -30,14 +52,22 @@ export interface JournalRowTotals {
   paymentStatus: PaymentStatus;
 }
 
+/** Sheets × price and metres × rate for a single line, rounded to whole tiyn. */
+export function computeLineTotals(line: JournalLineInput): JournalLineTotals {
+  const materialCostTiyn = Math.round(line.sheetQty * line.sheetPriceTiyn);
+  const pvcCostTiyn = Math.round(line.pvcMeters * line.pvcPricePerMeterTiyn);
+  return { materialCostTiyn, pvcCostTiyn, lineTotalTiyn: materialCostTiyn + pvcCostTiyn };
+}
+
 /**
- * Sheet total + PVC total + HDF + cutting + extras + delivery − discount = final total, then
- * debt = total − paid. Never clamps `debt` at zero: an overpaid order legitimately carries a
+ * Every line's sheets + PVC, then + HDF + cutting + extras + delivery − discount = final total,
+ * then debt = total − paid. Never clamps `debt` at zero: an overpaid order legitimately carries a
  * negative balance, which "Артық төленді" then reports rather than silently hiding.
  */
 export function computeJournalRowTotals(input: JournalRowInput): JournalRowTotals {
-  const materialCostTiyn = Math.round(input.sheetQty * input.sheetPriceTiyn);
-  const pvcCostTiyn = Math.round(input.pvcMeters * input.pvcPricePerMeterTiyn);
+  const lineTotals = input.lines.map(computeLineTotals);
+  const materialCostTiyn = lineTotals.reduce((s, l) => s + l.materialCostTiyn, 0);
+  const pvcCostTiyn = lineTotals.reduce((s, l) => s + l.pvcCostTiyn, 0);
   const totalTiyn = Math.max(
     0,
     materialCostTiyn +
@@ -49,6 +79,7 @@ export function computeJournalRowTotals(input: JournalRowInput): JournalRowTotal
       input.discountTiyn,
   );
   return {
+    lineTotals,
     materialCostTiyn,
     pvcCostTiyn,
     totalTiyn,

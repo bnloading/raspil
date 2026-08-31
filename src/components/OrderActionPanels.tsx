@@ -37,6 +37,7 @@ export function OrderActionPanels({
   payments,
   actor,
   isAdmin,
+  canOverrideCuttingGate,
   allOrders,
   showToast,
 }: {
@@ -45,6 +46,14 @@ export function OrderActionPanels({
   payments: Payment[];
   actor: Actor;
   isAdmin: boolean;
+  /**
+   * Whether this viewer may send an unpaid/partially-paid order to cutting anyway ("кесуге
+   * жіберу — қарызға") — the shop cuts on credit for a trusted customer sometimes. Separate from
+   * `isAdmin`: the owner wants Manager to have this too, unlike payment reversal below, which
+   * stays Admin-only regardless. Every override still requires a typed reason and is audited
+   * (firestore.rules enforces this for both roles).
+   */
+  canOverrideCuttingGate: boolean;
   allOrders: Order[];
   showToast: (msg: string) => void;
 }) {
@@ -254,7 +263,7 @@ export function OrderActionPanels({
         overrideReason: reason.trim(),
         queuePosition: nextQueuePosition,
       });
-      showToast("⚠️ Төлемсіз кезекке жіберілді (аудитте тіркелді)");
+      showToast("⚠️ Қарызға кесуге жіберілді (аудитте тіркелді)");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -485,9 +494,9 @@ export function OrderActionPanels({
             <button className="btn btn-primary btn-full" onClick={handleEnterQueue}>
               📦 Кезекке жіберу
             </button>
-          ) : isAdmin ? (
+          ) : canOverrideCuttingGate ? (
             <button className="btn btn-danger-outline btn-full" onClick={handleOverrideQueue}>
-              ⚠️ Төлемсіз кезекке жіберу (Admin)
+              ⚠️ Қарызға кесуге жіберу
             </button>
           ) : (
             <p className="chart-empty">Кезекке жіберу үшін заказ толық төленуі керек</p>

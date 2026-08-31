@@ -6,7 +6,9 @@ import {
   assertSucceeds,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, getDocs, collection, query, where, runTransaction, setDoc, updateDoc } from "firebase/firestore";
+import {
+  doc, getDoc, getDocs, collection, query, where, runTransaction, setDoc, updateDoc, deleteDoc,
+} from "firebase/firestore";
 
 // Runs against the Firestore emulator only — see package.json's `test:rules` script, which
 // wraps this file with `firebase emulators:exec`. Not part of the default `npm test` run.
@@ -180,6 +182,43 @@ describe("payment gate: unpaid/partially-paid orders can never enter the cutting
       }),
     );
   });
+
+  // Owner's call: Manager gets the same "cut on credit" override as Admin, provided the write
+  // carries the same audited shape (paymentGateOverride + a non-empty reason).
+  it("manager MAY override the payment gate on an unpaid order when a reason is present", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "orders", ORDER_A_ID), {
+        productionStatus: "cutting_queue",
+        priority: 0,
+        paymentGateOverride: true,
+        paymentGateOverrideReason: "Сенімді клиент, кейін төлейді",
+      }),
+    );
+  });
+
+  it("manager CANNOT override the payment gate without a reason", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "orders", ORDER_A_ID), {
+        productionStatus: "cutting_queue",
+        priority: 0,
+        paymentGateOverride: true,
+        paymentGateOverrideReason: "",
+      }),
+    );
+  });
+
+  it("manager CANNOT override the payment gate by claiming the flag without setting it true", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "orders", ORDER_A_ID), {
+        productionStatus: "cutting_queue",
+        priority: 0,
+        paymentGateOverrideReason: "Сенімді клиент, кейін төлейді",
+      }),
+    );
+  });
 });
 
 describe("cutter must never see unpaid orders", () => {
@@ -209,6 +248,19 @@ describe("PVC worker must never see unpaid orders", () => {
   it("PVC worker cannot read an order still in waiting_payment", async () => {
     const db = testEnv.authenticatedContext(PVC_UID).firestore();
     await assertFails(getDoc(doc(db, "orders", ORDER_A_ID)));
+  });
+
+  // A paid order in the cutting queue is work heading the PVC worker's way: they see it on the
+  // dashboard as "Распил күтілуде" so they can plan, but it is still the cutter's order to move.
+  it("PVC worker CAN read a paid order that is still in the cutting queue", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "orders", "order-cutting-queue")));
+  });
+
+  it("PVC worker CANNOT edit an order that is still in the cutting queue", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { productionStatus: "pvc_queue" }));
+    await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { assignedPvcId: PVC_UID }));
   });
 });
 
@@ -315,6 +367,227 @@ describe("cutter/PVC can list admin+manager accounts to fan out notifyManagers()
   it("cutter CANNOT list all users unfiltered", async () => {
     const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
     await assertFails(getDocs(collection(db, "users")));
+  });
+});
+
+describe("payment method can be corrected without reversing the payment", () => {
+  it("manager CAN change the method a payment was recorded under", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "payments", "payment-1"), { methodId: "kaspi", methodName: "Kaspi" }),
+    );
+  });
+
+  it("manager still cannot touch the money itself", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(db, "payments", "payment-1"), { amountTiyn: 1 }));
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), { methodName: "Kaspi", amountTiyn: 1 }),
+    );
+  });
+
+  it("manager CAN reverse a payment (journal: row moved back to Қарыз)", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        reversed: true,
+        reversalReason: "Журналда «Қарыз» деп белгіленді",
+        reversedByUid: MANAGER_UID,
+        reversedByName: "Manager",
+      }),
+    );
+  });
+
+  it("manager cannot un-reverse a payment or reverse it under someone else's name", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), "payments", "payment-1"), { reversed: true });
+    });
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        reversed: false,
+        reversalReason: "",
+        reversedByUid: MANAGER_UID,
+        reversedByName: "Manager",
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        reversed: true,
+        reversalReason: "жалған",
+        reversedByUid: ADMIN_UID,
+        reversedByName: "Admin",
+      }),
+    );
+  });
+
+  it("a cutter cannot relabel a payment", async () => {
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(updateDoc(doc(db, "payments", "payment-1"), { methodId: "kaspi" }));
+  });
+});
+
+/**
+ * Merging journal rows folds several orders into one and cancels the rest. The payments taken on
+ * the absorbed rows have to follow, or the surviving row reads as still owing money it was already
+ * paid — which is what the shop actually saw. No money moves, so this is not a reversal.
+ */
+describe("a payment can be re-filed onto the order its row was merged into", () => {
+  it("manager CAN move a payment to the surviving order", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        orderId: "order-cutting-queue",
+        mergedFromOrderId: ORDER_A_ID,
+      }),
+    );
+  });
+
+  it("the trail must name the row the payment actually came from", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        orderId: "order-cutting-queue",
+        mergedFromOrderId: "some-other-order",
+      }),
+    );
+    // …and moving it with no trail at all is not allowed either.
+    await assertFails(updateDoc(doc(db, "payments", "payment-1"), { orderId: "order-cutting-queue" }));
+  });
+
+  it("re-filing cannot smuggle in a change to the money", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        orderId: "order-cutting-queue",
+        mergedFromOrderId: ORDER_A_ID,
+        amountTiyn: 1,
+      }),
+    );
+  });
+
+  it("a cutter cannot re-file a payment", async () => {
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        orderId: "order-cutting-queue",
+        mergedFromOrderId: ORDER_A_ID,
+      }),
+    );
+  });
+});
+
+describe("stock leaves the warehouse when an order is queued for cutting", () => {
+  it("manager CAN write the consumption entry that sending an order to the saw produces", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "inventoryMovements", "mv-queue"), {
+        materialId: "mat-1",
+        type: "cutting_consumption",
+        qty: -2,
+        orderId: "order-cutting-queue",
+        userId: MANAGER_UID,
+        balanceBefore: 10,
+        balanceAfter: 8,
+      }),
+    );
+  });
+
+  it("manager CAN hand sheets back when an order is cancelled before the saw", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "inventoryMovements", "mv-return"), {
+        materialId: "mat-1",
+        type: "return",
+        qty: 2,
+        orderId: "order-cutting-queue",
+        userId: MANAGER_UID,
+        balanceBefore: 8,
+        balanceAfter: 10,
+      }),
+    );
+  });
+
+  it("manager still cannot invent a receipt or a manual correction", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    for (const type of ["receipt", "manual_correction", "write_off"]) {
+      await assertFails(
+        setDoc(doc(db, "inventoryMovements", `mv-${type}`), {
+          materialId: "mat-1",
+          type,
+          qty: 50,
+          userId: MANAGER_UID,
+          balanceBefore: 10,
+          balanceAfter: 60,
+        }),
+      );
+    }
+  });
+
+  it("neither manager nor cutter may flip whether a material is counted at all", async () => {
+    for (const uid of [MANAGER_UID, CUTTER_UID]) {
+      const db = testEnv.authenticatedContext(uid).firestore();
+      await assertFails(updateDoc(doc(db, "materials", "mat-1"), { stockTracked: false }));
+    }
+  });
+});
+
+/**
+ * The Manager keeps the expense log on the Касса page — they are the person standing at the
+ * counter when the rubbish is taken away and the sheets are bought. What stays Admin-only is the
+ * margin side of the books (expenseCategories, materialCosts), so recording what was spent never
+ * means being shown what was earned.
+ */
+describe("logged expenses (Касса шығындары) are written by the Manager, corrected by the Admin", () => {
+  const expense = (uid: string, name = "Мусор") => ({
+    name, amountTiyn: 1500000, date: "2026-08-15", account: "cash",
+    createdByUid: uid, createdByName: uid === ADMIN_UID ? "Admin" : "Manager",
+  });
+
+  it("admin can log, read, correct and delete an expense", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "expenses", "exp-1"), expense(ADMIN_UID)));
+    await assertSucceeds(getDoc(doc(db, "expenses", "exp-1")));
+    await assertSucceeds(updateDoc(doc(db, "expenses", "exp-1"), { amountTiyn: 1600000 }));
+    await assertSucceeds(deleteDoc(doc(db, "expenses", "exp-1")));
+  });
+
+  it("manager can read the log and add to it under their own name", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "expenses", "exp-2"), expense(MANAGER_UID, "Лист алуға")));
+    await assertSucceeds(getDoc(doc(db, "expenses", "exp-2")));
+  });
+
+  it("manager cannot log an expense in someone else's name", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(setDoc(doc(db, "expenses", "exp-3"), expense(ADMIN_UID)));
+  });
+
+  it("manager can delete their own entry but not anyone else's", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "expenses", "mine"), expense(MANAGER_UID));
+      await setDoc(doc(ctx.firestore(), "expenses", "theirs"), expense(ADMIN_UID));
+    });
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(deleteDoc(doc(db, "expenses", "mine")));
+    await assertFails(deleteDoc(doc(db, "expenses", "theirs")));
+  });
+
+  it("manager cannot edit an expense after the fact — corrections are the Admin's", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "expenses", "mine"), expense(MANAGER_UID));
+    });
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(db, "expenses", "mine"), { amountTiyn: 1 }));
+  });
+
+  it("a cutter can neither read nor write the expense log", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "expenses", "exp-1"), expense(ADMIN_UID));
+    });
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(getDoc(doc(db, "expenses", "exp-1")));
+    await assertFails(setDoc(doc(db, "expenses", "exp-4"), expense(CUTTER_UID)));
   });
 });
 

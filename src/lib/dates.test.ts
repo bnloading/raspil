@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDateDMY, monthKey, bucketByPeriod, monthLabel } from "./dates";
+import { formatDateDMY, monthKey, bucketByPeriod, monthLabel, weekKey, weekLabel } from "./dates";
 
 describe("formatDateDMY", () => {
   it("formats as DD.MM.YYYY", () => {
@@ -44,5 +44,32 @@ describe("monthly bucketing is dynamic, not hardcoded", () => {
 describe("monthLabel", () => {
   it("renders a Kazakh month name with year", () => {
     expect(monthLabel("2026-01")).toBe("Қаңтар 2026");
+  });
+});
+
+describe("weekKey", () => {
+  const at = (iso: string) => new Date(`${iso}T12:00:00+05:00`);
+
+  it("keys by the Monday that starts the Almaty week", () => {
+    expect(weekKey(at("2026-08-31"))).toBe("2026-08-31"); // 31 Aug 2026 is itself a Monday
+  });
+
+  it("groups every day of the same week under that Monday", () => {
+    const monday = weekKey(at("2026-08-31"));
+    expect(weekKey(at("2026-09-01"))).toBe(monday); // Tuesday
+    expect(weekKey(at("2026-09-03"))).toBe(monday); // Thursday
+    expect(weekKey(at("2026-09-06"))).toBe(monday); // Sunday, still this week
+    expect(weekKey(at("2026-09-07"))).not.toBe(monday); // next Monday
+  });
+});
+
+describe("weekLabel", () => {
+  it("reads as one range within a single month", () => {
+    // 2026-08-04 is a Tuesday; its Monday is 2026-08-03, week ends 2026-08-09.
+    expect(weekLabel(weekKey(new Date("2026-08-04T12:00:00+05:00")))).toBe("3–9 там");
+  });
+
+  it("names both months when the week crosses one", () => {
+    expect(weekLabel("2026-08-31")).toBe("31 там – 6 қыр");
   });
 });

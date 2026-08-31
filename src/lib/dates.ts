@@ -103,6 +103,33 @@ export function startOfWeekAlmaty(d: Date = new Date()): Date {
   return start;
 }
 
+/** The Monday that starts this date's Almaty week, as a stable "YYYY-MM-DD" grouping key. */
+export function weekKey(input: Date | number | { seconds: number }): string {
+  return dayKey(startOfWeekAlmaty(toDate(input)));
+}
+
+/** "25–31 там" (or "29 там – 4 қаз" across a month boundary) — a compact week-section header. */
+export function weekLabel(key: string): string {
+  const start = new Date(`${key}T12:00:00+05:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  // Almaty-explicit, like every other formatter here: raw .getDate()/.getMonth() would read the
+  // runtime's own timezone, which is only Almaty by coincidence on the machine this happens to run on.
+  const parts = (d: Date) => {
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone: ALMATY_TZ, day: "numeric", month: "numeric" }).formatToParts(d);
+    return {
+      day: Number(fmt.find((p) => p.type === "day")!.value),
+      month: Number(fmt.find((p) => p.type === "month")!.value),
+    };
+  };
+  const a = parts(start);
+  const b = parts(end);
+  const short = (m: number) => MONTH_LABELS[m - 1].slice(0, 3).toLowerCase();
+  return a.month === b.month
+    ? `${a.day}–${b.day} ${short(a.month)}`
+    : `${a.day} ${short(a.month)} – ${b.day} ${short(b.month)}`;
+}
+
 export function startOfMonthAlmaty(d: Date = new Date()): Date {
   const key = monthKey(d);
   return new Date(`${key}-01T00:00:00+05:00`);

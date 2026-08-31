@@ -7,6 +7,7 @@ import { RouteGuard } from "./RouteGuard";
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const CutterDashboard = lazy(() => import("./pages/CutterDashboard"));
+const CutterHistory = lazy(() => import("./pages/CutterHistory"));
 const PvcDashboard = lazy(() => import("./pages/PvcDashboard"));
 const ProductionOrderDetail = lazy(() => import("./pages/ProductionOrderDetail"));
 
@@ -17,6 +18,7 @@ const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMaterials = lazy(() => import("./pages/admin/AdminMaterials"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
+const ManagerCashbox = lazy(() => import("./pages/manager/ManagerCashbox"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 const AdminCsvSettings = lazy(() => import("./pages/admin/AdminCsvSettings"));
 const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance"));
@@ -150,7 +152,18 @@ export default function App() {
             <Route
               path="/admin/materials"
               element={
-                <RouteGuard roles={["admin"]}>
+                <RouteGuard roles={["admin", "manager"]}>
+                  <AdminMaterials />
+                </RouteGuard>
+              }
+            />
+            <Route
+              // Same page under the manager's own path, so its nav entry highlights like the rest
+              // of the manager section. Editing stays Admin-only inside the page (and in
+              // firestore.rules): a Manager sees the stock, the prices and the movement history.
+              path="/manager/materials"
+              element={
+                <RouteGuard roles={["admin", "manager"]}>
                   <AdminMaterials />
                 </RouteGuard>
               }
@@ -303,6 +316,14 @@ export default function App() {
               }
             />
             <Route
+              path="/manager/cashbox"
+              element={
+                <RouteGuard roles={["manager", "admin"]}>
+                  <ManagerCashbox />
+                </RouteGuard>
+              }
+            />
+            <Route
               path="/manager/debt"
               element={
                 <RouteGuard roles={["manager", "admin"]}>
@@ -347,6 +368,14 @@ export default function App() {
               element={
                 <RouteGuard roles={["raspil"]}>
                   <CutterDashboard />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/cutting/history"
+              element={
+                <RouteGuard roles={["raspil"]}>
+                  <CutterHistory />
                 </RouteGuard>
               }
             />

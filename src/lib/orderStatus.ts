@@ -16,7 +16,8 @@ import type { User } from "firebase/auth";
 import type { Material, Order, UserDoc } from "../types/domain";
 import { canEnterCuttingQueue } from "./statuses";
 import { pvcConsumption, applyConsumption } from "./pvcStock";
-import { reserveStock, releaseReservation, consumeForCutting } from "./warehouse";
+import { releaseReservation, consumeLineForCutting, consumeStockOnQueue, returnLinesToWarehouse } from "./warehouse";
+import { allPvcDone, buildLineJobs, jobAt, jobsOf, patchJob } from "./orderLines";
 import { syncWorkshopBoard, clearWorkshopBoard } from "./workshopActivity";
 
 type Actor = { user: User; userData: UserDoc };
@@ -177,12 +178,13 @@ export async function enterCuttingQueue(
   }
 
   const orderRef = doc(db, "orders", order.id);
-  await reserveStock(db, actor, {
-    materialId: order.materialId,
-    orderId: order.id,
-    qty: order.confirmedSheets ?? order.estimatedSheets,
-    comment: `Заказ ${order.orderNumber} распил кезегіне қосылды`,
-  });
+  // The sheets leave the warehouse now, not when the cutter reports back: once a job is queued the
+  // boards are off the rack, and the Қойма page has to show what is actually left. Each material
+  // line is charged to its own balance — a merged order (10 ЛДСП + 3 ХДФ) used to draw all 13
+  // sheets from whichever material happened to be the order's primary one. A line whose material
+  // is not shop stock (customer's own board, offcut) moves nothing — see consumeStockOnQueue.
+  const jobs = buildLineJobs(order);
+  await consumeStockOnQueue(db, actor, { orderId: order.id, orderNumber: order.orderNumber, jobs });
   await updateDoc(orderRef, {
     productionStatus: "cutting_queue",
     priority: opts.queuePosition,
@@ -207,149 +209,290 @@ export async function enterCuttingQueue(
     priority: opts.queuePosition,
   });
   await notify(db, order.customerId, "Распил кезегіне қосылды", `${order.orderNumber} распил кезегінде`, order.id);
+  // Stock moved here now, so this is where a thin balance is worth flagging to the admins — once
+  // per material actually charged, a merged order's second material included.
+  for (const materialId of new Set(jobs.map((j) => j.materialId))) {
+    await notifyIfLowStock(db, materialId);
+  }
 }
 
-/** Step 10: cutter starts work — records the actor/start-time and the chosen estimate together. */
-export async function startCutting(
+/**
+ * Releases any reservation left on an order from before per-line stock tracking existed — the
+ * previous flow reserved the whole order's sheets against one material at queue time and never
+ * released that hold until the (single) completion write. Once every line has its own stock
+ * settled, that reservation is pure leftover bookkeeping.
+ */
+async function releaseLegacyReservations(db: Firestore, actor: Actor, orderId: string): Promise<void> {
+  const activeRes = await getDocs(
+    query(collection(db, "inventoryReservations"), where("orderId", "==", orderId), where("status", "==", "active")),
+  );
+  for (const resDoc of activeRes.docs) {
+    await releaseReservation(db, actor, { reservationId: resDoc.id, comment: "Барлық материал бөлек есептен шығарылды" });
+  }
+}
+
+/**
+ * One material line starts cutting. Independent of every other line on the order — a merged
+ * order's ЛДСП and ХДФ are two different jobs, and the shop starts whichever is on the saw first.
+ */
+export async function startCuttingLine(
   db: Firestore,
   actor: Actor,
   order: Order,
+  lineIndex: number,
   estimatedMinutes: number,
 ): Promise<void> {
+  const jobs = jobsOf(order);
+  const job = jobAt(jobs, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
+
   const orderRef = doc(db, "orders", order.id);
+  const now = Timestamp.now();
   const expected = new Date(Date.now() + estimatedMinutes * 60000);
+  const nextJobs = patchJob(jobs, lineIndex, {
+    cuttingStartedAt: now,
+    cuttingEstimatedMinutes: estimatedMinutes,
+    cuttingExpectedCompletionAt: Timestamp.fromDate(expected),
+    cuttingByUid: actor.user.uid,
+    cuttingByName: actor.userData.name,
+  });
+
   await updateDoc(orderRef, {
-    productionStatus: "cutting_started",
+    lineJobs: nextJobs,
     assignedCutterId: order.assignedCutterId || actor.user.uid,
     assignedCutterName: order.assignedCutterName || actor.userData.name,
-    cuttingStartedAt: serverTimestamp(),
+    // The order-level fields mirror whichever line was started most recently — used by the
+    // customer-facing progress strip, which shows one order stage, not a line breakdown.
     cuttingEstimatedMinutes: estimatedMinutes,
     cuttingExpectedCompletionAt: expected,
+    ...(order.productionStatus === "cutting_queue" ? { productionStatus: "cutting_started" } : {}),
   });
-  await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "cutting_started", undefined, estimatedMinutes);
+  await writeStatusHistory(
+    db, actor, order.id, "production", order.productionStatus, "cutting_started",
+    `${job.materialName} басталды`, estimatedMinutes,
+  );
   await syncWorkshopBoard(db, {
     ...order,
     productionStatus: "cutting_started",
+    lineJobs: nextJobs,
     cuttingEstimatedMinutes: estimatedMinutes,
-    cuttingStartedAt: Timestamp.fromDate(new Date()),
+    cuttingStartedAt: now,
   });
-  await notifyManagers(db, "Распил басталды", `${order.orderNumber}: распил басталды (шамамен ${estimatedMinutes} мин)`, order.id);
+  await notifyManagers(
+    db, "Распил басталды",
+    `${order.orderNumber}: ${job.materialName} кесіле бастады (шамамен ${estimatedMinutes} мин)`,
+    order.id,
+  );
   await notify(db, order.customerId, "Распил басталды", `${order.orderNumber} кесіліп жатыр`, order.id);
 }
 
-/** Updates just the estimate/expected-completion of an already-started cutting job (spec: "Estimated
- *  cutting time updated" notification + audit entry for "Estimated time changed"). */
-export async function updateCuttingEstimate(db: Firestore, actor: Actor, order: Order, estimatedMinutes: number): Promise<void> {
-  const orderRef = doc(db, "orders", order.id);
+/** Updates one line's estimate without touching its start time (spec: "Estimated cutting time
+ *  updated"). */
+export async function updateCuttingEstimateLine(
+  db: Firestore, actor: Actor, order: Order, lineIndex: number, estimatedMinutes: number,
+): Promise<void> {
+  const jobs = jobsOf(order);
+  const job = jobAt(jobs, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
   const expected = new Date(Date.now() + estimatedMinutes * 60000);
-  await updateDoc(orderRef, { cuttingEstimatedMinutes: estimatedMinutes, cuttingExpectedCompletionAt: expected });
+  const nextJobs = patchJob(jobs, lineIndex, {
+    cuttingEstimatedMinutes: estimatedMinutes,
+    cuttingExpectedCompletionAt: Timestamp.fromDate(expected),
+  });
+  await updateDoc(doc(db, "orders", order.id), {
+    lineJobs: nextJobs,
+    cuttingEstimatedMinutes: estimatedMinutes,
+    cuttingExpectedCompletionAt: expected,
+  });
   await logAudit(db, actor, {
     action: "order.cutting_estimate_change",
     entityId: order.id,
-    before: { cuttingEstimatedMinutes: order.cuttingEstimatedMinutes ?? null },
+    before: { cuttingEstimatedMinutes: job.cuttingEstimatedMinutes ?? null },
     after: { cuttingEstimatedMinutes: estimatedMinutes },
+    comment: job.materialName,
   });
-  await syncWorkshopBoard(db, { ...order, cuttingEstimatedMinutes: estimatedMinutes });
-  await notifyManagers(db, "Распил мерзімі өзгерді", `${order.orderNumber}: жаңа болжам ${estimatedMinutes} мин`, order.id);
+  await syncWorkshopBoard(db, { ...order, lineJobs: nextJobs, cuttingEstimatedMinutes: estimatedMinutes });
+  await notifyManagers(db, "Распил мерзімі өзгерді", `${order.orderNumber}: ${job.materialName} — жаңа болжам ${estimatedMinutes} мин`, order.id);
   await notify(db, order.customerId, "Распил мерзімі жаңартылды", `${order.orderNumber} шамамен ${estimatedMinutes} минутта аяқталады`, order.id);
 }
 
 /**
- * Step 11-12: cutter finishes — delegates the stock decrement + idempotency guard + PVC/READY
- * branch to warehouse.consumeForCutting (one transaction), then records the supplementary
- * (non-safety-critical) history/notifications. `needsPvc` must be computed by the caller from the
- * order's parts (any edge PVC-selected) — see components/OrderView "needsPvc" for the existing pattern.
+ * One material line finishes cutting: settles that line's stock, and — only once every line on
+ * the order has been cut — advances the whole order to ПВХ кезегі or Дайын, exactly as the old
+ * whole-order completeCutting used to.
  */
-export async function completeCutting(
+export async function completeCuttingLine(
   db: Firestore,
   actor: Actor,
   order: Order,
+  lineIndex: number,
   confirmedSheets: number,
-  needsPvc: boolean,
-): Promise<{ alreadyConsumed: boolean }> {
-  const activeRes = await getDocs(
-    query(collection(db, "inventoryReservations"), where("orderId", "==", order.id), where("status", "==", "active")),
-  );
-  const reservationId = activeRes.docs[0]?.id;
+): Promise<{ alreadyCompleted: boolean }> {
+  const jobsBefore = jobsOf(order);
+  const job = jobAt(jobsBefore, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
 
-  const result = await consumeForCutting(db, actor, {
+  const result = await consumeLineForCutting(db, actor, {
     orderId: order.id,
-    materialId: order.materialId,
-    qty: confirmedSheets,
-    reservationId,
-    needsPvc,
-    cuttingStartedAtMs: order.cuttingStartedAt ? order.cuttingStartedAt.toMillis() : undefined,
+    lineIndex,
+    confirmedQty: confirmedSheets,
+    cuttingStartedAtMs: job.cuttingStartedAt ? job.cuttingStartedAt.toMillis() : undefined,
   });
-  if (result.alreadyConsumed) return result;
+  if (result.alreadyCompleted) return { alreadyCompleted: true };
 
-  const nextStatus = needsPvc ? "pvc_queue" : "ready";
+  await writeStatusHistory(
+    db, actor, order.id, "production", "cutting_started", "cutting_started",
+    `${job.materialName}: расталған ${confirmedSheets} лист`,
+  );
+  await logAudit(db, actor, {
+    action: "order.cutting_line_completed",
+    entityId: order.id,
+    after: { materialId: job.materialId, materialName: job.materialName, confirmedSheets },
+  });
+
+  if (!result.orderDone) {
+    // Other materials are still on the saw — nothing about the order's own stage changes yet.
+    await syncWorkshopBoard(db, { ...order, lineJobs: result.jobs, productionStatus: "cutting_started" });
+    return { alreadyCompleted: false };
+  }
+
+  await releaseLegacyReservations(db, actor, order.id);
+  const nextStatus = result.needsPvc ? "pvc_queue" : "ready";
   await writeStatusHistory(db, actor, order.id, "production", "cutting_started", "cutting_completed");
   await writeStatusHistory(db, actor, order.id, "production", "cutting_completed", nextStatus);
-  await logAudit(db, actor, { action: "order.cutting_completed", entityId: order.id, after: { confirmedSheets } });
-  // Cutting is done: the board row moves to "waiting for PVC" or "ready" depending on the order.
-  await syncWorkshopBoard(db, { ...order, productionStatus: nextStatus });
-  await notifyManagers(db, "Распил аяқталды", `${order.orderNumber}: распил аяқталды`, order.id);
+  await logAudit(db, actor, {
+    action: "order.cutting_completed",
+    entityId: order.id,
+    after: { confirmedSheets: result.jobs.reduce((s, j) => s + (j.confirmedSheets ?? 0), 0) },
+  });
+  await syncWorkshopBoard(db, { ...order, lineJobs: result.jobs, productionStatus: nextStatus });
+  await notifyManagers(db, "Распил аяқталды", `${order.orderNumber}: барлық материал кесілді`, order.id);
   await notify(
-    db,
-    order.customerId,
-    needsPvc ? "Распил аяқталды" : "Заказыңыз дайын",
-    needsPvc ? `${order.orderNumber} ПВХ кезегіне өтті` : `${order.orderNumber} дайын болды`,
+    db, order.customerId,
+    result.needsPvc ? "Распил аяқталды" : "Заказыңыз дайын",
+    result.needsPvc ? `${order.orderNumber} ПВХ кезегіне өтті` : `${order.orderNumber} дайын болды`,
     order.id,
   );
-  await notifyIfLowStock(db, order.materialId);
-  return result;
+  for (const materialId of new Set(result.jobs.map((j) => j.materialId))) {
+    await notifyIfLowStock(db, materialId);
+  }
+  return { alreadyCompleted: false };
 }
 
-/** Step 13: PVC worker starts — same shape as startCutting. */
-export async function startPvc(db: Firestore, actor: Actor, order: Order, estimatedMinutes: number): Promise<void> {
+/** One material line starts edge banding. Only lines with metres of ПВХ on them are ever offered
+ *  this — see lib/orderLines.needsPvc. */
+export async function startPvcLine(
+  db: Firestore, actor: Actor, order: Order, lineIndex: number, estimatedMinutes: number,
+): Promise<void> {
+  const jobs = jobsOf(order);
+  const job = jobAt(jobs, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
+
   const orderRef = doc(db, "orders", order.id);
+  const now = Timestamp.now();
   const expected = new Date(Date.now() + estimatedMinutes * 60000);
+  const nextJobs = patchJob(jobs, lineIndex, {
+    pvcStartedAt: now,
+    pvcEstimatedMinutes: estimatedMinutes,
+    pvcExpectedCompletionAt: Timestamp.fromDate(expected),
+    pvcByUid: actor.user.uid,
+    pvcByName: actor.userData.name,
+  });
+
   await updateDoc(orderRef, {
-    productionStatus: "pvc_started",
+    lineJobs: nextJobs,
     assignedPvcId: order.assignedPvcId || actor.user.uid,
     assignedPvcName: order.assignedPvcName || actor.userData.name,
-    pvcStartedAt: serverTimestamp(),
     pvcEstimatedMinutes: estimatedMinutes,
     pvcExpectedCompletionAt: expected,
+    ...(order.productionStatus === "pvc_queue" ? { productionStatus: "pvc_started" } : {}),
   });
-  await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "pvc_started", undefined, estimatedMinutes);
+  await writeStatusHistory(
+    db, actor, order.id, "production", order.productionStatus, "pvc_started",
+    `${job.materialName} басталды`, estimatedMinutes,
+  );
   await syncWorkshopBoard(db, {
     ...order,
     productionStatus: "pvc_started",
+    lineJobs: nextJobs,
     pvcEstimatedMinutes: estimatedMinutes,
-    pvcStartedAt: Timestamp.fromDate(new Date()),
+    pvcStartedAt: now,
   });
-  await notifyManagers(db, "ПВХ басталды", `${order.orderNumber}: ПВХ жұмысы басталды (шамамен ${estimatedMinutes} мин)`, order.id);
+  await notifyManagers(db, "ПВХ басталды", `${order.orderNumber}: ${job.materialName} — ПВХ басталды (шамамен ${estimatedMinutes} мин)`, order.id);
   await notify(db, order.customerId, "ПВХ басталды", `${order.orderNumber} ПВХ жасалып жатыр`, order.id);
 }
 
-export async function updatePvcEstimate(db: Firestore, actor: Actor, order: Order, estimatedMinutes: number): Promise<void> {
-  const orderRef = doc(db, "orders", order.id);
+export async function updatePvcEstimateLine(
+  db: Firestore, actor: Actor, order: Order, lineIndex: number, estimatedMinutes: number,
+): Promise<void> {
+  const jobs = jobsOf(order);
+  const job = jobAt(jobs, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
   const expected = new Date(Date.now() + estimatedMinutes * 60000);
-  await updateDoc(orderRef, { pvcEstimatedMinutes: estimatedMinutes, pvcExpectedCompletionAt: expected });
+  const nextJobs = patchJob(jobs, lineIndex, {
+    pvcEstimatedMinutes: estimatedMinutes,
+    pvcExpectedCompletionAt: Timestamp.fromDate(expected),
+  });
+  await updateDoc(doc(db, "orders", order.id), {
+    lineJobs: nextJobs,
+    pvcEstimatedMinutes: estimatedMinutes,
+    pvcExpectedCompletionAt: expected,
+  });
   await logAudit(db, actor, {
     action: "order.pvc_estimate_change",
     entityId: order.id,
-    before: { pvcEstimatedMinutes: order.pvcEstimatedMinutes ?? null },
+    before: { pvcEstimatedMinutes: job.pvcEstimatedMinutes ?? null },
     after: { pvcEstimatedMinutes: estimatedMinutes },
+    comment: job.materialName,
   });
-  await syncWorkshopBoard(db, { ...order, pvcEstimatedMinutes: estimatedMinutes });
-  await notifyManagers(db, "ПВХ мерзімі өзгерді", `${order.orderNumber}: жаңа болжам ${estimatedMinutes} мин`, order.id);
+  await syncWorkshopBoard(db, { ...order, lineJobs: nextJobs, pvcEstimatedMinutes: estimatedMinutes });
+  await notifyManagers(db, "ПВХ мерзімі өзгерді", `${order.orderNumber}: ${job.materialName} — жаңа болжам ${estimatedMinutes} мин`, order.id);
   await notify(db, order.customerId, "ПВХ мерзімі жаңартылды", `${order.orderNumber} шамамен ${estimatedMinutes} минутта аяқталады`, order.id);
 }
 
-/** Step 14-15: PVC worker finishes — idempotent (guarded by pvcCompletedAt), always ends in READY. */
-export async function completePvc(db: Firestore, actor: Actor, order: Order): Promise<{ alreadyCompleted: boolean }> {
+/**
+ * One material line finishes edge banding. Only once every line that needs ПВХ is done does the
+ * order draw down the colour rolls and move to Дайын — exactly what the old whole-order
+ * completePvc used to do, just gated on the per-line state instead of one flag.
+ */
+export async function completePvcLine(
+  db: Firestore, actor: Actor, order: Order, lineIndex: number,
+): Promise<{ alreadyCompleted: boolean }> {
+  const jobsBefore = jobsOf(order);
+  const job = jobAt(jobsBefore, lineIndex);
+  if (!job) throw new Error("Жол табылмады");
+  if (job.pvcCompletedAt) return { alreadyCompleted: true };
+
+  const startedAtMs = job.pvcStartedAt ? job.pvcStartedAt.toMillis() : undefined;
+  const actualMinutes = startedAtMs ? Math.max(0, Math.round((Date.now() - startedAtMs) / 60000)) : undefined;
+  const nextJobs = patchJob(jobsBefore, lineIndex, {
+    pvcCompletedAt: Timestamp.now(),
+    pvcByUid: actor.user.uid,
+    pvcByName: actor.userData.name,
+    ...(actualMinutes !== undefined ? { pvcActualMinutes: actualMinutes } : {}),
+  });
+  await updateDoc(doc(db, "orders", order.id), { lineJobs: nextJobs });
+  await writeStatusHistory(db, actor, order.id, "production", "pvc_started", "pvc_started", `${job.materialName} аяқталды`);
+  await logAudit(db, actor, {
+    action: "order.pvc_line_completed",
+    entityId: order.id,
+    after: { materialId: job.materialId, materialName: job.materialName },
+  });
+
+  if (!allPvcDone(nextJobs)) {
+    // Some other banded material is still with the PVC worker.
+    await syncWorkshopBoard(db, { ...order, lineJobs: nextJobs, productionStatus: "pvc_started" });
+    return { alreadyCompleted: false };
+  }
+
   const orderRef = doc(db, "orders", order.id);
   // Metres of each colour this order used, from the breakdown denormalized onto it. Empty for a
   // walk-in typed into the journal, which records a blended total with no colour attached.
   const consumption = pvcConsumption(order);
-
-  const result = await runTransaction(db, async (tx) => {
-    // Every read first: Firestore rejects a transaction that reads after it has written.
+  await runTransaction(db, async (tx) => {
     const snap = await tx.get(orderRef);
-    if (!snap.exists()) throw new Error("Заказ табылмады");
-    if (snap.data().pvcCompletedAt) return { alreadyCompleted: true };
+    if (!snap.exists()) return;
+    if (snap.data().pvcCompletedAt) return; // another line's completion already finished the order
 
     const rolls = await Promise.all(
       [...consumption.keys()].map(async (pvcTypeId) => {
@@ -357,39 +500,29 @@ export async function completePvc(db: Firestore, actor: Actor, order: Order): Pr
         return { ref, snap: await tx.get(ref) };
       }),
     );
-
-    const now = new Date();
-    const startedAtMs = order.pvcStartedAt ? order.pvcStartedAt.toMillis() : undefined;
-    const actualMinutes = startedAtMs ? Math.max(0, Math.round((now.getTime() - startedAtMs) / 60000)) : undefined;
-
     tx.update(orderRef, {
+      lineJobs: nextJobs,
       productionStatus: "ready",
       pvcCompletedAt: serverTimestamp(),
       readyAt: serverTimestamp(),
-      ...(actualMinutes !== undefined ? { pvcActualMinutes: actualMinutes } : {}),
     });
-
-    // Draw the rolls down. Guarded by pvcCompletedAt above, so finishing twice cannot double-count.
     for (const { ref, snap: rollSnap } of rolls) {
       if (!rollSnap.exists()) continue; // colour deleted since the order was priced
       const used = consumption.get(ref.id) ?? 0;
       const before = (rollSnap.data() as { metersOnHand?: number }).metersOnHand ?? 0;
       tx.update(ref, { metersOnHand: applyConsumption(before, used) });
     }
-
-    return { alreadyCompleted: false };
   });
-  if (result.alreadyCompleted) return result;
 
   await writeStatusHistory(db, actor, order.id, "production", "pvc_started", "pvc_completed");
   await writeStatusHistory(db, actor, order.id, "production", "pvc_completed", "ready");
   await logAudit(db, actor, { action: "order.pvc_completed", entityId: order.id });
   // Stays on the board as "Дайын" (green) until the Manager hands it over — that's the state the
   // customer most wants to see, and markDelivered() is what finally removes the row.
-  await syncWorkshopBoard(db, { ...order, productionStatus: "ready" });
+  await syncWorkshopBoard(db, { ...order, lineJobs: nextJobs, productionStatus: "ready" });
   await notifyManagers(db, "ПВХ аяқталды", `${order.orderNumber}: ПВХ жұмысы аяқталды, заказ дайын`, order.id);
   await notify(db, order.customerId, "Заказыңыз дайын", `${order.orderNumber} толығымен дайын!`, order.id);
-  return result;
+  return { alreadyCompleted: false };
 }
 
 /** Step 16: Manager hands the finished order over to the customer. */
@@ -413,6 +546,17 @@ export async function cancelOrder(db: Firestore, actor: Actor, order: Order, rea
   );
   for (const resDoc of activeRes.docs) {
     await releaseReservation(db, actor, { reservationId: resDoc.id, comment: "Заказ бас тартылды" });
+  }
+  // Sheets taken when the order was queued go back on the rack, material by material — unless the
+  // saw already cut a given line, in which case those sheets are genuinely gone and cancelling
+  // cannot un-cut them. A line still mid-cut (started but not confirmed) also returns: its
+  // consumedQty was taken at queue time, and nothing was ever subtracted for the actual cut.
+  if (order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started") {
+    await returnLinesToWarehouse(db, actor, {
+      orderId: order.id,
+      jobs: jobsOf(order).filter((j) => !j.cuttingCompletedAt),
+      comment: `${order.orderNumber} бас тартылды — қоймаға қайтарылды`,
+    });
   }
   await logAudit(db, actor, { action: "order.cancelled", entityId: order.id, comment: reason });
   await clearWorkshopBoard(db, order.id);
@@ -469,9 +613,16 @@ export async function overrideStatus(
  * every admin. Not part of the stock transaction itself — a missed notification is not a
  * correctness issue the way a double-decrement would be. */
 async function notifyIfLowStock(db: Firestore, materialId: string): Promise<void> {
+  // A journal row can reach the saw before its material has been picked. Firestore rejects an
+  // empty document path outright, so this has to be caught here rather than by the exists() check
+  // below — otherwise the order queues and then the call throws, reading as a failed send.
+  if (!materialId) return;
   const matSnap = await getDoc(doc(db, "materials", materialId));
   if (!matSnap.exists()) return;
   const material = matSnap.data() as Material;
+  // A line that is not shop stock sits at zero for ever; warning about it would be a standing
+  // false alarm rather than news.
+  if (material.stockTracked === false) return;
   const available = material.qtyOnHand - material.reservedQty;
   if (available > material.minStock) return;
 
@@ -487,7 +638,3 @@ async function notifyIfLowStock(db: Firestore, materialId: string): Promise<void
     });
   }
 }
-
-// Kept for compatibility with any UI still calling the old name during migration.
-export const changeProductionStatus = overrideStatus;
-export const markAsCut = completeCutting;

@@ -8,13 +8,20 @@ import {
   computeCustomerDebts,
   materialSummary,
   type JournalRowInput,
+  type JournalLineInput,
 } from "./journal";
 import type { Order, Payment } from "../types/domain";
 
 const T = (n: number) => n * 100; // ₸ → tiyn
 
-function row(overrides: Partial<JournalRowInput> = {}): JournalRowInput {
-  return {
+/**
+ * A single-material row, the common case: the four line fields are spelled flat here so each test
+ * reads as one journal line. `lines` builds a multi-material (merged) row instead.
+ */
+type FlatRow = Omit<JournalRowInput, "lines"> & JournalLineInput;
+
+function row(overrides: Partial<FlatRow> = {}): JournalRowInput {
+  const f: FlatRow = {
     sheetQty: 0,
     sheetPriceTiyn: 0,
     pvcMeters: 0,
@@ -26,6 +33,20 @@ function row(overrides: Partial<JournalRowInput> = {}): JournalRowInput {
     discountTiyn: 0,
     paidTiyn: 0,
     ...overrides,
+  };
+  return {
+    lines: [{
+      sheetQty: f.sheetQty,
+      sheetPriceTiyn: f.sheetPriceTiyn,
+      pvcMeters: f.pvcMeters,
+      pvcPricePerMeterTiyn: f.pvcPricePerMeterTiyn,
+    }],
+    hdfCostTiyn: f.hdfCostTiyn,
+    cuttingCostTiyn: f.cuttingCostTiyn,
+    extraServicesTiyn: f.extraServicesTiyn,
+    deliveryCostTiyn: f.deliveryCostTiyn,
+    discountTiyn: f.discountTiyn,
+    paidTiyn: f.paidTiyn,
   };
 }
 
@@ -146,6 +167,50 @@ describe("computeJournalRowTotals — journal row arithmetic", () => {
     expect(computeJournalRowTotals(row({ sheetQty: 1, sheetPriceTiyn: T(100000), paidTiyn: T(120000) })).debtTiyn).toBe(
       T(-20000),
     );
+  });
+});
+
+describe("computeJournalRowTotals — a merged row is priced line by line", () => {
+  // The bug this replaces: a merged order was priced as (13 sheets × the FIRST line's 16 000 ₸),
+  // so folding a 7 500 ₸ ХДФ row into an ЛДСП row silently repriced the ХДФ at ЛДСП money the
+  // moment anyone typed in the ledger.
+  const merged: JournalRowInput = {
+    lines: [
+      { sheetQty: 6, sheetPriceTiyn: T(16000), pvcMeters: 92, pvcPricePerMeterTiyn: T(200) },
+      { sheetQty: 2, sheetPriceTiyn: T(7500), pvcMeters: 0, pvcPricePerMeterTiyn: 0 },
+    ],
+    hdfCostTiyn: 0,
+    cuttingCostTiyn: 0,
+    extraServicesTiyn: 0,
+    deliveryCostTiyn: 0,
+    discountTiyn: 0,
+    paidTiyn: 0,
+  };
+
+  it("charges each line at its own price instead of the first line's", () => {
+    const t = computeJournalRowTotals(merged);
+    expect(t.materialCostTiyn).toBe(T(96000) + T(15000));
+    expect(t.pvcCostTiyn).toBe(T(18400));
+    expect(t.totalTiyn).toBe(T(129400));
+  });
+
+  it("reports each line's own money, so a sub-row can show it", () => {
+    const t = computeJournalRowTotals(merged);
+    expect(t.lineTotals).toHaveLength(2);
+    expect(t.lineTotals[0]).toEqual({ materialCostTiyn: T(96000), pvcCostTiyn: T(18400), lineTotalTiyn: T(114400) });
+    expect(t.lineTotals[1]).toEqual({ materialCostTiyn: T(15000), pvcCostTiyn: 0, lineTotalTiyn: T(15000) });
+  });
+
+  it("settles to zero debt when the paid sum covers every line", () => {
+    const t = computeJournalRowTotals({ ...merged, paidTiyn: T(129400) });
+    expect(t.debtTiyn).toBe(0);
+    expect(t.paymentStatus).toBe("paid");
+  });
+
+  it("a row with no lines at all is worth nothing rather than throwing", () => {
+    const t = computeJournalRowTotals({ ...merged, lines: [] });
+    expect(t.totalTiyn).toBe(0);
+    expect(t.lineTotals).toEqual([]);
   });
 });
 

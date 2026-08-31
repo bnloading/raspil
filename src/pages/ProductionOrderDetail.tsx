@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
@@ -7,7 +10,7 @@ import { CuttingActionsPanel } from "../components/CuttingActionsPanel";
 import { PvcActionsPanel } from "../components/PvcActionsPanel";
 import { useOrderDetail } from "../hooks/useOrderDetail";
 import { useToast } from "../hooks";
-import { EDGE_KEYS } from "../types/domain";
+import type { Order } from "../types/domain";
 
 /** Shared "full cutting/PVC specification" view for cutter and PVC roles — no prices, no
  *  payments (spec: cutters/PVC workers cannot see/edit prices or payments). Also exposes the
@@ -35,7 +38,6 @@ export default function ProductionOrderDetail() {
     );
   }
 
-  const needsPvc = parts.some((p) => EDGE_KEYS.some((e) => p.edges[e]?.pvc));
   const actor = user ? { user, userData } : null;
   const showCuttingActions =
     actor && userData.role === "raspil" && (order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started");
@@ -52,17 +54,51 @@ export default function ProductionOrderDetail() {
         showFinancials={false}
       />
 
+      {order.adminNote && <div className="worker-manager-note">📋 Менеджер: {order.adminNote}</div>}
+
       {(showCuttingActions || showPvcActions) && actor && (
         <section className="panel-card no-print">
           <div className="panel-head">
             <h3>Әрекеттер</h3>
           </div>
-          {showCuttingActions && <CuttingActionsPanel order={order} actor={actor} needsPvc={needsPvc} onToast={showToast} />}
+          {/* One shared note field — cutting and PVC both read/write the same order.productionNote,
+              so whichever stage is live here is exactly where it belongs. */}
+          <ProductionNoteField order={order} onToast={showToast} />
+          {showCuttingActions && <CuttingActionsPanel order={order} actor={actor} onToast={showToast} />}
           {showPvcActions && <PvcActionsPanel order={order} actor={actor} onToast={showToast} />}
         </section>
       )}
 
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/** A worker's free-text note for the order, shared between cutting and PVC. Used to live on the
+ *  dashboard's spotlighted "current order" card; moved here once that card was folded into a
+ *  plain list, so a note is still one tap away via "Размерлер" without cluttering every card. */
+function ProductionNoteField({ order, onToast }: { order: Order; onToast: (msg: string) => void }) {
+  const [note, setNote] = useState(order.productionNote ?? "");
+
+  const saveNote = async () => {
+    if (note === (order.productionNote ?? "")) return;
+    try {
+      await updateDoc(doc(db, "orders", order.id), { productionNote: note });
+      onToast("✅ Ескертпе сақталды");
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  return (
+    <div className="form-group">
+      <input
+        className="form-input"
+        placeholder="Өндіріс ескертпесі..."
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={saveNote}
+      />
+    </div>
   );
 }

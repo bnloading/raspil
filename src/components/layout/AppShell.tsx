@@ -17,6 +17,11 @@ interface AppShellProps {
   /** default "wide" (capped at --content-max); "narrow" caps at 900px; "full" removes the cap
    *  entirely for full-bleed data views like the Manager order journal. */
   contentWidth?: "wide" | "narrow" | "full";
+  /** Collapses the sidebar once when this page mounts, so a dense view (the Journal table) opens
+   *  with the extra width already available. Purely a one-time nudge on the shared collapse state —
+   *  the manual toggle keeps working exactly as before, on this page or any other, and a page that
+   *  doesn't ask for this never touches the setting. */
+  autoCollapse?: boolean;
   children: ReactNode;
 }
 
@@ -31,6 +36,7 @@ export function AppShell({
   fab,
   back,
   contentWidth = "wide",
+  autoCollapse = false,
   children,
 }: AppShellProps) {
   const { userData } = useAuth();
@@ -51,6 +57,13 @@ export function AppShell({
       // best-effort — collapse state just won't persist across reloads
     }
   }, [collapsed]);
+
+  // Runs once per mount only (empty deps) — a deliberate re-expand while already on this page must
+  // stick, not get overridden back to collapsed by this same effect re-firing.
+  useEffect(() => {
+    if (autoCollapse) setCollapsed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const items = getNavForRole(userData?.role);
   const activeKey = navKey ?? matchNavKey(location.pathname, location.search, items);

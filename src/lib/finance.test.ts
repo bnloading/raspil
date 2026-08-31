@@ -140,6 +140,25 @@ describe("computeFinanceSummary — monthly money", () => {
     expect(s.costTiyn).toBe(T(30000));
   });
 
+  it("costs a merged order line by line, at each material's own purchase price", () => {
+    const s = run({
+      orders: [
+        order({
+          totalTiyn: T(129400),
+          confirmedSheets: 8,
+          items: [
+            { materialId: "m1", materialName: "ЛДСП Ақ", sheetQty: 6, sheetPriceTiyn: T(16000), pvcMeters: 0, pvcPricePerMeterTiyn: 0 },
+            { materialId: "hdf", materialName: "ХДФ", sheetQty: 2, sheetPriceTiyn: T(7500), pvcMeters: 0, pvcPricePerMeterTiyn: 0 },
+          ],
+        }),
+      ],
+      purchaseByMaterialId: new Map([["m1", T(12000)], ["hdf", T(5000)]]),
+    });
+    // 6 × 12 000 + 2 × 5 000 — not 8 × 12 000, which is what costing the whole order at the first
+    // material's rate produced.
+    expect(s.costTiyn).toBe(T(82000));
+  });
+
   it("costs an unpriced or deleted material at zero rather than guessing", () => {
     const s = run({
       orders: [order({ totalTiyn: T(100000), confirmedSheets: 5, materialId: "gone" })],
@@ -178,6 +197,25 @@ describe("computeFinanceSummary — monthly money", () => {
       purchaseByMaterialId: new Map([["m1", T(12000)]]),
     });
     expect(s.grossProfitTiyn).toBe(T(-50000));
+  });
+
+  it("subtracts the month's logged one-off expenses from net profit", () => {
+    const s = run({
+      orders: [order({ totalTiyn: T(100000), confirmedSheets: 5 })],
+      purchaseByMaterialId: new Map([["m1", T(12000)]]),
+      expenses: [
+        { id: "e1", name: "Мусор", amountTiyn: T(12500), date: "2026-08-10", createdByUid: "u1", createdByName: "Admin" },
+        { id: "e2", name: "Ертерек", amountTiyn: T(9999), date: "2026-07-20", createdByUid: "u1", createdByName: "Admin" },
+      ],
+    });
+    // gross 40 000 − 5% (2 000) − Мусор 12 500 = 25 500 ₸. July's entry never counts for August.
+    expect(s.fixedExpensesTiyn).toBe(T(12500));
+    expect(s.netProfitTiyn).toBe(T(25500));
+  });
+
+  it("defaults to no logged expenses for callers that don't pass any", () => {
+    const s = run({ orders: [order({ totalTiyn: T(100000), confirmedSheets: 5 })], purchaseByMaterialId: new Map([["m1", T(12000)]]) });
+    expect(s.fixedExpensesTiyn).toBe(0);
   });
 
   it("period null totals everything ever billed", () => {

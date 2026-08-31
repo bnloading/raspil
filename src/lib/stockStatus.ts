@@ -39,7 +39,18 @@ export interface StockInfo {
   ratio: number;
 }
 
-export function stockStatus(material: Pick<Material, "qtyOnHand" | "reservedQty" | "minStock">): StockInfo {
+/** Shown instead of a stock level for lines that are not shop stock (see Material.stockTracked). */
+export const UNTRACKED_LABEL = "Есептелмейді";
+
+export function stockStatus(
+  material: Pick<Material, "qtyOnHand" | "reservedQty" | "minStock" | "stockTracked">,
+): StockInfo {
+  // A customer's own board or an offcut has no warehouse balance to be healthy or short about —
+  // reporting "Таусылды" on a permanent zero would just be a standing false alarm.
+  if (material.stockTracked === false) {
+    return { level: "ok", label: UNTRACKED_LABEL, available: 0, ratio: 0 };
+  }
+
   const available = Math.max(0, (material.qtyOnHand ?? 0) - (material.reservedQty ?? 0));
   const floor = Math.max(0, material.minStock ?? 0);
 
@@ -55,7 +66,9 @@ export function stockStatus(material: Pick<Material, "qtyOnHand" | "reservedQty"
 }
 
 /** Materials at or below their floor — what the "Аз қалған" KPI counts. */
-export function lowStockCount(materials: Array<Pick<Material, "qtyOnHand" | "reservedQty" | "minStock">>): number {
+export function lowStockCount(
+  materials: Array<Pick<Material, "qtyOnHand" | "reservedQty" | "minStock" | "stockTracked">>,
+): number {
   return materials.filter((m) => {
     const l = stockStatus(m).level;
     return l === "critical" || l === "out";

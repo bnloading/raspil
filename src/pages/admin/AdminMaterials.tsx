@@ -24,6 +24,7 @@ import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
+import { canManageWarehouse } from "../../lib/rbac";
 import { recordInventoryMovement } from "../../lib/warehouse";
 import { MATERIAL_CATEGORY_LABELS } from "../../types/domain";
 import type {
@@ -46,6 +47,10 @@ export default function AdminMaterials() {
   const [ledgerFor, setLedgerFor] = useState<Material | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<Material | "new" | null>(null);
   const [editingPvc, setEditingPvc] = useState<PvcType | "new" | null>(null);
+  // A Manager may look — stock, prices, movement history — but every write here stays Admin-only,
+  // exactly as firestore.rules enforces it. Hiding the controls avoids offering buttons that would
+  // come back "permission denied".
+  const canEdit = canManageWarehouse(auth.userData?.role);
 
   const stockTotals = useMemo(
     () => ({
@@ -64,7 +69,7 @@ export default function AdminMaterials() {
       title="Қойма"
       subtitle="Материалдар мен қалдықтар"
       actions={
-        tab !== "leftovers" ? (
+        canEdit && tab !== "leftovers" ? (
           <button
             className="btn btn-primary btn-sm"
             type="button"
@@ -113,24 +118,27 @@ export default function AdminMaterials() {
         <button className={`tab-pill${tab === "pvc" ? " active" : ""}`} onClick={() => setTab("pvc")}>
           ПВХ түрлері
         </button>
-        <button className={`tab-pill${tab === "leftovers" ? " active" : ""}`} onClick={() => setTab("leftovers")}>
-          Қалдықтар
-        </button>
+        {canEdit && (
+          <button className={`tab-pill${tab === "leftovers" ? " active" : ""}`} onClick={() => setTab("leftovers")}>
+            Қалдықтар
+          </button>
+        )}
       </div>
 
       {tab === "materials" && (
         <MaterialsTab
           materials={materials}
           loading={materialsLoading}
+          canEdit={canEdit}
           onEdit={setEditingMaterial}
           onLedger={setLedgerFor}
           showToast={showToast}
         />
       )}
       {tab === "pvc" && (
-        <PvcTab pvcTypes={pvcTypes} loading={pvcLoading} onEdit={setEditingPvc} showToast={showToast} />
+        <PvcTab pvcTypes={pvcTypes} loading={pvcLoading} canEdit={canEdit} onEdit={setEditingPvc} showToast={showToast} />
       )}
-      {tab === "leftovers" && <LeftoversTab materials={materials} showToast={showToast} />}
+      {tab === "leftovers" && canEdit && <LeftoversTab materials={materials} showToast={showToast} />}
 
       {editingMaterial && (
         <MaterialModal
@@ -152,48 +160,23 @@ export default function AdminMaterials() {
 function MaterialsTab({
   materials,
   loading,
+  canEdit,
   onEdit,
   onLedger,
   showToast,
 }: {
   materials: Material[];
   loading: boolean;
+  canEdit: boolean;
   onEdit: (m: Material | "new") => void;
   onLedger: (m: Material) => void;
   showToast: (msg: string) => void;
 }) {
   const auth = useAuth();
-
-  const handleCorrection = async (material: Material) => {
-    const deltaStr = prompt(`"${material.name}" қалдығын түзету (± лист):`);
-    if (deltaStr === null) return;
-    const delta = parseInt(deltaStr, 10);
-    if (!Number.isFinite(delta) || delta === 0) return;
-    const reason = prompt("Түзету себебі (міндетті):");
-    if (!reason || !reason.trim()) {
-      showToast("Себепсіз түзету жасалмайды");
-      return;
-    }
-    if (!auth.user || !auth.userData) return;
-    try {
-      await recordInventoryMovement(db, { user: auth.user, userData: auth.userData }, {
-        materialId: material.id,
-        type: "manual_correction",
-        qty: delta,
-        comment: reason.trim(),
-        allowNegative: true,
-      });
-      await logAudit(db, { user: auth.user, userData: auth.userData }, {
-        action: "warehouse.correction",
-        entityType: "material",
-        entityId: material.id,
-        after: { delta, reason: reason.trim() },
-      });
-      showToast("✅ Қалдық түзетілді");
-    } catch (err: unknown) {
-      showToast("Қате: " + (err as Error).message);
-    }
-  };
+  // Held by id, not by object: the modal then always reads the live row from `materials`, so a
+  // balance that moves while the form is open is corrected against the new number, not a stale one.
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const correcting = materials.find((m) => m.id === correctingId) ?? null;
 
   const handleReceipt = async (material: Material) => {
     const qtyStr = prompt(`"${material.name}" қабылдау мөлшері (лист):`);
@@ -258,13 +241,19 @@ function MaterialsTab({
                       {m.sheetLengthMm}×{m.sheetWidthMm} · {m.thicknessMm} мм
                     </td>
                     <td data-label="Қоймада">
-                      <div className="wh-qty">
-                        <strong>{stock.available}</strong> <span className="wh-sub">лист</span>
-                      </div>
-                      {/* Bar repeats the Күйі pill in a form you can scan down a column. */}
-                      <div className="wh-bar">
-                        <span className={`wh-bar-fill is-${stock.level}`} style={{ width: `${stock.ratio * 100}%` }} />
-                      </div>
+                      {m.stockTracked === false ? (
+                        <div className="wh-qty wh-sub">—</div>
+                      ) : (
+                        <>
+                          <div className="wh-qty">
+                            <strong>{stock.available}</strong> <span className="wh-sub">лист</span>
+                          </div>
+                          {/* Bar repeats the Күйі pill in a form you can scan down a column. */}
+                          <div className="wh-bar">
+                            <span className={`wh-bar-fill is-${stock.level}`} style={{ width: `${stock.ratio * 100}%` }} />
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td className="num" data-label="Резерв">{m.reservedQty}</td>
                     <td className="num" data-label="Мин. қор">{m.minStock}</td>
@@ -277,17 +266,23 @@ function MaterialsTab({
                     {/* Receiving stock is the everyday action, so it stays visible; the rest fold
                         into the overflow menu rather than spending four buttons of width per row. */}
                     <td data-label="Әрекеттер">
-                      <RowMenu
-                        items={[
-                          { label: "Тарих", onClick: () => onLedger(m) },
-                          { label: "Түзету", onClick: () => handleCorrection(m) },
-                          { label: "Өзгерту", onClick: () => onEdit(m) },
-                        ]}
-                      >
-                        <button className="btn btn-outline btn-sm" onClick={() => handleReceipt(m)}>
-                          + Қабылдау
+                      {canEdit ? (
+                        <RowMenu
+                          items={[
+                            { label: "Тарих", onClick: () => onLedger(m) },
+                            { label: "Түзету · баға", onClick: () => setCorrectingId(m.id) },
+                            { label: "Өзгерту", onClick: () => onEdit(m) },
+                          ]}
+                        >
+                          <button className="btn btn-outline btn-sm" onClick={() => handleReceipt(m)}>
+                            + Қабылдау
+                          </button>
+                        </RowMenu>
+                      ) : (
+                        <button className="btn btn-outline btn-sm" onClick={() => onLedger(m)}>
+                          Тарих
                         </button>
-                      </RowMenu>
+                      )}
                     </td>
                   </tr>
                 );
@@ -296,6 +291,175 @@ function MaterialsTab({
           </table>
         </div>
       )}
+
+      {correcting && (
+        <StockCorrectionModal
+          key={correcting.id}
+          material={correcting}
+          onClose={() => setCorrectingId(null)}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Counted balance and selling price in one form.
+ *
+ * Fixing a balance and repricing the same sheet are one errand — the admin is standing at the rack
+ * with the delivery note in hand — so both are edited together and saved once. Only what actually
+ * changed is written: an untouched price produces no update, an untouched quantity no ledger entry.
+ *
+ * The quantity is entered as the number counted on the rack, not as ±N: after a count that is the
+ * figure the admin is holding, and the delta the ledger needs is arithmetic the form can do itself.
+ */
+function StockCorrectionModal({
+  material,
+  onClose,
+  showToast,
+}: {
+  material: Material;
+  onClose: () => void;
+  showToast: (msg: string) => void;
+}) {
+  const auth = useAuth();
+  const [countedText, setCountedText] = useState(String(material.qtyOnHand));
+  const [priceText, setPriceText] = useState(String(material.sellingPriceTiyn / 100));
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const counted = parseInt(countedText, 10);
+  const countedValid = Number.isFinite(counted) && counted >= 0;
+  const delta = countedValid ? counted - material.qtyOnHand : 0;
+  const priceTiyn = parseMoneyInput(priceText);
+  const priceChanged = priceTiyn !== material.sellingPriceTiyn;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!auth.user || !auth.userData) return;
+    if (!countedValid) {
+      showToast("Қалдықты дұрыс енгізіңіз");
+      return;
+    }
+    if (delta !== 0 && !reason.trim()) {
+      showToast("Себепсіз түзету жасалмайды");
+      return;
+    }
+    if (priceChanged && priceTiyn <= 0) {
+      showToast("Баға 0-ден үлкен болуы керек");
+      return;
+    }
+    if (delta === 0 && !priceChanged) {
+      onClose();
+      return;
+    }
+
+    const actor = { user: auth.user, userData: auth.userData };
+    setSubmitting(true);
+    try {
+      if (priceChanged) {
+        await updateDoc(doc(db, "materials", material.id), { sellingPriceTiyn: priceTiyn });
+        await logAudit(db, actor, {
+          action: "material.price",
+          entityType: "material",
+          entityId: material.id,
+          before: { sellingPriceTiyn: material.sellingPriceTiyn },
+          after: { sellingPriceTiyn: priceTiyn },
+          comment: reason.trim() || undefined,
+        });
+      }
+      if (delta !== 0) {
+        // Signed delta, and negative balances stay blocked by the ledger itself — `allowNegative`
+        // only lets an Admin's confirmed correction dip below zero, which is what this form is.
+        await recordInventoryMovement(db, actor, {
+          materialId: material.id,
+          type: "manual_correction",
+          qty: delta,
+          comment: reason.trim(),
+          allowNegative: true,
+        });
+        await logAudit(db, actor, {
+          action: "warehouse.correction",
+          entityType: "material",
+          entityId: material.id,
+          before: { qtyOnHand: material.qtyOnHand },
+          after: { qtyOnHand: counted, delta, reason: reason.trim() },
+        });
+      }
+      showToast(
+        delta !== 0 && priceChanged
+          ? "✅ Қалдық пен баға жаңартылды"
+          : delta !== 0
+            ? "✅ Қалдық түзетілді"
+            : "✅ Баға жаңартылды",
+      );
+      onClose();
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <h2>🧮 {material.name}</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Нақты қалдық (лист)</label>
+            <input
+              type="number"
+              className="form-input"
+              value={countedText}
+              min={0}
+              autoFocus
+              onChange={(e) => setCountedText(e.target.value)}
+            />
+            <p className="form-hint">
+              Қоймада: {material.qtyOnHand} лист
+              {material.reservedQty > 0 ? ` (${material.reservedQty} бронда)` : ""}
+              {delta !== 0 ? ` · айырма ${delta > 0 ? "+" : ""}${delta}` : " · өзгеріссіз"}
+            </p>
+          </div>
+          <div className="form-group">
+            <label>Сату бағасы (лист үшін, ₸)</label>
+            <input
+              type="number"
+              className="form-input"
+              value={priceText}
+              min={0}
+              onChange={(e) => setPriceText(e.target.value)}
+            />
+            <p className="form-hint">
+              Қазір: {formatMoney(material.sellingPriceTiyn)}
+              {priceChanged ? ` → ${formatMoney(priceTiyn)}` : " · өзгеріссіз"}
+            </p>
+          </div>
+          <div className="form-group">
+            <label>Себебі{delta !== 0 ? "" : " (міндетті емес)"}</label>
+            <input
+              className="form-input"
+              value={reason}
+              placeholder="Түгендеу, сынық, қате есеп…"
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Болдырмау
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || (delta === 0 && !priceChanged)}
+            >
+              Сақтау
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -326,6 +490,8 @@ function MaterialModal({
   const [initialQty, setInitialQty] = useState(String(material?.initialQty ?? 0));
   const [minStock, setMinStock] = useState(String(material?.minStock ?? 5));
   const [grainRequired, setGrainRequired] = useState(material?.grainDirectionRequired ?? false);
+  // Undefined means tracked: everything the shop owns is counted unless it is explicitly not ours.
+  const [stockTracked, setStockTracked] = useState(material?.stockTracked !== false);
   const [active, setActive] = useState(material?.active ?? true);
   const [note, setNote] = useState(material?.note ?? "");
   const [imageUrl, setImageUrl] = useState(material?.imageUrl ?? "");
@@ -359,6 +525,7 @@ function MaterialModal({
         sellingPriceTiyn: parseMoneyInput(sellingPrice),
         minStock: parseInt(minStock, 10) || 0,
         grainDirectionRequired: grainRequired,
+        stockTracked,
         active,
         archived: false,
         note: note.trim(),
@@ -488,6 +655,14 @@ function MaterialModal({
             <span className="remember-check">{grainRequired ? "✓" : ""}</span>
             <span>Талшық бағыты міндетті</span>
           </label>
+          {/* Turning this off makes the row a priced line that never moves a warehouse balance —
+              a customer's own board, an offcut, anything bought per order. Without it a permanent
+              zero would both raise a false "Таусылды" and block the order from reaching the saw. */}
+          <label className="remember-me">
+            <input type="checkbox" checked={stockTracked} onChange={(e) => setStockTracked(e.target.checked)} />
+            <span className="remember-check">{stockTracked ? "✓" : ""}</span>
+            <span>Қоймада есептеледі (кесуге жібергенде минус болады)</span>
+          </label>
           <label className="remember-me">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             <span className="remember-check">{active ? "✓" : ""}</span>
@@ -582,11 +757,13 @@ function movementTypeLabel(type: string): string {
 function PvcTab({
   pvcTypes,
   loading,
+  canEdit,
   onEdit,
   showToast,
 }: {
   pvcTypes: PvcType[];
   loading: boolean;
+  canEdit: boolean;
   onEdit: (p: PvcType | "new") => void;
   showToast: (msg: string) => void;
 }) {
@@ -668,16 +845,20 @@ function PvcTab({
                     <span className={`wh-pill is-${pvcStockStatus(p).level}`}>{pvcStockStatus(p).label}</span>
                   </td>
                   <td data-label="Әрекеттер">
-                    <RowMenu
-                      items={[
-                        { label: "Өзгерту", onClick: () => onEdit(p) },
-                        { label: p.active ? "Архивке" : "Белсендіру", onClick: () => handleToggleActive(p) },
-                      ]}
-                    >
-                      <button className="btn btn-outline btn-sm" onClick={() => handlePvcReceipt(p)}>
-                        + Қабылдау
-                      </button>
-                    </RowMenu>
+                    {canEdit ? (
+                      <RowMenu
+                        items={[
+                          { label: "Өзгерту", onClick: () => onEdit(p) },
+                          { label: p.active ? "Архивке" : "Белсендіру", onClick: () => handleToggleActive(p) },
+                        ]}
+                      >
+                        <button className="btn btn-outline btn-sm" onClick={() => handlePvcReceipt(p)}>
+                          + Қабылдау
+                        </button>
+                      </RowMenu>
+                    ) : (
+                      <span className="wh-sub">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -7,12 +7,16 @@ import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { PvcActionsPanel } from "../components/PvcActionsPanel";
+import { OrderProgress } from "../components/OrderProgress";
+import { PaymentStatusBadge } from "../components/StatusBadge";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
 import { usePvcOrders } from "../hooks/useOrders";
 import { useOrderParts } from "../hooks/useOrderParts";
 import { usePvcTypes } from "../hooks/useMaterials";
 import { useToast } from "../hooks";
-import { dayKey } from "../lib/dates";
+import { dayKey, formatDateDMY } from "../lib/dates";
+import { materialSummary } from "../lib/journal";
+import { formatMoney } from "../lib/money";
 import { computePvcBreakdown, edgeLengthMm } from "../lib/pricing";
 import { EDGE_KEYS } from "../types/domain";
 import type { EdgeKey, Order, PvcType, UserDoc } from "../types/domain";
@@ -112,43 +116,79 @@ export default function PvcDashboard() {
           <div className="panel-head">
             <h3>Келесі заказдар (кезек)</h3>
           </div>
-          <div className="data-table-wrap">
-            <table className="data-table worker-queue-table">
-              <thead>
-                <tr>
-                  <th>Заказ</th>
-                  <th>ПВХ</th>
-                  <th>Кезек</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upNext.map((o) => {
-                  const waitingForSaw =
-                    o.productionStatus === "cutting_queue" || o.productionStatus === "cutting_started";
-                  return (
-                    <tr key={o.id} onClick={() => navigate(`/pvc/order/${o.id}`)} className="is-clickable">
-                      <td>{o.orderNumber}</td>
-                      <td>{o.pvcMetersTotal} м</td>
-                      <td>№{(o.priority ?? 0) + 1}</td>
-                      <td>
-                        {waitingForSaw ? (
-                          <span className="jt-pill jt-tone-muted">Распил күтілуде</span>
-                        ) : (
-                          <span className="jt-pill jt-tone-amber">ПВХ кезегінде</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* Same card shape the Распил панелі uses — a merged order's banded lines start and
+              finish independently here too, so this is never one blended "ПВХ" per order. */}
+          <div className="job-card-list">
+            {upNext.map((o) => (
+              <PvcJobCard
+                key={o.id}
+                order={o}
+                actor={actor}
+                onToast={showToast}
+                onOpen={() => navigate(`/pvc/order/${o.id}`)}
+              />
+            ))}
           </div>
         </section>
       )}
 
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/**
+ * A queued order as the PVC worker sees it — the same card shape the Распил панелі uses. Still
+ * waiting on the saw for a line still being cut ("Распил күтілуде"), or ready for edging.
+ * Finishing is not offered here: the colour/edge breakdown lives on the "Қазіргі заказ" panel
+ * above (and the order page), where the full part list is loaded.
+ */
+function PvcJobCard({
+  order,
+  actor,
+  onToast,
+  onOpen,
+}: {
+  order: Order;
+  actor: Actor;
+  onToast: (m: string) => void;
+  onOpen: () => void;
+}) {
+  const waitingForSaw = order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started";
+
+  return (
+    <article className="ocard job-card">
+      <div className="ocard-top">
+        <span className="otable-num">{order.orderNumber}</span>
+        <span className="otable-sub">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</span>
+      </div>
+      <div className="ocard-mid">
+        <span className="otable-strong">{order.customerName}</span>
+        <span className="otable-money">{formatMoney(order.totalTiyn)}</span>
+      </div>
+      <div className="ocard-meta">
+        <span className="otable-sub">
+          №{(order.priority ?? 0) + 1} · {materialSummary(order)}
+        </span>
+        <PaymentStatusBadge status={order.paymentStatus} />
+      </div>
+      <OrderProgress order={order} />
+
+      {waitingForSaw ? (
+        <div className="job-card-actions">
+          <span className="jt-pill jt-tone-muted">Распил күтілуде</span>
+        </div>
+      ) : (
+        <>
+          <div className="job-card-actions">
+            <button className="btn btn-outline btn-sm" onClick={onOpen}>
+              ⊞ Размерлер
+            </button>
+          </div>
+          <PvcActionsPanel order={order} actor={actor} onToast={onToast} />
+        </>
+      )}
+    </article>
   );
 }
 

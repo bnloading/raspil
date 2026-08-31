@@ -7,6 +7,7 @@ import type {
   SalaryRule,
 } from "../types/domain";
 import { monthKey, dayKey } from "./dates";
+import { jobsOf } from "./orderLines";
 
 /**
  * Configurable salary engine.
@@ -23,6 +24,7 @@ export interface SalaryWorkTotals {
   ldspSheets: number;
   hdfSheets: number;
   countertopSheets: number;
+  mdfSheets: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;
@@ -35,6 +37,7 @@ export const EMPTY_WORK_TOTALS: SalaryWorkTotals = {
   ldspSheets: 0,
   hdfSheets: 0,
   countertopSheets: 0,
+  mdfSheets: 0,
   pvcMeters: 0,
   ordersCompleted: 0,
   presentDays: 0,
@@ -62,32 +65,43 @@ export function measureWork(
   let ldspSheets = 0;
   let hdfSheets = 0;
   let countertopSheets = 0;
+  let mdfSheets = 0;
   let pvcMeters = 0;
   let ordersCompleted = 0;
 
   for (const order of orders) {
-    if (
-      order.assignedCutterId === userId &&
-      order.cuttingCompletedAt &&
-      monthKey(order.cuttingCompletedAt.toDate()) === periodKey
-    ) {
-      const sheets = order.confirmedSheets ?? order.estimatedSheets ?? 0;
-      sheetsCut += sheets;
-      const category = categoryByMaterialId.get(order.materialId) ?? "ldsp";
-      if (category === "hdf") hdfSheets += sheets;
-      else if (category === "countertop") countertopSheets += sheets;
-      else ldspSheets += sheets;
-      ordersCompleted += 1;
+    // Per material line, not per order: a merged order ("10 лист ЛДСП + 3 лист ХДФ") pays the
+    // ЛДСП rate on 10 sheets and the ХДФ rate on 3, and each line credits whichever worker's uid
+    // is actually on it — two cutters splitting one merged order each get only their own sheets.
+    // jobsOf() derives lines for an order that predates this tracking (see its doc comment), so
+    // history from before per-line jobs existed still counts here exactly as it always did.
+    let touchedThisOrder = false;
+    for (const job of jobsOf(order)) {
+      if (
+        job.cuttingByUid === userId &&
+        job.cuttingCompletedAt &&
+        monthKey(job.cuttingCompletedAt.toDate()) === periodKey
+      ) {
+        const sheets = job.confirmedSheets ?? job.sheetQty ?? 0;
+        sheetsCut += sheets;
+        const category = categoryByMaterialId.get(job.materialId) ?? "ldsp";
+        if (category === "hdf") hdfSheets += sheets;
+        else if (category === "countertop") countertopSheets += sheets;
+        else if (category === "mdf") mdfSheets += sheets;
+        else ldspSheets += sheets;
+        touchedThisOrder = true;
+      }
+      if (
+        job.pvcByUid === userId &&
+        job.pvcCompletedAt &&
+        monthKey(job.pvcCompletedAt.toDate()) === periodKey
+      ) {
+        pvcMeters += job.pvcMeters ?? 0;
+        touchedThisOrder = true;
+      }
     }
-    if (
-      order.assignedPvcId === userId &&
-      order.pvcCompletedAt &&
-      monthKey(order.pvcCompletedAt.toDate()) === periodKey
-    ) {
-      pvcMeters += order.pvcMetersTotal ?? 0;
-      // An order this worker both cut and edged is one completed order, not two.
-      if (order.assignedCutterId !== userId) ordersCompleted += 1;
-    }
+    // One completed order counts once, however many of its own lines this worker touched.
+    if (touchedThisOrder) ordersCompleted += 1;
   }
 
   let presentDays = 0;
@@ -105,7 +119,7 @@ export function measureWork(
   }
 
   return {
-    sheetsCut, ldspSheets, hdfSheets, countertopSheets,
+    sheetsCut, ldspSheets, hdfSheets, countertopSheets, mdfSheets,
     pvcMeters, ordersCompleted, presentDays, absentDays, workedHours,
   };
 }
@@ -117,22 +131,26 @@ export interface SalaryComputation {
 }
 
 /**
- * Piece-rate pay for cut sheets, charged per material category. ХДФ and countertops fall back to
- * the plain sheet rate only when no category-specific rate is configured, so a shop that pays one
- * flat rate still works without setting three fields.
+ * Piece-rate pay for cut sheets, charged per material category. ХДФ, countertops and МДФ fall
+ * back to the plain sheet rate only when no category-specific rate is configured, so a shop that
+ * pays one flat rate still works without setting every field — and the shop's actual rule (МДФ
+ * priced the same as ЛДСП) is exactly what that fallback gives for free.
  */
 function pieceRateTotal(rule: SalaryRule | undefined, work: SalaryWorkTotals): number {
   const base = rule?.perSheetTiyn ?? 0;
   const hdf = rule?.perHdfSheetTiyn ?? base;
   const countertop = rule?.perCountertopTiyn ?? base;
+  const mdf = rule?.perMdfSheetTiyn ?? base;
 
-  const categorised = work.ldspSheets + work.hdfSheets + work.countertopSheets;
+  const categorised = work.ldspSheets + work.hdfSheets + work.countertopSheets + work.mdfSheets;
   // Totals measured before categories existed carry only sheetsCut. Paying 0 for them would
   // silently underpay, so an uncategorised total is treated as ЛДСП — the same fallback
   // measureWork() applies to a material with no category set.
   if (categorised === 0) return work.sheetsCut * base;
 
-  return work.ldspSheets * base + work.hdfSheets * hdf + work.countertopSheets * countertop;
+  return (
+    work.ldspSheets * base + work.hdfSheets * hdf + work.countertopSheets * countertop + work.mdfSheets * mdf
+  );
 }
 
 /**

@@ -40,3 +40,8 @@ service-account.json
 
 # Firestore backups — contain every customer record; must never be committed.
 backups/
+
+# Claude Code local tooling: the assistant's own settings, plus any skill packs installed into the
+# project (ui-ux-pro-max ships ~4.6 MB of design CSVs). Developer tools, not app code — same
+# reasoning as .vscode/ above.
+.claude/

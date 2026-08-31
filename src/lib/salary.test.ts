@@ -225,6 +225,80 @@ describe("the shop's actual pay rules", () => {
     expect(computeSalaryBase(cutterRule, work).baseTiyn).toBe(T(7000));
   });
 
+  it("splits a merged order across its own materials' categories, not the order's primary one", () => {
+    // ORD с 10 лист ЛДСП + 4 лист ХДФ, typed as one journal merge — materialId only names the
+    // primary line, but every material still owes its own category's rate.
+    const merged = order({
+      id: "merged",
+      materialId: "m-ldsp",
+      assignedCutterId: CUTTER,
+      cuttingCompletedAt: MARCH,
+      items: [
+        { materialId: "m-ldsp", materialName: "ЛДСП", sheetQty: 10, sheetPriceTiyn: 0, pvcMeters: 0, pvcPricePerMeterTiyn: 0 },
+        { materialId: "m-hdf", materialName: "ХДФ", sheetQty: 4, sheetPriceTiyn: 0, pvcMeters: 0, pvcPricePerMeterTiyn: 0 },
+      ],
+    });
+    const work = measureWork([merged], [], CUTTER, "2026-03", categories);
+    expect(work).toMatchObject({ sheetsCut: 14, ldspSheets: 10, hdfSheets: 4, ordersCompleted: 1 });
+    // 10×600 + 4×100 = 6 000 + 400 = 6 400 ₸ — not 14×600, which is what charging the whole
+    // merged total to the primary material's rate used to produce.
+    expect(computeSalaryBase(cutterRule, work).baseTiyn).toBe(T(6400));
+  });
+
+  it("splits a merged order between two different workers, one per line", () => {
+    const cutterB = "cutter-2";
+    const merged = order({
+      id: "merged",
+      materialId: "m-ldsp",
+      cuttingCompletedAt: MARCH,
+      lineJobs: [
+        { index: 0, materialId: "m-ldsp", materialName: "ЛДСП", sheetQty: 10, pvcMeters: 0, confirmedSheets: 10, cuttingByUid: CUTTER, cuttingCompletedAt: MARCH },
+        { index: 1, materialId: "m-hdf", materialName: "ХДФ", sheetQty: 4, pvcMeters: 0, confirmedSheets: 4, cuttingByUid: cutterB, cuttingCompletedAt: MARCH },
+      ],
+    });
+    const workA = measureWork([merged], [], CUTTER, "2026-03", categories);
+    const workB = measureWork([merged], [], cutterB, "2026-03", categories);
+    expect(workA).toMatchObject({ ldspSheets: 10, hdfSheets: 0, ordersCompleted: 1 });
+    expect(workB).toMatchObject({ ldspSheets: 0, hdfSheets: 4, ordersCompleted: 1 });
+  });
+
+  it("prices МДФ on its own, falling back to the ЛДСП rate when no separate one is set", () => {
+    // The shop's real rule: ХДФ/Столешница 300 ₸, ЛДСП/МДФ 600 ₸ — МДФ has no perMdfSheetTiyn of
+    // its own, so it rides the base rate exactly like ЛДСП, without being folded into that count.
+    const realRule: SalaryRule = {
+      id: CUTTER, userId: CUTTER, mode: "PER_SHEET",
+      perSheetTiyn: T(600), perHdfSheetTiyn: T(300), perCountertopTiyn: T(300),
+    };
+    const cats = new Map<string, "ldsp" | "hdf" | "countertop" | "mdf">([
+      ["m-ldsp", "ldsp"], ["m-hdf", "hdf"], ["m-top", "countertop"], ["m-mdf", "mdf"],
+    ]);
+    const work = measureWork(
+      [
+        order({ id: "a", materialId: "m-hdf", assignedCutterId: CUTTER, confirmedSheets: 5, cuttingCompletedAt: MARCH }),
+        order({ id: "b", materialId: "m-top", assignedCutterId: CUTTER, confirmedSheets: 2, cuttingCompletedAt: MARCH }),
+        order({ id: "c", materialId: "m-ldsp", assignedCutterId: CUTTER, confirmedSheets: 6, cuttingCompletedAt: MARCH }),
+        order({ id: "d", materialId: "m-mdf", assignedCutterId: CUTTER, confirmedSheets: 3, cuttingCompletedAt: MARCH }),
+      ],
+      [], CUTTER, "2026-03", cats,
+    );
+    expect(work).toMatchObject({ hdfSheets: 5, countertopSheets: 2, ldspSheets: 6, mdfSheets: 3 });
+    // 5×300 + 2×300 + 6×600 + 3×600 = 1 500 + 600 + 3 600 + 1 800 = 7 500 ₸
+    expect(computeSalaryBase(realRule, work).baseTiyn).toBe(T(7500));
+  });
+
+  it("charges МДФ its own configured rate when one is set, instead of the ЛДСП fallback", () => {
+    const rule: SalaryRule = {
+      id: CUTTER, userId: CUTTER, mode: "PER_SHEET",
+      perSheetTiyn: T(600), perMdfSheetTiyn: T(450),
+    };
+    const cats = new Map<string, "mdf">([["m-mdf", "mdf"]]);
+    const work = measureWork(
+      [order({ materialId: "m-mdf", assignedCutterId: CUTTER, confirmedSheets: 4, cuttingCompletedAt: MARCH })],
+      [], CUTTER, "2026-03", cats,
+    );
+    expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(1800)); // 4×450, not 4×600
+  });
+
   it("treats an uncategorised material as ЛДСП", () => {
     const work = measureWork(
       [order({ materialId: "unknown", assignedCutterId: CUTTER, confirmedSheets: 5, cuttingCompletedAt: MARCH })],

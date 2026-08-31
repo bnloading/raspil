@@ -1,6 +1,8 @@
-import { collection, doc, runTransaction, serverTimestamp, Timestamp, type Firestore } from "firebase/firestore";
+import { collection, doc, runTransaction, serverTimestamp, Timestamp, writeBatch, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { Order, UserDoc } from "../types/domain";
+import type { StrandedPayment } from "./orderMerge";
+import { logAudit } from "./audit";
 import { computePaymentStatus } from "./statuses";
 
 type Actor = { user: User; userData: UserDoc };
@@ -113,5 +115,62 @@ export async function reversePayment(
       paymentStatus: newPaymentStatus,
       ...(newProductionStatus ? { productionStatus: newProductionStatus } : {}),
     });
+  });
+}
+
+/**
+ * Moves payments left behind by a merge onto the order that is actually live, then re-syncs that
+ * order's own paidTiyn/debtTiyn/paymentStatus from the rolled-up total.
+ *
+ * No money changes: the amount, the method, the date and the person who took it are all untouched,
+ * and the original order id is kept on `mergedFromOrderId` so the move stays traceable. It is the
+ * bookkeeping equivalent of filing a receipt under the right invoice — which is exactly the
+ * narrow diff firestore.rules lets a Manager write here.
+ */
+export async function reattachPayments(
+  db: Firestore,
+  actor: Actor,
+  params: {
+    moves: StrandedPayment[];
+    /** Net (non-reversed) paid per target order once the moves land. */
+    netPaidByOrderId: ReadonlyMap<string, number>;
+  },
+): Promise<void> {
+  if (params.moves.length === 0) return;
+
+  const batch = writeBatch(db);
+  for (const move of params.moves) {
+    batch.update(doc(db, "payments", move.paymentId), {
+      orderId: move.toOrderId,
+      mergedFromOrderId: move.fromOrderId,
+    });
+  }
+  await batch.commit();
+
+  // Each target separately, and after the payments have landed: an order's stored totals are only
+  // ever a cache of its payments, so this recomputes rather than adjusting by a delta.
+  for (const [orderId, paidTiyn] of params.netPaidByOrderId) {
+    const orderRef = doc(db, "orders", orderId);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(orderRef);
+      if (!snap.exists()) return;
+      const order = snap.data() as Order;
+      if (order.paidTiyn === paidTiyn) return;
+      tx.update(orderRef, {
+        paidTiyn,
+        debtTiyn: order.totalTiyn - paidTiyn,
+        paymentStatus: computePaymentStatus(order.totalTiyn, paidTiyn),
+      });
+    });
+  }
+
+  await logAudit(db, actor, {
+    action: "payment.reattached",
+    entityType: "payment",
+    entityId: params.moves[0].paymentId,
+    after: {
+      moved: params.moves.length,
+      orders: [...new Set(params.moves.map((m) => m.toOrderId))],
+    },
   });
 }

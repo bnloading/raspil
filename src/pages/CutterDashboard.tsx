@@ -1,26 +1,30 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { CuttingActionsPanel } from "../components/CuttingActionsPanel";
+import { OrderProgress } from "../components/OrderProgress";
+import { PaymentStatusBadge } from "../components/StatusBadge";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
 import { useCutterOrders } from "../hooks/useOrders";
-import { useOrderParts } from "../hooks/useOrderParts";
 import { useToast } from "../hooks";
-import { dayKey } from "../lib/dates";
+import { dayKey, formatDateDMY } from "../lib/dates";
 import { materialSummary } from "../lib/journal";
-import { EDGE_KEYS } from "../types/domain";
+import { formatMoney } from "../lib/money";
 import type { Order } from "../types/domain";
 
-const GRAIN_LABELS: Record<string, string> = { vertical: "Тік", horizontal: "Көлденең", any: "Маңызды емес" };
-
 /**
- * "Распил панелі" — the cutting worker's whole job on one screen: how much work is waiting, the
- * one order they're on right now with its start/finish controls, and the queue behind it.
- * Deliberately shows no money, no customer contact details and no other role's controls.
+ * "Распил панелі" — the cutting worker's whole job on one screen: how much work is waiting and
+ * one card per order to act on. There used to be a separately-styled "Қазіргі заказ" panel for
+ * whichever order was in progress, spotlighted above the queue in a different layout — but every
+ * field it carried (order number, materials, payment, progress) already lives on the plain job
+ * card too, and the per-line action rows already make plain which order is actually being worked.
+ * One list, one card shape: an order in progress simply shows its lines already started.
+ *
+ * Each card carries its total and payment badge, at the owner's request: the cutter reads the
+ * same card the office does, so a row that is still a debt is visible before the saw starts on it.
+ * Customer contact details and other roles' controls stay out.
  */
 export default function CutterDashboard() {
   const { user, userData } = useAuth();
@@ -38,9 +42,9 @@ export default function CutterDashboard() {
     return orders.filter((o) => o.cuttingCompletedAt && dayKey(o.cuttingCompletedAt.toDate()) === today);
   }, [orders]);
 
-  // The order the worker is actually on: whatever they've started, else the front of the queue.
-  const current: Order | undefined = inProgress[0] ?? queued[0];
-  const upNext = useMemo(() => queued.filter((o) => o.id !== current?.id), [queued, current]);
+  // Whatever is already started surfaces first — that is the actual work in hand — then the
+  // queue in its own priority order.
+  const active = useMemo(() => [...inProgress, ...queued], [inProgress, queued]);
 
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
@@ -78,48 +82,23 @@ export default function CutterDashboard() {
 
       {loading ? (
         <Spinner />
-      ) : !current ? (
+      ) : active.length === 0 ? (
         <div className="empty-state">
           <div className="icon">📭</div>
           <p>Кезекте заказ жоқ</p>
         </div>
       ) : (
-        <CurrentCuttingOrder
-          order={current}
-          actor={actor}
-          onToast={showToast}
-          onOpen={() => navigate(`/cutting/order/${current.id}`)}
-        />
-      )}
-
-      {upNext.length > 0 && (
-        <section className="panel-card">
-          <div className="panel-head">
-            <h3>Кезек тізімі</h3>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table worker-queue-table">
-              <thead>
-                <tr>
-                  <th>Заказ</th>
-                  <th>Материалдар</th>
-                  <th>Кезек</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upNext.map((o) => (
-                  <tr key={o.id} onClick={() => navigate(`/cutting/order/${o.id}`)} className="is-clickable">
-                    <td>{o.orderNumber}</td>
-                    <td>{materialSummary(o)}</td>
-                    <td>№{(o.priority ?? 0) + 1}</td>
-                    <td><span className="jt-pill jt-tone-amber">⏳ Кезекте</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="job-card-list">
+          {active.map((o) => (
+            <JobCard
+              key={o.id}
+              order={o}
+              actor={actor}
+              onToast={showToast}
+              onOpen={() => navigate(`/cutting/order/${o.id}`)}
+            />
+          ))}
+        </div>
       )}
 
       <Toast message={message} visible={visible} />
@@ -127,7 +106,14 @@ export default function CutterDashboard() {
   );
 }
 
-function CurrentCuttingOrder({
+/**
+ * One order as the cutter sees it: order and date, customer and total, what is to be cut and
+ * whether it is paid, how far along the shop it is, and a start/finish row per material line.
+ *
+ * Finishing is not offered as a single flat action here: each line's own sheet count is confirmed
+ * against the order's real parts, which "⊞ Размерлер" (and CuttingActionsPanel itself) load in full.
+ */
+function JobCard({
   order,
   actor,
   onToast,
@@ -138,81 +124,32 @@ function CurrentCuttingOrder({
   onToast: (m: string) => void;
   onOpen: () => void;
 }) {
-  const { parts, loading } = useOrderParts(order.id);
-  const [note, setNote] = useState(order.productionNote ?? "");
-
-  const needsPvc = parts.some((p) => EDGE_KEYS.some((e) => p.edges[e]?.pvc));
-  const partCount = parts.reduce((sum, p) => sum + p.qty, 0);
-  const grainLabel = useMemo(() => {
-    const unique = [...new Set(parts.map((p) => p.grainDirection))];
-    return unique.map((g) => GRAIN_LABELS[g] ?? g).join(", ");
-  }, [parts]);
-
-  const saveNote = async () => {
-    if (note === (order.productionNote ?? "")) return;
-    try {
-      await updateDoc(doc(db, "orders", order.id), { productionNote: note });
-      onToast("✅ Ескертпе сақталды");
-    } catch (err: unknown) {
-      onToast("Қате: " + (err as Error).message);
-    }
-  };
-
   return (
-    <section className="panel-card worker-current">
-      <div className="panel-head">
-        <h3>Қазіргі заказ</h3>
-        <span className="jt-pill jt-tone-green">Төленді</span>
+    <article className="ocard job-card">
+      <div className="ocard-top">
+        <span className="otable-num">{order.orderNumber}</span>
+        <span className="otable-sub">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</span>
       </div>
-
-      <div className="worker-current-num">{order.orderNumber}</div>
-
-      <div className="worker-current-grid">
-        <div>
-          <span className="worker-field-label">Кезек</span>
-          <strong>№{(order.priority ?? 0) + 1}</strong>
-        </div>
-        <div>
-          <span className="worker-field-label">Материалдар</span>
-          <strong>{materialSummary(order)}</strong>
-        </div>
-        <div>
-          <span className="worker-field-label">Бөлшек саны</span>
-          <strong>{loading ? "…" : `${partCount} бөлшек`}</strong>
-        </div>
-        <div>
-          <span className="worker-field-label">Материал</span>
-          <strong>
-            {order.materialSnapshot.name} {order.materialSnapshot.thicknessMm} мм
-          </strong>
-        </div>
-        {grainLabel && (
-          <div>
-            <span className="worker-field-label">Талшық бағыты</span>
-            <strong>{grainLabel}</strong>
-          </div>
-        )}
+      <div className="ocard-mid">
+        <span className="otable-strong">{order.customerName}</span>
+        <span className="otable-money">{formatMoney(order.totalTiyn)}</span>
       </div>
+      <div className="ocard-meta">
+        <span className="otable-sub">
+          №{(order.priority ?? 0) + 1} · {materialSummary(order)} · {order.materialSnapshot.name}
+        </span>
+        <PaymentStatusBadge status={order.paymentStatus} />
+      </div>
+      <OrderProgress order={order} />
 
-      {order.adminNote && <div className="worker-manager-note">📋 Менеджер: {order.adminNote}</div>}
-
-      <div className="worker-current-links">
+      <div className="job-card-actions">
         <button className="btn btn-outline btn-sm" onClick={onOpen}>
-          ⊞ Размерлерді көру
+          ⊞ Размерлер
         </button>
       </div>
-
-      <div className="form-group">
-        <input
-          className="form-input"
-          placeholder="Өндіріс ескертпесі..."
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onBlur={saveNote}
-        />
-      </div>
-
-      <CuttingActionsPanel order={order} actor={actor} needsPvc={needsPvc} onToast={onToast} />
-    </section>
+      {/* One row per material — a merged order's ЛДСП and ХДФ each start and finish on their
+          own, so this is never collapsed into a single "Бастау"/"Аяқтау" button. */}
+      <CuttingActionsPanel order={order} actor={actor} onToast={onToast} />
+    </article>
   );
 }

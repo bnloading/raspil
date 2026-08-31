@@ -61,6 +61,9 @@ export default function ManagerOrderDetail() {
             payments={payments}
             actor={actor}
             isAdmin={isAdmin}
+            // Owner's call: a Manager may send an unpaid order to cutting on credit too, same as
+            // Admin — every override still needs a typed reason and lands in the audit log.
+            canOverrideCuttingGate
             allOrders={allOrders}
             showToast={showToast}
           />

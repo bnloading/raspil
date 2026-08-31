@@ -39,6 +39,25 @@ to whatever rules are already configured in your project (likely wide open, sinc
 this repo before). Once deployed, all the RBAC/data-isolation behavior described below is enforced
 server-side, not just hidden in the UI.
 
+Re-run it after **every** change to `firestore.rules`: the file in this repo is only a document
+until it is released, and features whose permissions changed will fail in production while the
+tests here pass.
+
+### Authorized domains
+
+Firebase only honours password-reset links and OAuth sign-in on hosts listed under Authentication
+→ Settings → Authorized domains, so a new deployment domain has to be added there. There is no
+Firebase CLI command for it; this repo has a script instead:
+
+```bash
+node --env-file=.env.local scripts/auth-domains.mjs                                # show the list
+node --env-file=.env.local scripts/auth-domains.mjs --add my-app.vercel.app        # add one
+```
+
+Plain email/password sign-in works from any origin, so a missing domain does **not** lock people
+out of logging in — what it breaks is "Құпия сөзді ұмыттыңыз ба?", whose reset link has to point
+back at an authorized host.
+
 ## Seeding reference data & test accounts
 
 ```bash

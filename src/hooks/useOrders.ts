@@ -7,7 +7,18 @@ import type { Order, ProductionStatus } from "../types/domain";
 // enforces the payment gate before writing "cutting_queue" — so filtering on status alone already
 // satisfies "cutter/PVC worker must never see unpaid or partially-paid orders" with no extra query.
 const CUTTER_VISIBLE_STATUSES: ProductionStatus[] = ["cutting_queue", "cutting_started", "cutting_completed"];
-const PVC_VISIBLE_STATUSES: ProductionStatus[] = ["cutting_completed", "pvc_queue", "pvc_started", "pvc_completed"];
+// PVC work itself only starts once the sheets are cut, but the job is the PVC worker's to plan for
+// from the moment it enters the cutting queue — that is what fills the dashboard's "Распил
+// күтілуде" list. firestore.rules pvcCanSee() allows exactly these statuses to be read; editing
+// still begins at cutting_completed (pvcCanEdit).
+const PVC_VISIBLE_STATUSES: ProductionStatus[] = [
+  "cutting_queue",
+  "cutting_started",
+  "cutting_completed",
+  "pvc_queue",
+  "pvc_started",
+  "pvc_completed",
+];
 
 /**
  * The `orders` collection also holds a handful of documents from the app's pre-rewrite schema

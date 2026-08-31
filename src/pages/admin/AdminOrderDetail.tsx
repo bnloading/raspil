@@ -68,6 +68,7 @@ export default function AdminOrderDetail() {
             payments={payments}
             actor={actor}
             isAdmin
+            canOverrideCuttingGate
             allOrders={allOrders}
             showToast={showToast}
           />

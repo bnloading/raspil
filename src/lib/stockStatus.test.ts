@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stockStatus, lowStockCount } from "./stockStatus";
+import { stockStatus, lowStockCount, UNTRACKED_LABEL } from "./stockStatus";
 
 const m = (qtyOnHand: number, reservedQty = 0, minStock = 5) => ({ qtyOnHand, reservedQty, minStock });
 
@@ -48,6 +48,20 @@ describe("stockStatus", () => {
   it("carries a Kazakh label with the level", () => {
     expect(stockStatus(m(3)).label).toBe("Таусылуға жақын");
     expect(stockStatus(m(141)).label).toBe("Жеткілікті");
+  });
+});
+
+describe("materials that are not shop stock", () => {
+  const untracked = { qtyOnHand: 0, reservedQty: 0, minStock: 5, stockTracked: false };
+
+  it("never reports a shortage on a permanently empty line", () => {
+    expect(stockStatus(untracked).level).toBe("ok");
+    expect(stockStatus(untracked).label).toBe(UNTRACKED_LABEL);
+    expect(stockStatus(untracked).ratio).toBe(0);
+  });
+
+  it("is left out of the low-stock count", () => {
+    expect(lowStockCount([m(3), untracked, untracked])).toBe(1); // only the real shortage
   });
 });
 

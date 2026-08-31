@@ -48,6 +48,7 @@ function adminNav(): NavItem[] {
     { key: "admin-staff", label: "Қызметкерлер", path: "/setup", icon: IconUsers, group: "main" },
     { key: "admin-attendance", label: "Жұмысқа қатысу", path: "/admin/attendance", icon: IconAudit, group: "main" },
     { key: "admin-salary", label: "Айлық", path: "/admin/salary", icon: IconReports, group: "main" },
+    { key: "admin-cashbox", label: "Касса / Шығын", path: "/manager/cashbox", icon: IconReports, group: "main" },
     { key: "admin-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
     { key: "admin-settings", label: "Баптаулар", path: "/admin/csv-settings", icon: IconAudit, group: "main" },
     { key: "admin-camera", label: "Камера", short: "Камера", path: "/camera", icon: IconCamera, group: "main", mobile: true },
@@ -66,8 +67,10 @@ function managerNav(): NavItem[] {
     { key: "manager-cutting", label: "Распил кезегі", short: "Распил", path: "/manager/cutting", icon: IconCut, group: "main", mobile: true },
     { key: "manager-pvc", label: "ПВХ кезегі", path: "/manager/pvc", icon: IconPvc, group: "main" },
     { key: "manager-ready", label: "Дайын", path: "/manager/ready", icon: IconWarehouse, group: "main" },
+    { key: "manager-materials", label: "Қойма", short: "Қойма", path: "/manager/materials", icon: IconWarehouse, group: "main", mobile: true },
     { key: "manager-new", label: "Жаңа заказдар", path: "/manager/new", icon: IconPlus, group: "secondary" },
     { key: "manager-orders", label: "Заказдар (карта)", path: "/manager/orders", icon: IconOrders, group: "secondary" },
+    { key: "manager-cashbox", label: "Касса / Шығын", short: "Касса", path: "/manager/cashbox", icon: IconReports, group: "main", mobile: true },
     { key: "manager-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
     { key: "manager-customers", label: "Клиенттер", path: "/setup", icon: IconUsers, group: "secondary" },
     { key: "manager-reports", label: "Есептер", path: "/admin/reports", icon: IconReports, group: "secondary" },
@@ -90,6 +93,7 @@ function customerNav(): NavItem[] {
 function cutterNav(): NavItem[] {
   return [
     { key: "cutting-home", label: "Кезек", short: "Кезек", path: "/cutting", icon: IconCut, group: "main", mobile: true },
+    { key: "cutting-history", label: "Тарих", short: "Тарих", path: "/cutting/history", icon: IconReports, group: "main", mobile: true },
     { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
     { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "main", mobile: true },
     { key: "assortment", label: "Листтар", short: "Лист", path: "/assortment", icon: IconLayers, group: "secondary" },

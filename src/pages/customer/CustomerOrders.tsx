@@ -143,7 +143,9 @@ export default function CustomerOrders() {
         </div>
       </div>
 
-      <div className="status-filter-row" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
+      {/* Exactly four fixed buckets — always shown in full, never a scrolling row (unlike the
+          open-ended per-status filter on the staff order lists). */}
+      <div className="status-filter-row is-compact">
         {(Object.keys(BUCKET_LABELS) as Bucket[]).map((b) => (
           <button
             key={b}
