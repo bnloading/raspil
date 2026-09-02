@@ -426,6 +426,17 @@ export type WorkshopBoardStage = "queue" | "cutting" | "pvc_wait" | "pvc" | "rea
 export interface WorkshopActivityEntry {
   id: string; // == the order's id, so sync/clear is a simple set/delete by orderId
   orderNumber: string;
+  /**
+   * Whose order this is, at the shop's request: the board is the digital version of the
+   * whiteboard on the workshop wall, and a wall says names.
+   *
+   * This is the one identifying field here — no customerId, no phone, no price, no dimensions —
+   * and it is readable by every signed-in user, which is what /workshopActivity's read rule
+   * allows. Optional because rows written before the shop asked for this carry no name; the
+   * board falls back to the anonymous code for those until the order's next status change
+   * re-syncs it.
+   */
+  customerName?: string;
   stage: WorkshopBoardStage;
   queuePosition: number;
   needsPvc: boolean;

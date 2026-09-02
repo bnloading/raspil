@@ -7,8 +7,11 @@ import { customerOrderCode } from "../lib/orderCode";
 import type { Order } from "../types/domain";
 
 /**
- * Public display code — the trailing digits only, so the board never advertises volume or
- * lets one customer infer anything about another's order beyond its position.
+ * Fallback display code — the trailing digits only.
+ *
+ * Used for rows written before the board carried names, which have none until their next status
+ * change re-syncs them. It also keeps the board from advertising how many orders the shop has
+ * taken this year.
  */
 function publicCode(orderNumber: string): string {
   const digits = orderNumber.match(/(\d+)$/)?.[1];
@@ -24,12 +27,12 @@ function publicCode(orderNumber: string): string {
  * order is made of — "6 лист · Ақ 6 · ХДФ 5" — which is the line that answers "which one is
  * mine" at a glance.
  *
- * Everyone else's row stays a code and a stage, and that is not an oversight. The whole feed is
- * readable by any signed-in user (firestore.rules: `allow read: if isSignedIn()` on
- * /workshopActivity) and that permission is only defensible because WorkshopActivityEntry carries
- * no name, no phone, no price and no dimensions. The viewer's OWN rows are matched by order
- * number against orders they already hold, so naming those adds nothing they cannot see anyway —
- * which is why `myOrders` is passed in rather than the board fetching anything richer.
+ * Every row is named, at the shop's request — the board is the whiteboard on the workshop wall,
+ * and a wall says names. The feed is readable by any signed-in user (firestore.rules:
+ * `allow read: if isSignedIn()` on /workshopActivity), so that is every customer seeing every
+ * other customer's name against a stage; nothing further is exposed, and the rule's comment says
+ * so. What the viewer OWNS is still enriched client-side from `myOrders` — their sheet counts and
+ * ПВХ metres — because that is data they already hold and the board never carries it.
  */
 export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] }) {
   const { entries, loading } = useWorkshopActivity();
@@ -72,6 +75,12 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
                 <span className="workshop-row-id">
                   {own ? customerOrderCode(own.orderNumber) : publicCode(e.orderNumber)}
                 </span>
+
+                {/* Named for everyone. A row synced before the name was added has none — it keeps
+                    its code above and simply says nothing here, rather than showing a blank. */}
+                {!own && e.customerName && (
+                  <span className="workshop-row-name">{e.customerName}</span>
+                )}
 
                 <span className="workshop-row-stage">{boardSummary(e.stage, e.queuePosition)}</span>
 

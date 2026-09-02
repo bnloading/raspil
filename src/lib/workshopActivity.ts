@@ -2,15 +2,17 @@ import { deleteDoc, doc, serverTimestamp, setDoc, type Firestore } from "firebas
 import type { Order, WorkshopBoardStage } from "../types/domain";
 
 /**
- * The public, anonymized workshop board ("Цех жұмысы" / "Цехта қазір").
+ * The public workshop board ("Цех жұмысы" / "Цехта қазір").
  *
- * Every signed-in customer may read this collection, so it must never carry anything that
- * identifies whose order a row is: no customerId, no name, no phone, no price, no dimensions.
- * A customer recognises their own row by matching orderNumber against their own orders, which
- * they already have — so ownership highlighting needs no extra field here.
+ * Every signed-in customer may read this collection, so what goes in it is deliberate and short:
+ * the order number, the stage, the queue position, and the customer's name. The name is here at
+ * the shop's explicit request — the board is the digital version of the whiteboard on the
+ * workshop wall, and a wall says names. Nothing else identifying follows it: no customerId, no
+ * phone, no price, no dimensions.
  *
  * One document per in-production order, keyed by order id, kept in sync by syncWorkshopBoard()
  * from every status transition in lib/orderStatus.ts and removed once the order leaves the floor.
+ * Rows written before the name was added carry none until their next transition re-syncs them.
  */
 
 /** Which board stage an order is at, or null if it doesn't belong on the public board at all. */
@@ -64,6 +66,9 @@ export async function syncWorkshopBoard(db: Firestore, order: Order): Promise<vo
 
   await setDoc(ref, {
     orderNumber: order.orderNumber,
+    // Trimmed and defaulted rather than written as undefined: Firestore rejects undefined values,
+    // and an order typed without a name must not fail the whole status transition.
+    customerName: (order.customerName ?? "").trim(),
     stage,
     queuePosition: order.priority ?? 0,
     needsPvc: order.pvcMetersTotal > 0,

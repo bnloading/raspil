@@ -156,9 +156,14 @@ service cloud.firestore {
     }
 
     match /workshopActivity/{id} {
-      // Fully anonymized (no customerId/name/pricing — see WorkshopActivityEntry) "currently being
-      // worked on" feed for the customer-facing "Цехта қазір" transparency widget: any signed-in
-      // user may read it (not just the order's owner), since it can't identify whose order it is.
+      // The "currently being worked on" feed behind the customer-facing "Цехта қазір" board. Any
+      // signed-in user may read it, not just the order's owner.
+      //
+      // It carries the customer's NAME as well as the order number, stage and queue position —
+      // added at the shop's request, so the board reads like the whiteboard on the workshop wall.
+      // That means every signed-in user can see every customer's name against a stage. It carries
+      // nothing else identifying: no customerId, no phone, no pricing, no dimensions (see
+      // WorkshopActivityEntry). Anything beyond a name needs this rule narrowed first.
       allow read: if isSignedIn();
       allow write: if isStaff();
     }
