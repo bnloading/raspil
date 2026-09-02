@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 76" role="img" aria-labelledby="t">
+  <title id="t">Modera</title>
+  <g fill="#000">
+    <path d="M0 0h42L0 42z"/>
+    <path d="M0 48l42 28H0z"/>
+    <path d="M50 0h6a38 38 0 0 1 0 76h-6z"/>
+    <path d="M106 0h28l28 76h-56z"/>
+  </g>
+</svg>

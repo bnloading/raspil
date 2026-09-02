@@ -4015,18 +4015,16 @@ body {
   white-space: nowrap;
   overflow: hidden;
 }
-.sidebar-brand-mark {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 800;
+/* The mark is black; the sidebar is not. Inverted here rather than shipping a white copy of
+   each asset to keep in step with the black ones. */
+.sidebar-brand-full,
+.sidebar-brand-icon {
+  height: auto;
+  filter: brightness(0) invert(1);
 }
+.sidebar-brand-full { width: 100%; max-width: 168px; }
+/* Only the KDA glyphs, for the 76px rail. */
+.sidebar-brand-icon { display: none; width: 40px; }
 .sidebar-groups {
   flex: 1;
   padding: 8px 12px;
@@ -4084,6 +4082,11 @@ body {
 .app-shell.collapsed .sidebar-footer span {
   display: none;
 }
+/* Swap the lockup for the glyphs once the rail narrows. The brand block used to go blank here —
+   .sidebar-brand span hid the letter tile along with the word. */
+.app-shell.collapsed .sidebar-brand { justify-content: center; padding: 20px 8px; }
+.app-shell.collapsed .sidebar-brand-full { display: none; }
+.app-shell.collapsed .sidebar-brand-icon { display: block; }
 
 .app-topbar {
   position: sticky;

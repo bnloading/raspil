@@ -2,6 +2,8 @@ import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import type { NavItem } from "./navConfig";
 import { IconMenu } from "./icons";
+import moderaLogo from "../../assets/modera-logo.png";
+import moderaMark from "../../assets/modera-mark.png";
 
 interface SidebarProps {
   items: NavItem[];
@@ -18,9 +20,12 @@ const GROUPS: Array<{ key: "main" | "secondary"; label: string }> = [
 export function Sidebar({ items, activeKey, collapsed, onToggleCollapse }: SidebarProps) {
   return (
     <aside className="app-sidebar">
+      {/* Two crops of one mark rather than a logo and an unrelated letter tile: the full
+          lockup while there is room for it, and the KDA glyphs alone once the rail narrows to
+          76px. CSS picks between them, so the collapse stays a pure style change. */}
       <div className="sidebar-brand">
-        <span className="sidebar-brand-mark">M</span>
-        <span>Modera</span>
+        <img src={moderaLogo} alt="Modera" className="sidebar-brand-full" />
+        <img src={moderaMark} alt="Modera" className="sidebar-brand-icon" />
       </div>
       <nav className="sidebar-groups">
         {GROUPS.map((group) => {
