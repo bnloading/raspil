@@ -4376,9 +4376,11 @@ body {
   .journal-table .jt-w-total { width: 10%; }
   .journal-table .jt-w-pay { width: 14%; }
   .journal-table .jt-w-method { width: 9%; }
-  .journal-table .jt-w-progress { width: 17%; }
+  .journal-table .jt-w-progress { width: 13%; }
   .journal-table .jt-w-date { width: 7%; }
-  .journal-table .jt-w-act { width: 7%; }
+  /* Measured, not guessed: the save dot plus three 22px controls and their gaps need ~90px, and
+     the narrowest this column ever gets is with the detail panel open beside it. */
+  .journal-table .jt-w-act { width: 11%; }
 }
 /* Nothing may spill out of its column, or the ellipsis never happens. */
 .journal-table td,
@@ -4742,8 +4744,8 @@ body {
   overflow: visible;
 }
 .jt-icon-btn {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   margin-right: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
@@ -4766,6 +4768,23 @@ body {
   border-color: var(--primary);
   color: #fff;
 }
+/* The shared icons are drawn at 24px; in a table cell they have to come down to the row's scale. */
+.jt-icon-btn svg { width: 14px; height: 14px; }
+/* Send to the saw. Solid, because it is the one button in the row that moves the order on. */
+.jt-icon-btn.is-cut {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.jt-icon-btn.is-cut:hover { filter: brightness(1.08); color: #fff; }
+/* The same action for an order that still owes money — it goes on credit, so it is not the same
+   colour as the settled one. The reason and the audit entry are written either way. */
+.jt-icon-btn.is-cut-debt {
+  background: var(--danger-light);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.jt-icon-btn.is-cut-debt:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
 .jt-icon-btn:disabled { opacity: 0.5; cursor: default; }
 
 .journal-add-row {
@@ -7969,6 +7988,38 @@ body {
 }
 .header-icon-btn:hover { background: var(--primary-soft); color: var(--primary); }
 .header-icon-btn svg { width: 20px; height: 20px; }
+
+/* ── Not yet sent to the saw ────────────────────────────────────────────────────────────────── */
+
+/* Written down, priced, and still sitting with the manager — the one row on this page that is
+   waiting on a decision from the person reading it.
+
+   A tint rather than a red row: on a busy day most of the ledger is in this state, and a page of
+   solid red says nothing. The order number carries the colour, so the mark survives a row that is
+   also picked, hovered, or part of a merge group, each of which owns the background already. */
+.jt-row.is-awaiting td { background: #fffaf9; }
+.jt-row.is-awaiting .jt-num-link {
+  color: var(--danger);
+  font-weight: 800;
+}
+/* A dot before the number, so the mark is not colour alone. */
+.jt-row.is-awaiting .jt-who-head::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+/* Selection, the open row and hover all still read on top of the tint. */
+.journal-table tbody tr.jt-row.is-awaiting:hover td { background: #fff4f2; }
+.jt-row.is-awaiting.is-picked td { background: var(--primary-soft); }
+
+.journal-card.is-awaiting {
+  border-color: var(--danger-light);
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
+}
+.journal-card.is-awaiting .journal-card-top strong { color: var(--danger); }
 
 /* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
 

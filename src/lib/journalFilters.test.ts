@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   JOURNAL_QUICK_FILTERS,
+  awaitingCutting,
   matchesQuickFilter,
   quickFilterCounts,
   journalProgress,
@@ -147,5 +148,28 @@ describe("journalProgress — the three dots", () => {
     const [payment, cutting] = at("cutting_started", 0);
     expect(payment.state).toBe("blocked");
     expect(cutting.state).toBe("active");
+  });
+});
+
+describe("awaitingCutting", () => {
+  const at = (s: Order["productionStatus"]) => order({ productionStatus: s });
+
+  it("marks every stage before the saw is given the order", () => {
+    for (const s of ["submitted", "manager_review", "price_calculated",
+                     "waiting_payment", "partially_paid", "paid"] as const) {
+      expect(awaitingCutting(at(s))).toBe(true);
+    }
+  });
+
+  it("stops the moment it reaches the cutting queue", () => {
+    for (const s of ["cutting_queue", "cutting_started", "cutting_completed",
+                     "pvc_queue", "pvc_started", "pvc_completed",
+                     "ready", "delivered"] as const) {
+      expect(awaitingCutting(at(s))).toBe(false);
+    }
+  });
+
+  it("does not mark a cancelled order — it is not waiting for anything", () => {
+    expect(awaitingCutting(at("cancelled"))).toBe(false);
   });
 });

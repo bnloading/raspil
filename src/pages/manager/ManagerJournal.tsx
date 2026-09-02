@@ -18,6 +18,7 @@ import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/jo
 import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
+  awaitingCutting,
   journalProgress,
   matchesQuickFilter,
   quickFilterCounts,
@@ -68,7 +69,7 @@ import {
 import { RowMenu } from "../../components/RowMenu";
 import { CustomerNameInput } from "../../components/CustomerNameInput";
 import { customerDirectory, type CustomerSuggestion } from "../../lib/customerSuggest";
-import { IconLayers, IconPvc } from "../../components/layout/icons";
+import { IconCut, IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
 import { reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { enterCuttingQueue } from "../../lib/orderStatus";
@@ -1141,7 +1142,7 @@ export default function ManagerJournal() {
                 const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
 
                 return (
-                  <div key={order.id} className="journal-card">
+                  <div key={order.id} className={`journal-card${awaitingCutting(order) ? " is-awaiting" : ""}`}>
                     <button className="journal-card-main" onClick={() => navigate(`/manager/order/${order.id}`)}>
                       <div className="journal-card-top">
                         <strong>{order.orderNumber}</strong>
@@ -1790,7 +1791,9 @@ function JournalRow({
   return (
     <>
     <tr
-      className={`jt-row${selected ? " is-picked" : ""}${isOpen ? " is-open" : ""}${groupClass}`}
+      className={`jt-row${selected ? " is-picked" : ""}${isOpen ? " is-open" : ""}${groupClass}${
+        awaitingCutting(order) ? " is-awaiting" : ""
+      }`}
       /* Ctrl/⌘ + click anywhere on the row ticks it, so a run of rows can be gathered without
          aiming at six small boxes. preventDefault on mousedown is what stops the click also
          landing in whichever cell was under the cursor. */
@@ -1955,6 +1958,22 @@ function JournalRow({
         <span className={`jt-save-dot is-${saveState}`} title={SAVE_TITLES[saveState]} aria-live="polite">
           {SAVE_GLYPHS[saveState]}
         </span>
+        {/* The saw, next to the row's other actions. Which of the two paths it takes is decided by
+            the payment gate, exactly as the wide button in the progress column does: a settled
+            order goes straight on, an owing one goes on credit and is written into the audit. */}
+        {onGate && (
+          canEnterCuttingQueue(order.paymentStatus) ? (
+            <button className="jt-icon-btn is-cut" onClick={onQueue} aria-label="Распилге жіберу"
+              title={order.pvcMetersTotal > 0 ? "Распил + ПВХ кезегіне жіберу" : "Распилге жіберу"}>
+              <IconCut />
+            </button>
+          ) : (
+            <button className="jt-icon-btn is-cut-debt" onClick={onOverrideQueue} aria-label="Қарызға жіберу"
+              title={`Қарызға жіберу — қалдық ${formatMoney(Math.max(0, preview.debtTiyn))}`}>
+              <IconCut />
+            </button>
+          )
+        )}
         <button className="jt-icon-btn" onClick={onOpenPanel} title="Толығырақ" aria-label="Толығырақ ашу">›</button>
         <RowMenu
           items={[
