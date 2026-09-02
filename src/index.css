@@ -8140,6 +8140,177 @@ body {
 .cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
 .cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
 
+/* ── Листтер: the catalogue ──────────────────────────────────────────── */
+
+.assort-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+/* Scrolls sideways rather than wrapping: a second row of chips pushes the first card off a
+   phone screen, and the categories are read left to right anyway. */
+.assort-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.assort-chips::-webkit-scrollbar { display: none; }
+.assort-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.assort-chip b {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.assort-chip.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.assort-chip.is-active b { color: rgba(255, 255, 255, 0.78); }
+/* "Тек қоймада барлары" — pressed state, because a filter you cannot see is a filter you forget. */
+.assort-funnel {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font-size: 1rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.assort-funnel.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.assort-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.assort-count {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.assort-sort {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+/* Two to a row on a phone, as the catalogue is browsed — the photo is what is being compared. */
+.assort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 12px;
+}
+.assort-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.assort-card:hover { border-color: var(--primary-light); }
+.assort-photo {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: var(--surface);
+}
+.assort-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.assort-photo-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 8px, var(--bg) 8px, var(--bg) 16px);
+}
+/* The article code, over the photo — how a fitter asks for the board. */
+.assort-code {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.assort-name {
+  margin: 10px 10px 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.assort-spec {
+  margin: 3px 10px 0;
+  font-size: 0.74rem;
+  color: var(--text-light);
+}
+.assort-price {
+  margin: 6px 10px 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* The line the page exists for: can I have it today, and how much is there. */
+.assort-stock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 8px 10px 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.assort-stock i { font-style: normal; opacity: 0.6; }
+.assort-stock.is-ok { background: var(--emerald-light); color: var(--emerald); }
+.assort-stock.is-low { background: var(--warning-light); color: #b45309; }
+.assort-stock.is-out { background: var(--danger-light); color: var(--danger); }
+.assort-stock.is-untracked { background: var(--surface); color: var(--text-secondary); }
+
 /* ── Клиенттің заказ картасы ─────────────────────────────────────────── */
 
 /* Two halves of the same question, kept apart: "where is mine" and "what is the shop doing". */
