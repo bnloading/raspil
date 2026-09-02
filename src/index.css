@@ -7090,6 +7090,9 @@ body {
   color: var(--text-light);
 }
 .oprog-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 5px;
   font-size: 0.68rem;
   font-weight: 600;
@@ -7336,6 +7339,27 @@ body {
 }
 .workshop-row-stage { grid-column: 3; justify-self: end; }
 .workshop-row-what { grid-column: 1 / -1; }
+/* The stage, with its picture. Icon beside the word, never instead of it. */
+.workshop-row-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.workshop-row-stage-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+/* How many people are in front of you. Its own line under the contents, in the accent colour —
+   on a queued order this is the line the page is opened for. */
+.workshop-row-ahead {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
 /* Whose order this is. Ellipsised rather than wrapped: the stage beside it must keep its place. */
 .workshop-row-name {
   grid-column: 2;
@@ -8221,6 +8245,12 @@ body {
   color: var(--text-light);
 }
 .corder-card .oprog { margin-top: 12px; }
+.oprog-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  opacity: 0.75;
+}
 
 .corder-foot {
   display: flex;

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useWorkshopActivity } from "../hooks/useWorkshopActivity";
-import { boardProgress, boardSummary } from "../lib/boardProgress";
+import { boardProgress, boardSummary, customersAhead } from "../lib/boardProgress";
+import { StageIcon } from "./StageIcon";
 import { sheetSummary } from "../lib/journalColumns";
 import { linesOf } from "../lib/orderMerge";
 import { customerOrderCode } from "../lib/orderCode";
@@ -82,7 +83,10 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
                   <span className="workshop-row-name">{e.customerName}</span>
                 )}
 
-                <span className="workshop-row-stage">{boardSummary(e.stage, e.queuePosition)}</span>
+                <span className="workshop-row-stage">
+                  <StageIcon stage={e.stage} className="workshop-row-stage-icon" />
+                  {boardSummary(e.stage, e.queuePosition)}
+                </span>
 
                 {/* Only the viewer's own rows are named and itemised — everything here is theirs.
                     On its own line, because "Дин · 11 лист · Ақ 6 · ХДФ 5" does not fit beside a
@@ -100,6 +104,20 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
                     {own.pvcMetersTotal > 0 && (
                       <span className="workshop-row-detail"> · {Math.round(own.pvcMetersTotal)} м ПВХ</span>
                     )}
+                  </span>
+                )}
+
+                {/* How many people are in front of you — counted in customers, not in orders, so
+                    one person waiting with two jobs is one wait. Only on your own queued row:
+                    it is the question you opened the page with. */}
+                {own && e.stage === "queue" && (
+                  <span className="workshop-row-ahead">
+                    {(() => {
+                      const ahead = customersAhead(entries, e);
+                      return ahead === 0
+                        ? "🎉 Кезектің басындасыз"
+                        : `Сіздің алдыңызда ${ahead} клиент`;
+                    })()}
                   </span>
                 )}
 

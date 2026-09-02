@@ -1,5 +1,5 @@
 import type { ProgressStep, StepState } from "./orderProgress";
-import type { WorkshopBoardStage } from "../types/domain";
+import type { WorkshopBoardStage, WorkshopActivityEntry } from "../types/domain";
 
 /**
  * The Кезек → Распил → ПВХ → Дайын strip for a row of the public "Цех жұмысы" board.
@@ -33,6 +33,37 @@ export function boardProgress(stage: WorkshopBoardStage, needsPvc: boolean): Pro
     { key: "pvc", label: "ПВХ", state: pvc },
     { key: "ready", label: "Дайын", state: ready },
   ];
+}
+
+/**
+ * How many other customers are in front of this order in the cutting queue.
+ *
+ * Counted in people, not in orders: "алдыңызда 6 заказ" reads as six jobs when two of them may
+ * belong to one customer who will be served once. Distinct names are what the person waiting
+ * actually wants to know.
+ *
+ * Rows the board has no name for cannot be deduped against anything, so each counts as one — an
+ * over-count is the honest direction to be wrong in when someone is waiting.
+ */
+export function customersAhead(
+  entries: readonly Pick<WorkshopActivityEntry, "id" | "stage" | "queuePosition" | "customerName">[],
+  mine: Pick<WorkshopActivityEntry, "id" | "queuePosition" | "customerName">,
+): number {
+  const myName = (mine.customerName ?? "").trim().toLowerCase();
+  const names = new Set<string>();
+  let unnamed = 0;
+
+  for (const e of entries) {
+    if (e.id === mine.id) continue;
+    if (e.stage !== "queue") continue;
+    if (e.queuePosition >= mine.queuePosition) continue;
+
+    const name = (e.customerName ?? "").trim().toLowerCase();
+    if (!name) unnamed += 1;
+    else if (name !== myName) names.add(name);
+  }
+
+  return names.size + unnamed;
 }
 
 /** One line saying what is happening to this order right now. */

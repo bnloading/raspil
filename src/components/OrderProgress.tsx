@@ -1,4 +1,5 @@
 import { orderProgress, type StepState } from "../lib/orderProgress";
+import { StepIcon } from "./StageIcon";
 import type { Order } from "../types/domain";
 
 /** What each state draws inside its circle. Colour carries the meaning; the glyph repeats it. */
@@ -27,7 +28,14 @@ export function OrderProgress({ order, compact = false }: { order: Order; compac
           <span className={`oprog-dot is-${step.state}`} title={`${step.label}: ${step.state}`}>
             {GLYPH[step.state]}
           </span>
-          {!compact && <span className="oprog-label">{step.label}</span>}
+          {/* Icon beside the word, never instead of it — a saw is recognised faster than
+              "Распил" is read, but the label is what actually says which stage this is. */}
+          {!compact && (
+            <span className="oprog-label">
+              <StepIcon step={step.key} className="oprog-icon" />
+              {step.label}
+            </span>
+          )}
         </div>
       ))}
     </div>

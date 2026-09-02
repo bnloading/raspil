@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boardProgress, boardSummary } from "./boardProgress";
+import { boardProgress, boardSummary, customersAhead} from "./boardProgress";
 import type { WorkshopBoardStage } from "../types/domain";
 
 const at = (stage: WorkshopBoardStage, needsPvc = true) =>
@@ -47,5 +47,50 @@ describe("boardSummary", () => {
     expect(boardSummary("pvc_wait", 0)).toBe("ПВХ кезегінде");
     expect(boardSummary("pvc", 0)).toBe("ПВХ жасалып жатыр");
     expect(boardSummary("ready", 0)).toBe("Дайын");
+  });
+});
+
+describe("customersAhead", () => {
+  const at = (id: string, queuePosition: number, customerName: string, stage: WorkshopBoardStage = "queue") =>
+    ({ id, queuePosition, customerName, stage });
+
+  const mine = at("mine", 5, "Дин");
+
+  it("counts the people in front, not the jobs", () => {
+    // Ерлан has two orders waiting; he is still one customer to be served.
+    const ahead = customersAhead(
+      [at("a", 1, "Ерлан"), at("b", 2, "Ерлан"), at("c", 3, "Нурик"), mine],
+      mine,
+    );
+    expect(ahead).toBe(2);
+  });
+
+  it("ignores anything already off the queue", () => {
+    expect(customersAhead(
+      [at("a", 1, "Ерлан", "cutting"), at("b", 2, "Нурик", "pvc"), at("c", 3, "Асет"), mine],
+      mine,
+    )).toBe(1);
+  });
+
+  it("ignores everyone behind you", () => {
+    expect(customersAhead([at("a", 7, "Ерлан"), at("b", 9, "Нурик"), mine], mine)).toBe(0);
+  });
+
+  it("is zero at the front of the queue", () => {
+    const first = at("first", 0, "Дин");
+    expect(customersAhead([first, at("a", 3, "Ерлан")], first)).toBe(0);
+  });
+
+  it("does not count your own other orders as people ahead of you", () => {
+    expect(customersAhead([at("a", 1, "Дин"), at("b", 2, "Нурик"), mine], mine)).toBe(1);
+  });
+
+  it("counts a nameless row as one person rather than dropping it", () => {
+    // Over-counting is the honest direction to be wrong in when somebody is waiting.
+    expect(customersAhead([at("a", 1, ""), at("b", 2, ""), at("c", 3, "Нурик"), mine], mine)).toBe(3);
+  });
+
+  it("treats the same name in different cases and spacing as one person", () => {
+    expect(customersAhead([at("a", 1, "Ерлан"), at("b", 2, " ерлан "), mine], mine)).toBe(1);
   });
 });
