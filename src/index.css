@@ -7748,9 +7748,18 @@ body {
 /* ── Table + panel side by side ─────────────────────────────────────────────────────────────── */
 .journal-main {
   display: flex;
-  align-items: flex-start;
   gap: 14px;
   min-width: 0;
+  /* Takes the height .app-content.full has left over after the toolbar and the chips, and
+     min-height:0 is what lets .journal-scroll inside it actually scroll.
+
+     Without these the row was sized by its content: at 120 orders the table stood 10 763px tall
+     in a 900px viewport, .journal-scroll never became scrollable because nothing constrained it,
+     and .app-content.full's overflow:hidden quietly clipped ~9 800px of orders that could not be
+     reached by any amount of scrolling. `align-items` is left at its `stretch` default for the
+     same reason — flex-start made the table hug its rows instead of filling the height. */
+  flex: 1;
+  min-height: 0;
 }
 .journal-main > .journal-wrap { flex: 1 1 auto; min-width: 0; }
 
@@ -8131,6 +8140,9 @@ body {
 /* ── Detail panel ───────────────────────────────────────────────────────────────────────────── */
 .journal-panel {
   flex: 0 0 330px;
+  /* The row stretches its children now (see .journal-main); the panel still hugs its own content
+     so `position: sticky` has somewhere to travel. */
+  align-self: flex-start;
   position: sticky;
   top: 12px;
   max-height: calc(100vh - 40px);
