@@ -14,6 +14,8 @@ import { availablePeriods } from "../../lib/salary";
 import { formatMoney } from "../../lib/money";
 import { monthKey, monthLabel } from "../../lib/dates";
 import { ROLE_LABELS } from "../../lib/rbac";
+import { useAdvances } from "../../hooks/useAdvances";
+import { summariseAdvances } from "../../lib/advances";
 import {
   SALARY_MODE_LABELS,
   SALARY_STATUS_LABELS,
@@ -47,6 +49,9 @@ export default function AdminSalary() {
   const { rules } = useAllSalaryRules();
   const { entries } = useSalaryEntries();
   const { adjustments } = useSalaryAdjustments();
+  // Every worker's advances, not one's: this is the page the money is actually paid from, and
+  // an advance already handed over has to be visible before anybody presses "Төленді".
+  const { advances } = useAdvances();
   const { message, visible, showToast } = useToast();
 
   const [staff, setStaff] = useState<StaffUser[]>([]);
@@ -71,14 +76,27 @@ export default function AdminSalary() {
   const adjustmentTotal = (uid: string) =>
     adjustments.filter((a) => a.userId === uid && a.periodKey === period).reduce((s, a) => s + a.amountTiyn, 0);
 
+  /** What this worker has drawn against the selected month, and what is left of it. */
+  const advanceFor = (uid: string, earnedTiyn: number) =>
+    summariseAdvances({ advances, userId: uid, periodKey: period, earnedTiyn });
+
   const totals = useMemo(() => {
     const periodEntries = entries.filter((e) => e.periodKey === period);
     return {
       total: periodEntries.reduce((s, e) => s + e.finalTiyn, 0),
       paid: periodEntries.filter((e) => e.status === "paid").reduce((s, e) => s + e.finalTiyn, 0),
+      // What still has to leave the till this payday: earned less what has already gone out as
+      // advances, per worker, so one overdrawn worker cannot subtract from somebody else's pay.
+      toHandOut: periodEntries.reduce(
+        (s, e) => s + summariseAdvances({
+          advances, userId: e.userId, periodKey: period, earnedTiyn: e.finalTiyn,
+        }).remainingTiyn,
+        0,
+      ),
       count: periodEntries.length,
     };
-  }, [entries, period]);
+    // `advances` belongs here: the payout total changes the moment one is recorded or reversed.
+  }, [entries, period, advances]);
 
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
@@ -130,8 +148,16 @@ export default function AdminSalary() {
   const handleStatus = async (member: StaffUser, status: "confirmed" | "paid") => {
     const entry = entryFor(member.id);
     if (!entry) return;
-    if (status === "paid" && !confirm(`${member.name}: ${formatMoney(entry.finalTiyn)} төленді деп белгілейсіз бе?`)) {
-      return;
+    if (status === "paid") {
+      // The sum to hand over, not the sum earned. Quoting the earned figure to somebody who has
+      // already drawn 200 000 ₸ of it is how a month gets paid twice.
+      const adv = advanceFor(member.id, entry.finalTiyn);
+      const owed = formatMoney(adv.remainingTiyn);
+      const detail = adv.totalTiyn > 0
+        ? `${member.name}: қолға ${owed} төленді деп белгілейсіз бе?\n\n` +
+          `Айлық ${formatMoney(entry.finalTiyn)} − аванс ${formatMoney(adv.totalTiyn)}`
+        : `${member.name}: ${owed} төленді деп белгілейсіз бе?`;
+      if (!confirm(detail)) return;
     }
     setBusy(true);
     try {
@@ -162,6 +188,10 @@ export default function AdminSalary() {
           <div className="label">Жалпы есептелген</div>
         </div>
         <div className="stat-card">
+          <div className="number">{formatMoney(totals.toHandOut)}</div>
+          <div className="label">Қолға берілетін</div>
+        </div>
+        <div className="stat-card">
           <div className="number">{formatMoney(totals.paid)}</div>
           <div className="label">Төленген</div>
         </div>
@@ -181,6 +211,7 @@ export default function AdminSalary() {
           const rule = rulesByUid.get(member.id);
           const entry = entryFor(member.id);
           const adj = adjustmentTotal(member.id);
+          const adv = advanceFor(member.id, entry?.finalTiyn ?? 0);
           return (
             <section key={member.id} className="panel-card salary-card">
               <div className="panel-head">
@@ -205,8 +236,20 @@ export default function AdminSalary() {
                     <strong>{formatMoney(entry.deductionTiyn)}</strong>
                   </div>
                   <div>
-                    <span className="worker-field-label">Қорытынды</span>
+                    <span className="worker-field-label">Айлық</span>
                     <strong className="salary-final">{formatMoney(entry.finalTiyn)}</strong>
+                  </div>
+                  {/* An advance reduces what is owed, never what was earned — so both figures are
+                      here, and the one being handed over is the one marked as the payout. */}
+                  <div>
+                    <span className="worker-field-label">Аванс</span>
+                    <strong className={adv.totalTiyn > 0 ? "salary-advance" : undefined}>
+                      {adv.totalTiyn > 0 ? `− ${formatMoney(adv.totalTiyn)}` : formatMoney(0)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="worker-field-label">Қолға тиеді</span>
+                    <strong className="salary-final">{formatMoney(adv.remainingTiyn)}</strong>
                   </div>
                   <div>
                     <span className="worker-field-label">Күйі</span>
@@ -219,6 +262,16 @@ export default function AdminSalary() {
                 <p className="jt-muted" style={{ margin: "0 0 12px" }}>
                   Бұл айға әлі есептелмеген
                   {adj !== 0 ? ` · түзету: ${formatMoney(adj)}` : ""}
+                  {/* Money already handed over is worth seeing before the month is worked out,
+                      not after — it is the reason the final figure will look small. */}
+                  {adv.totalTiyn > 0 ? ` · аванс алынған: ${formatMoney(adv.totalTiyn)}` : ""}
+                </p>
+              )}
+
+              {entry && adv.overdrawn && (
+                <p className="salary-overdrawn">
+                  ⚠️ Алынған аванс ({formatMoney(adv.totalTiyn)}) айлықтан асып тұр — қолға берілетін
+                  сома жоқ.
                 </p>
               )}
 

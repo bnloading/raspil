@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import type { NavItem } from "./navConfig";
 import { IconMenu } from "./icons";
-import moderaLogo from "../../assets/modera-logo.png";
+import moderaLogo from "../../assets/modera-logo-compact.png";
 import moderaMark from "../../assets/modera-mark.png";
 
 interface SidebarProps {

@@ -4008,9 +4008,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Tighter than the nav below it on purpose: the lockup's wordmark scales with its width, so
-     the 12px this gives back is the difference between 10px type and 13px type. */
-  padding: 22px 12px 18px;
+  padding: 20px 12px 16px;
   color: #fff;
   font-weight: 800;
   font-size: 1.05rem;
@@ -4024,7 +4022,10 @@ body {
   height: auto;
   filter: brightness(0) invert(1);
 }
-.sidebar-brand-full { width: 100%; }
+/* The compact lockup, not the one the sign-in pages use: same drawing with the mark row halved,
+   so the block is shorter while the wordmark stays the size it has to be to be read. Sized down
+   from the full rail width — a smaller block was the ask, a readable wordmark the condition. */
+.sidebar-brand-full { width: 100%; max-width: 186px; }
 /* Only the KDA glyphs, for the 76px rail. */
 .sidebar-brand-icon { display: none; width: 40px; }
 .sidebar-groups {
@@ -8156,6 +8157,22 @@ body {
 .cut-timer.is-overdue .cut-timer-clock,
 .cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
 .cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
+
+/* ── Айлық: аванс ────────────────────────────────────────────────────── */
+
+/* Money already handed over, shown next to what was earned rather than folded into it — the
+   payslip still has to say the worker earned the full amount. */
+.salary-advance { color: var(--warning); }
+.salary-overdrawn {
+  margin: 0 0 12px;
+  padding: 8px 11px;
+  border-radius: var(--radius-xs);
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
 
 /* ── Телефон енгізу ──────────────────────────────────────────────────── */
 

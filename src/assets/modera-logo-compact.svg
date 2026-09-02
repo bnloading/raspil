@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 104" role="img" aria-labelledby="t">
+  <title id="t">MODERA — Interior Objects</title>
+  <g fill="#000">
+    <rect x="30" y="0" width="212" height="52"/>
+    <path d="M252 0h42L252 29z"/>
+    <path d="M252 33l42 19h-42z"/>
+    <path d="M302 0h4a26 26 0 0 1 0 52h-4z"/>
+    <path d="M358 0h28l28 52h-56z"/>
+  </g>
+  <text x="30" y="96" fill="#000" textLength="384" lengthAdjust="spacingAndGlyphs"
+    font-family="Inter, 'Helvetica Neue', Arial, sans-serif"
+    font-size="34" font-weight="800">MODERA INTERIOR OBJECTS</text>
+</svg>
