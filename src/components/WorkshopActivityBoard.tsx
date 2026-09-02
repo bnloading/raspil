@@ -2,17 +2,10 @@ import { Link } from "react-router-dom";
 import { useWorkshopActivity } from "../hooks/useWorkshopActivity";
 import { boardProgress, boardSummary } from "../lib/boardProgress";
 import { formatMoney } from "../lib/money";
-import type { Order, WorkshopActivityEntry } from "../types/domain";
+import type { Order } from "../types/domain";
 
 /** What each state draws in its circle — mirrors OrderProgress so the two strips read alike. */
 const GLYPH: Record<string, string> = { done: "✓", active: "", problem: "!", pending: "", skipped: "–" };
-
-/** Remaining minutes for whichever stage is actually running, or null when nothing is in progress. */
-function remainingMinutes(entry: WorkshopActivityEntry): number | null {
-  if (entry.estimatedMinutes <= 0 || !entry.startedAt) return null;
-  const elapsed = Math.floor((Date.now() - entry.startedAt.toMillis()) / 60000);
-  return Math.max(0, entry.estimatedMinutes - elapsed);
-}
 
 /** Public display code — the trailing digits only, so the board never advertises volume or
  *  lets one customer infer anything about another's order beyond its position. */
@@ -65,12 +58,10 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
           {entries.map((e) => {
             const own = mineByNumber.get(e.orderNumber);
             const steps = boardProgress(e.stage, e.needsPvc);
-            const mins = remainingMinutes(e);
             const card = (
               <>
                 <div className="ocard-top">
                   <span className="otable-num">{own ? own.orderNumber : publicCode(e.orderNumber)}</span>
-                  <span className="otable-sub">{mins === null ? "" : `${mins} мин`}</span>
                 </div>
 
                 {/* Only the viewer's own rows carry money and sheet counts. */}
