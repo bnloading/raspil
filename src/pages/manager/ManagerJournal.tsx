@@ -18,7 +18,7 @@ import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/jo
 import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
-  awaitingCutting,
+  journalCutState,
   journalProgress,
   matchesQuickFilter,
   quickFilterCounts,
@@ -539,6 +539,11 @@ export default function ManagerJournal() {
     }
     return {
       todayCount: filtered.filter((o) => (o.createdAt?.toMillis() ?? 0) >= todayStart).length,
+      // Every figure below is over the rows currently on screen, not over today. The footer used
+      // to print "Бүгін 1 заказ" beside them, which read as though all four were today's — and a
+      // 264 000 ₸ order was reported as 707 520 ₸ of debt, because that is what the whole filtered
+      // ledger owed. The numbers were right; the label was answering a different question.
+      shownCount: filtered.length,
       totalTiyn: filtered.reduce((s, o) => s + o.totalTiyn, 0),
       paidTiyn,
       debtTiyn,
@@ -1142,7 +1147,7 @@ export default function ManagerJournal() {
                 const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
 
                 return (
-                  <div key={order.id} className={`journal-card${awaitingCutting(order) ? " is-awaiting" : ""}`}>
+                  <div key={order.id} className={`journal-card is-${journalCutState(order)}`}>
                     <button className="journal-card-main" onClick={() => navigate(`/manager/order/${order.id}`)}>
                       <div className="journal-card-top">
                         <strong>{order.orderNumber}</strong>
@@ -1342,6 +1347,13 @@ export default function ManagerJournal() {
                 <span className="journal-summary-label">Бүгін</span>
                 <strong>{summary.todayCount} заказ</strong>
               </div>
+              {/* Everything past this divider is the total for the rows on screen, which is a
+                  different question from "бүгін" and has to say so. */}
+              <span className="journal-summary-sep" aria-hidden="true" />
+              <div className="journal-summary-item is-scope">
+                <span className="journal-summary-label">Тізімде</span>
+                <strong>{summary.shownCount} заказ</strong>
+              </div>
               <div className="journal-summary-item">
                 <span className="journal-summary-label">Жалпы</span>
                 <strong>{formatMoney(summary.totalTiyn)}</strong>
@@ -1391,7 +1403,6 @@ export default function ManagerJournal() {
             onClose={() => setOpenId(null)}
             onOpenFull={() => navigate(`/manager/order/${openOrder.id}`)}
             onQueue={() => handleQueueOrder(openOrder)}
-            onOverrideQueue={() => handleOverrideQueueOrder(openOrder)}
             onError={showToast}
           />
         )}
@@ -1791,8 +1802,8 @@ function JournalRow({
   return (
     <>
     <tr
-      className={`jt-row${selected ? " is-picked" : ""}${isOpen ? " is-open" : ""}${groupClass}${
-        awaitingCutting(order) ? " is-awaiting" : ""
+      className={`jt-row${selected ? " is-picked" : ""}${isOpen ? " is-open" : ""}${groupClass} is-${
+        journalCutState(order)
       }`}
       /* Ctrl/⌘ + click anywhere on the row ticks it, so a run of rows can be gathered without
          aiming at six small boxes. preventDefault on mousedown is what stops the click also
@@ -2063,7 +2074,7 @@ function JournalRow({
  */
 function JournalDetailPanel({
   order, materials, pvcTypes, payments, actor, structuralEditsAllowed,
-  onClose, onOpenFull, onQueue, onOverrideQueue, onError,
+  onClose, onOpenFull, onQueue, onError,
 }: {
   order: Order;
   materials: Material[];
@@ -2074,7 +2085,6 @@ function JournalDetailPanel({
   onClose: () => void;
   onOpenFull: () => void;
   onQueue: () => void;
-  onOverrideQueue: () => void;
   onError: (message: string) => void;
 }) {
   const materialsById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -2284,24 +2294,33 @@ function JournalDetailPanel({
         </section>
       </div>
 
-      {/* The action that moves the order on, at the bottom of the panel where it stays put while
-          the material lines above it scroll. It queues both stations at once when the order has
-          edging on it, which is what the label now says rather than leaving it to be discovered. */}
+      {/* This panel is where an order is written down, so it finishes by being finished — not by
+          being sent anywhere on credit. Once the money is marked in the ledger the same button
+          becomes "Распилге жіберу"; until then, sending it to the saw unpaid is a decision that
+          belongs on the row, next to the debt figure, rather than at the end of data entry. */}
       <footer className="journal-panel-foot">
         <button className="btn btn-outline btn-full" onClick={onOpenFull}>Толық бетті ашу</button>
-        {onGate && (
-          canEnterCuttingQueue(order.paymentStatus) ? (
+        {onGate && canEnterCuttingQueue(order.paymentStatus) ? (
+          <>
             <button className="btn btn-primary btn-full" onClick={onQueue}>
               {order.pvcMetersTotal > 0 ? "Распил + ПВХ кезегіне жіберу" : "Распилге жіберу"}
             </button>
-          ) : (
-            <button className="btn btn-danger-outline btn-full" onClick={onOverrideQueue}>⚠️ Қарызға жіберу</button>
-          )
-        )}
-        {onGate && order.pvcMetersTotal > 0 && (
-          <p className="journal-panel-note">
-            ПВХ шебері де осы кезектен көреді — распил біткен соң кірісе береді.
-          </p>
+            {order.pvcMetersTotal > 0 && (
+              <p className="journal-panel-note">
+                ПВХ шебері де осы кезектен көреді — распил біткен соң кірісе береді.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <button className="btn btn-primary btn-full" onClick={onClose}>✅ Дайын</button>
+            {onGate && (
+              <p className="journal-panel-note">
+                Төлемді журналдағы «Төлем» бағанынан белгілеңіз — содан кейін распилге жіберуге
+                болады.
+              </p>
+            )}
+          </>
         )}
       </footer>
     </aside>

@@ -1064,11 +1064,6 @@ textarea.form-input {
   justify-content: center;
   padding: 0 3px;
 }
-.notification-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
 .notification-dropdown {
   position: fixed;
   /* top / left / width come from the component, which measures the bell and then clamps the panel
@@ -4205,16 +4200,15 @@ body {
   font-size: 0.85rem;
 }
 .account-menu-dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  min-width: 200px;
+  /* Portalled to <body> and positioned from the component, which measures the avatar and clamps
+     the menu inside the viewport — same as .notification-dropdown, and for the same reason. */
+  position: fixed;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
   padding: 8px;
-  z-index: 41;
+  z-index: 210;
 }
 .account-menu-name {
   padding: 8px 10px 2px;
@@ -4882,6 +4876,14 @@ body {
 .journal-summary-item strong { font-weight: 700; }
 .journal-summary-item.is-paid strong { color: var(--emerald); }
 .journal-summary-item.is-debt strong { color: var(--danger); }
+/* Divides "бүгін" from the totals for the rows on screen, which are a different question. */
+.journal-summary-sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 20px;
+  background: var(--border);
+}
+.journal-summary-item.is-scope strong { color: var(--text-secondary); }
 
 /* Mobile card list — hidden on desktop, replaces the spreadsheet on phones. */
 .journal-cards {
@@ -8048,37 +8050,47 @@ body {
 .cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
 .cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
 
-/* ── Not yet sent to the saw ────────────────────────────────────────────────────────────────── */
+/* ── Кесілді / кесілмеді ────────────────────────────────────────────── */
 
-/* Written down, priced, and still sitting with the manager — the one row on this page that is
-   waiting on a decision from the person reading it.
+/* The one thing the shop reads the ledger for: green has been through the saw, red has not. Both
+   are tints rather than solid rows — on a busy day the whole page is one or the other, and a wall
+   of colour says nothing — with the order number carrying the same colour so the mark survives a
+   row that is also picked, hovered, or part of a merge group, each of which owns the background.
 
-   A tint rather than a red row: on a busy day most of the ledger is in this state, and a page of
-   solid red says nothing. The order number carries the colour, so the mark survives a row that is
-   also picked, hovered, or part of a merge group, each of which owns the background already. */
-.jt-row.is-awaiting td { background: #fffaf9; }
-.jt-row.is-awaiting .jt-num-link {
-  color: var(--danger);
-  font-weight: 800;
-}
-/* A dot before the number, so the mark is not colour alone. */
-.jt-row.is-awaiting .jt-who-head::before {
+   A cancelled order gets neither: it is not work. */
+.jt-row.is-uncut td { background: #fffaf9; }
+.jt-row.is-uncut .jt-num-link { color: var(--danger); font-weight: 800; }
+.jt-row.is-cut td { background: #f6fdf9; }
+.jt-row.is-cut .jt-num-link { color: var(--emerald); font-weight: 800; }
+
+/* A dot before the number, so neither state is signalled by colour alone. */
+.jt-row.is-uncut .jt-who-head::before,
+.jt-row.is-cut .jt-who-head::before {
   content: "";
   flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--danger);
 }
-/* Selection, the open row and hover all still read on top of the tint. */
-.journal-table tbody tr.jt-row.is-awaiting:hover td { background: #fff4f2; }
-.jt-row.is-awaiting.is-picked td { background: var(--primary-soft); }
+.jt-row.is-uncut .jt-who-head::before { background: var(--danger); }
+.jt-row.is-cut .jt-who-head::before { background: var(--emerald); }
 
-.journal-card.is-awaiting {
+/* Selection, the open row and hover all still read on top of the tint. */
+.journal-table tbody tr.jt-row.is-uncut:hover td { background: #fff4f2; }
+.journal-table tbody tr.jt-row.is-cut:hover td { background: #eefaf3; }
+.jt-row.is-uncut.is-picked td,
+.jt-row.is-cut.is-picked td { background: var(--primary-soft); }
+
+.journal-card.is-uncut {
   border-color: var(--danger-light);
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
-.journal-card.is-awaiting .journal-card-top strong { color: var(--danger); }
+.journal-card.is-uncut .journal-card-top strong { color: var(--danger); }
+.journal-card.is-cut {
+  border-color: var(--emerald-light);
+  box-shadow: inset 3px 0 0 var(--emerald), var(--shadow);
+}
+.journal-card.is-cut .journal-card-top strong { color: var(--emerald); }
 
 /* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
 

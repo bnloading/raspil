@@ -5,6 +5,7 @@ import { completeCuttingLine, startCuttingLine, updateCuttingEstimateLine } from
 import { jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
 import { formatDateTimeDMY } from "../lib/dates";
 import { formatClock, readCuttingTimer } from "../lib/cuttingTimer";
+import { useServerClockOffset } from "../hooks/useServerClock";
 import type { Order, OrderLineJob, UserDoc } from "../types/domain";
 import { DurationPicker } from "./DurationPicker";
 
@@ -193,6 +194,9 @@ function CuttingLineRow({
  */
 function CuttingTimer({ startedAtMs, expectedAtMs }: { startedAtMs: number; expectedAtMs: number | null }) {
   const [now, setNow] = useState(() => Date.now());
+  // `cuttingStartedAt` is stamped by the server, so "now" has to come from the same clock or a
+  // workshop phone that is ten minutes out reports the job ten minutes further along than it is.
+  const clockOffset = useServerClockOffset();
 
   useEffect(() => {
     // One second is what makes it read as running rather than as a number that changed when the
@@ -201,7 +205,7 @@ function CuttingTimer({ startedAtMs, expectedAtMs }: { startedAtMs: number; expe
     return () => clearInterval(id);
   }, []);
 
-  const timer = readCuttingTimer(startedAtMs, expectedAtMs, now);
+  const timer = readCuttingTimer(startedAtMs, expectedAtMs, now + clockOffset);
 
   return (
     <div className={`cut-timer${timer.overdue ? " is-overdue" : ""}`}>

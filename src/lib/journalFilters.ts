@@ -33,27 +33,18 @@ const CUT_STATUSES: Order["productionStatus"][] = [
 ];
 
 /**
- * Statuses in which the order has already been handed to the shop floor.
+ * Has this order been through the saw?
  *
- * Wider than CUT_STATUSES above, which asks "has it been through the saw": this asks the earlier
- * question, "has anybody been given it yet", and cutting_queue is where that becomes true.
+ * The one question the ledger colours itself by: green is cut, red is not, and the shop can see
+ * how much of the day is still outstanding without reading a single status word. Being in the
+ * queue does not count — a row waiting for the saw is work still to do, the same as one that has
+ * not been sent yet. A cancelled order is neither; it is not work.
  */
-const QUEUED_OR_LATER: Order["productionStatus"][] = [
-  "cutting_queue",
-  "cutting_started",
-  ...CUT_STATUSES,
-];
+export type JournalCutState = "cut" | "uncut" | "cancelled";
 
-/**
- * Still sitting in the journal, never sent to the saw.
- *
- * This is the row that needs a decision from the manager rather than from anyone else in the shop,
- * so the ledger marks it: at a glance, red is work that has been written down and not yet passed
- * on. A cancelled order is not waiting for anything, so it is not marked.
- */
-export function awaitingCutting(order: Order): boolean {
-  if (order.productionStatus === "cancelled") return false;
-  return !QUEUED_OR_LATER.includes(order.productionStatus);
+export function journalCutState(order: Order): JournalCutState {
+  if (order.productionStatus === "cancelled") return "cancelled";
+  return CUT_STATUSES.includes(order.productionStatus) ? "cut" : "uncut";
 }
 
 /**
