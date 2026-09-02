@@ -1070,17 +1070,18 @@ textarea.form-input {
   z-index: 40;
 }
 .notification-dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  width: min(320px, 90vw);
-  max-height: 400px;
+  position: fixed;
+  /* top / left / width come from the component, which measures the bell and then clamps the panel
+     inside the viewport. `right: 0` used to hang it 320px to the LEFT of the icon, which put most
+     of it off the screen on a phone whose topbar had wrapped the bell away from the right edge. */
+  max-height: min(400px, 70vh);
   overflow-y: auto;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
-  z-index: 41;
+  /* Portalled to <body>, so it is above the topbar (20) and the bottom nav (100). */
+  z-index: 210;
   padding: 10px;
 }
 .notification-dropdown-title {
@@ -7988,6 +7989,64 @@ body {
 }
 .header-icon-btn:hover { background: var(--primary-soft); color: var(--primary); }
 .header-icon-btn svg { width: 20px; height: 20px; }
+
+/* ── Распил таймері ─────────────────────────────────────────────────── */
+
+/* Read from across a workshop, so the clock is the biggest thing on the card and the caption
+   spells out what it means rather than leaving that to the colour. */
+.cut-timer {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--jt-tint-subrow);
+}
+.cut-timer-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cut-timer-clock {
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+.cut-timer-caption {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.cut-timer-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.cut-timer-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 1s linear;
+}
+.cut-timer-foot {
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums;
+}
+/* Past the estimate. Still counting, because "how far over" is the number being asked for now. */
+.cut-timer.is-overdue {
+  border-color: var(--danger);
+  background: var(--danger-light);
+}
+.cut-timer.is-overdue .cut-timer-clock,
+.cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
+.cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
 
 /* ── Not yet sent to the saw ────────────────────────────────────────────────────────────────── */
 

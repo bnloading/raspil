@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { User } from "firebase/auth";
 import { db } from "../firebase";
 import { completeCuttingLine, startCuttingLine, updateCuttingEstimateLine } from "../lib/orderStatus";
 import { jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
 import { formatDateTimeDMY } from "../lib/dates";
+import { formatClock, readCuttingTimer } from "../lib/cuttingTimer";
 import type { Order, OrderLineJob, UserDoc } from "../types/domain";
 import { DurationPicker } from "./DurationPicker";
 
@@ -151,6 +152,12 @@ function CuttingLineRow({
           <span className="otable-sub">Мерзімі: {formatDateTimeDMY(job.cuttingExpectedCompletionAt)}</span>
         )}
       </div>
+      {job.cuttingStartedAt && (
+        <CuttingTimer
+          startedAtMs={job.cuttingStartedAt.toMillis()}
+          expectedAtMs={job.cuttingExpectedCompletionAt ? job.cuttingExpectedCompletionAt.toMillis() : null}
+        />
+      )}
       <div className="form-group">
         <label>Расталған лист саны</label>
         <input
@@ -169,6 +176,53 @@ function CuttingLineRow({
           ⏱ Мерзімді өзгерту
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The clock on a line that is on the saw.
+ *
+ * The card used to print the due time as a date — "Мерзімі: 02.09.2026 14:30" — which answers
+ * "when" and leaves "how long have I got" to be worked out by someone holding a sheet of ЛДСП.
+ * This counts down instead, and keeps counting once the estimate runs out, which is the moment
+ * the number actually matters.
+ *
+ * It decides nothing: the line finishes when the cutter presses Дайын and confirms the sheets,
+ * exactly as before.
+ */
+function CuttingTimer({ startedAtMs, expectedAtMs }: { startedAtMs: number; expectedAtMs: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    // One second is what makes it read as running rather than as a number that changed when the
+    // page happened to re-render.
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const timer = readCuttingTimer(startedAtMs, expectedAtMs, now);
+
+  return (
+    <div className={`cut-timer${timer.overdue ? " is-overdue" : ""}`}>
+      <div className="cut-timer-top">
+        <span className="cut-timer-clock">{timer.label}</span>
+        {/* The word, not just the colour — this is read across a workshop. */}
+        <span className="cut-timer-caption">{timer.caption}</span>
+      </div>
+      {expectedAtMs !== null && (
+        <div
+          className="cut-timer-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(timer.progress * 100)}
+          aria-label="Распил мерзімі"
+        >
+          <span style={{ width: `${timer.progress * 100}%` }} />
+        </div>
+      )}
+      <div className="cut-timer-foot">Өтті: {formatClock(timer.elapsedSeconds)}</div>
     </div>
   );
 }
