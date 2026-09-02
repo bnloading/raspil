@@ -145,6 +145,18 @@ export interface OrderMaterialLine {
    */
   pvcTypeId?: string;
   pvcColorName?: string;
+  /**
+   * Which journal row this line was typed on before a merge folded it in here.
+   *
+   * Merging is the shop's normal way of writing one walk-in who bought three kinds of board, and
+   * it used to be a one-way door: the absorbed rows are cancelled and hidden, so the survivor
+   * showed "13 лист" with nothing left saying that 5 of them arrived as №007. Stamped at merge
+   * time by planMerge and carried through the journal's own editing, it is what lets the ledger
+   * open a merged order back up into the orders it was made of.
+   *
+   * Optional and never inferred: lines written before this, or never merged, simply have none.
+   */
+  sourceOrderNumber?: string;
 }
 
 /** One colour's consumption on a single order (see Order.pvcByType). */

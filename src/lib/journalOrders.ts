@@ -24,6 +24,14 @@ export interface JournalDraftLine {
   /** Which edge-banding colour these metres came off, so the roll can be counted down by colour. */
   pvcTypeId: string;
   pvcColorName: string;
+  /**
+   * The journal row this line was originally typed on (see OrderMaterialLine.sourceOrderNumber).
+   *
+   * Carried through the draft rather than read straight off the order because itemsFromDraft
+   * rewrites `items[]` wholesale on every autosave — a field the draft does not know about is a
+   * field the next keystroke deletes.
+   */
+  sourceOrderNumber: string;
 }
 
 /**
@@ -62,6 +70,7 @@ export function emptyJournalLine(): JournalDraftLine {
     pvcPricePerMeterTiyn: 0,
     pvcTypeId: "",
     pvcColorName: "",
+    sourceOrderNumber: "",
   };
 }
 
@@ -135,6 +144,7 @@ export function draftFromOrder(order: Order): JournalDraft {
       (index === 0 && order.pvcMetersTotal > 0 ? Math.round(order.pvcCostTiyn / order.pvcMetersTotal) : 0),
     pvcTypeId: line.pvcTypeId ?? "",
     pvcColorName: line.pvcColorName ?? "",
+    sourceOrderNumber: line.sourceOrderNumber ?? "",
   }));
 
   return {
@@ -161,6 +171,7 @@ export function itemsFromDraft(draft: JournalDraft, materials: Map<string, Mater
     pvcPricePerMeterTiyn: line.pvcPricePerMeterTiyn,
     pvcTypeId: line.pvcTypeId,
     pvcColorName: line.pvcColorName,
+    sourceOrderNumber: line.sourceOrderNumber,
   }));
 }
 
@@ -198,6 +209,31 @@ export function pvcByTypeFromDraft(draft: JournalDraft, pvcTypes: Map<string, Pv
     }
   }
   return [...byType.values()];
+}
+
+/**
+ * What extras or discount make the row come out at a total the manager typed by hand.
+ *
+ * The Жалпы сома cell is editable because this shop negotiates: the lines say 217 700 ₸ and the
+ * customer is charged 210 000 ₸, or a delivery is added on the spot. Rather than letting a typed
+ * figure float free of the lines that justify it — which is how a ledger stops adding up — the
+ * difference is recorded where it belongs: above the line total it becomes a surcharge, below it
+ * a discount. Both are already fields of the order, both already appear on the invoice, and
+ * re-typing the original figure clears them again.
+ */
+export function totalOverrideFor(
+  draft: JournalDraft,
+  targetTiyn: number,
+): { extraServicesTiyn: number; discountTiyn: number } {
+  const lines = draft.lines.reduce(
+    (sum, l) => sum + Math.round(l.sheetQty * l.sheetPriceTiyn) + Math.round(l.pvcMeters * l.pvcPricePerMeterTiyn),
+    0,
+  );
+  const base = lines + draft.hdfCostTiyn + draft.cuttingCostTiyn + draft.deliveryCostTiyn;
+  const delta = Math.max(0, targetTiyn) - base;
+  return delta >= 0
+    ? { extraServicesTiyn: delta, discountTiyn: 0 }
+    : { extraServicesTiyn: 0, discountTiyn: -delta };
 }
 
 /** The row-level money input the totals are computed from — the same object the preview uses. */

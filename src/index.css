@@ -201,10 +201,6 @@
   --jt-font: 0.74rem;
   --jt-font-sm: 0.68rem;
   /* Pale colour-coded column groups, matching the reference's tinted bands */
-  --jt-tint-material: #f7f9fc;
-  --jt-tint-pvc: #f6fbf8;
-  --jt-tint-total: #f2f6ff;
-  --jt-tint-pay: #fdf9f3;
   /* A merged order's child rows: quieter than the parent so one order still reads as one block. */
   --jt-tint-subrow: #fafbfd;
 
@@ -4296,9 +4292,11 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Manager order journal — "ЛДСП — ТАПСЫРЫС ЖУРНАЛЫ"
-   Dense spreadsheet: sticky header, frozen identity columns,
-   tinted column groups, inline editing, sticky summary footer.
+   Manager order journal — "ЛДСП — Тапсырыс журналы"
+   Dense spreadsheet: sticky header, ten columns the manager can
+   put away one by one, inline editing, and a footer bar carrying
+   the day's totals next to the pager. Phones get the same rows
+   as cards further down this file.
    ══════════════════════════════════════════════════════════════ */
 .journal-toolbar {
   display: flex;
@@ -4365,33 +4363,22 @@ body {
   font-size: var(--jt-font);
   white-space: nowrap;
 }
-/* Balanced against real content: money needs room for "65 000", the name and material columns for
-   actual names, the counts almost none.
+/* Ten columns, sized by what each one has to hold rather than by how many facts exist. Eighteen
+   columns fitted the data and nothing else — every cell was three characters wide.
 
-   These sum to ~100 across the 17 actual columns (2 × qty, 5 × money, one each of the rest).
-   Overshooting the total makes the browser rescale everything proportionally, which quietly
-   shrinks the narrowest column — the actions cell — until its buttons no longer fit. */
+   These are percentages under `table-layout: fixed`, so they are shares rather than absolutes:
+   putting a column away in the "Бағандар" menu widens everything that stays, instead of leaving
+   a gap where it used to be. */
 @media (min-width: 768px) {
-  .journal-table .jt-col-num { width: 3.2%; }
-  .journal-table .jt-col-name { width: 8%; }
-  .journal-table .jt-w-phone { width: 5.2%; }
-  .journal-table .jt-w-mat { width: 6.4%; }
-  .journal-table .jt-w-qty { width: 3.8%; }
-  .journal-table .jt-w-money { width: 5.8%; }
-  /* ПВХ түсі: a colour name and its thickness, ellipsised — the picker's full list is readable
-     when it opens, so the cell only has to be wide enough to recognise the colour already on it. */
-  .journal-table .jt-w-pvc { width: 6.2%; }
-  /* Wide enough for the whole word: "Жартылай" abbreviated to "Жарт." was unreadable, and a
-     payment status that cannot be read is worse than a column that costs 0.8%. */
-  .journal-table .jt-w-status { width: 5.8%; }
-  /* The widest column after the client name: the Қалдық figure gave up its place to a real
-     button, and a button labelled "Распилға жіберу" has to fit that label. */
-  .journal-table .jt-w-cut { width: 9.2%; }
-  /* Wider than it was: the cell holds a real date picker now, not a printed date. */
-  .journal-table .jt-w-date { width: 6.4%; }
-  .journal-table .jt-w-method { width: 6.2%; }
-  /* Three controls now — the save dot, ＋ (add a material to this order) and ↗. */
-  .journal-table .jt-w-act { width: 6.4%; }
+  .journal-table .jt-w-who { width: 17%; }
+  .journal-table .jt-w-sheets { width: 10%; }
+  .journal-table .jt-w-pvc { width: 9%; }
+  .journal-table .jt-w-total { width: 10%; }
+  .journal-table .jt-w-pay { width: 14%; }
+  .journal-table .jt-w-method { width: 9%; }
+  .journal-table .jt-w-progress { width: 17%; }
+  .journal-table .jt-w-date { width: 7%; }
+  .journal-table .jt-w-act { width: 7%; }
 }
 /* Nothing may spill out of its column, or the ellipsis never happens. */
 .journal-table td,
@@ -4432,24 +4419,6 @@ body {
   padding: 28px 0;
 }
 
-/* The identity columns used to be frozen so they stayed put while the money columns scrolled
-   sideways. The table no longer scrolls sideways at all, so freezing them buys nothing — and the
-   hard-coded `left: 62px` offset stopped matching the (now percentage-sized) № column, which made
-   the name column sit on top of Телефон. Only the divider is kept. */
-.jt-col-name {
-  border-right: 1px solid var(--border-strong);
-}
-/* These cells are no longer sticky, so they inherit the row's own background — only the new-order
-   row still needs its tint restated, because it is set per-cell. */
-.jt-row.is-new .jt-sticky {
-  background: var(--primary-soft);
-}
-
-/* Pale colour-coded column groups */
-.jt-tint-material { background: var(--jt-tint-material); }
-.jt-tint-pvc { background: var(--jt-tint-pvc); }
-.jt-tint-total { background: var(--jt-tint-total); }
-.jt-tint-pay { background: var(--jt-tint-pay); }
 
 .jt-num { text-align: right; }
 .jt-num input { text-align: right; }
@@ -4556,33 +4525,43 @@ body {
   padding-inline: 4px;
 }
 
-/* "Төлем түрі" reads as a plain cell until hovered, then as the button it is. */
-.jt-method-btn {
-  width: 100%;
-  height: 26px;
-  padding: 0 4px;
+/* "Төлем түрі" — a pill in the colour the counter already calls the method by, and the control
+   that records a payment. Colour is never the only signal: the method's name is written on it.
+
+   Hover is a filter rather than a border swap so the pill does not move by a pixel; the global
+   :focus-visible ring above is what it gets on the keyboard. */
+.jt-method-pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 10px;
   border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
+  border-radius: 999px;
   font: inherit;
-  font-size: var(--jt-font);
-  color: var(--text-light);
+  font-size: var(--jt-font-sm);
+  font-weight: 700;
+  text-align: center;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.jt-method-btn.has-value {
-  color: var(--text-secondary);
-  font-weight: 600;
+.jt-w-method .jt-method-pill { display: block; width: 100%; }
+.jt-method-pill:hover { filter: brightness(0.96); }
+/* Nothing has come in yet: an outline, not a colour, so an unpaid row does not read as a method. */
+.jt-method-pill.is-none {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-light);
+  font-weight: 500;
 }
-/* Hover only. This used to also match :focus and kill the outline, which left the one control in
-   the row that opens a dialog with no keyboard indicator at all — the global :focus-visible ring
-   above is what it gets now. */
-.jt-method-btn:hover {
-  border-color: var(--primary-light);
-  background: var(--card);
-}
+.jt-method-pill.is-green { background: var(--emerald-light); color: var(--emerald); }
+.jt-method-pill.is-red { background: var(--danger-light); color: var(--danger); }
+.jt-method-pill.is-sky { background: var(--info-light); color: var(--info); }
+.jt-method-pill.is-violet { background: #ede9fe; color: #6d28d9; }
+.jt-method-pill.is-indigo { background: #e0e7ff; color: #4338ca; }
+.jt-method-pill.is-amber { background: var(--warning-light); color: #b45309; }
+/* A method the shop added itself — readable, and deliberately not one of the colours above. */
+.jt-method-pill.is-slate { background: #f1f3f7; color: var(--text-secondary); }
 
 /* "Кесу" column — the .btn-sm base is sized for a panel, not a table cell this narrow. */
 .jt-cut-btn {
@@ -4633,6 +4612,78 @@ body {
   flex: 0 0 auto;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* The payment dialog's two halves, boxed apart.
+
+   Correcting which method money came in by and taking new money look alike and are not alike: the
+   first moves nothing, the second raises what the order has been paid. As two unlabelled groups
+   stacked in one column, the second was being used for the first — a manager who opened this to
+   change "Нал" to "Бәлім" pressed the big bright grid and recorded a duplicate payment instead.
+   Each half is now its own panel that says in its heading what pressing things inside it does. */
+.pay-block {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--jt-tint-subrow);
+}
+.pay-block > label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* New money is the consequential half, so it carries the accent edge rather than the quiet one. */
+.pay-block.is-new {
+  border-color: var(--primary-light);
+  background: var(--card);
+}
+.pay-block .form-group:last-child { margin-bottom: 0; }
+.pay-block .pay-recorded-row:last-of-type { margin-bottom: 0; }
+
+/* Says outright what the select above does, because its consequence is invisible: no sum changes. */
+.pay-hint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-light);
+}
+/* Overpaying is allowed — a customer really can hand over too much — but never silently. */
+.pay-warn {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius-xs);
+  background: var(--warning-light);
+  color: #92400e;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* Adding money to an order that already has some is a deliberate second step, so it is a button
+   to press rather than a form sitting open and waiting to be filled in by accident. */
+.pay-add-toggle {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.pay-add-toggle:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .jt-paid {
   color: var(--emerald);
@@ -4770,20 +4821,33 @@ body {
   font-weight: 700;
 }
 
-/* Summary footer — the last flex child, so it always sits at the bottom of the viewport without
-   overlapping the pagination row the way position:sticky did. */
-.journal-summary {
+/* Footer — the day's totals and the pager on one bar, the way a paper ledger foots a page: the
+   figures checked before closing, next to the control that turns it. It is the last strip of the
+   table's own card, not a second card below it: .journal-wrap clips its children, so a floating
+   panel here would have its shadow cut off halfway. */
+.journal-foot {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 26px;
+  justify-content: space-between;
+  gap: 10px 24px;
   flex-wrap: wrap;
-  margin-top: 12px;
-  padding: 12px 18px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfe;
+}
+.journal-foot .journal-pagination {
+  flex: 0 0 auto;
+  padding: 0;
+  border-top: 0;
+  background: none;
+}
+.journal-summary {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 .journal-summary-item {
   display: flex;
@@ -4797,8 +4861,7 @@ body {
 }
 .journal-summary-item strong { font-weight: 700; }
 .journal-summary-item.is-paid strong { color: var(--emerald); }
-.journal-summary-item.is-debt strong { color: var(--warning); }
-.journal-summary-cta { margin-left: auto; }
+.journal-summary-item.is-debt strong { color: var(--danger); }
 
 /* Mobile card list — hidden on desktop, replaces the spreadsheet on phones. */
 .journal-cards {
@@ -4874,14 +4937,7 @@ body {
     font-size: 0.8rem;
     padding: 8px 7px;
   }
-  .journal-summary {
-    gap: 14px;
-    margin-top: 4px;
-  }
-  .journal-summary-cta {
-    margin-left: 0;
-    width: 100%;
-  }
+  .journal-summary { gap: 14px; }
   .journal-toolbar .btn { flex: 1 1 auto; }
 }
 
@@ -7295,53 +7351,6 @@ body {
 .jt-pick { width: 16px; height: 16px; cursor: pointer; }
 .jt-row.is-picked td { background: var(--primary-soft); }
 /* A merged order shows how many sheet types it covers instead of a single-material dropdown. */
-.jt-merged {
-  width: 100%;
-  height: 26px;
-  border: 1px dashed var(--primary-light);
-  border-radius: var(--radius-xs);
-  background: var(--card);
-  font: inherit;
-  font-size: var(--jt-font);
-  font-weight: 700;
-  color: var(--primary);
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.jt-merged:hover { background: var(--primary-soft); }
-
-/* ── Journal: merged rows, and the cells that were reading wrong ──────────────────────────────
-   A merged order is a parent row plus one sub-row per material. The sub-rows are indented and
-   quieter than the parent so the eye still reads one order per block, not two orders. */
-.jt-row.is-parent td {
-  border-bottom-color: transparent;
-}
-.jt-subrow td {
-  height: 32px;
-  background: var(--jt-tint-subrow);
-}
-.jt-subrow .jt-tint-material { background: var(--jt-tint-material); }
-.jt-subrow .jt-tint-pvc { background: var(--jt-tint-pvc); }
-.jt-subrow .jt-tint-total { background: var(--jt-tint-total); }
-.jt-subrow-label {
-  font-size: var(--jt-font-sm);
-  padding-left: 16px !important;
-}
-.jt-subtotal {
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The aggregate a parent row shows in place of an editable cell: same alignment as the input it
-   replaces, but plainly not a field you can type in. */
-.jt-agg {
-  font-weight: 700;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
 
 /* Overpayment, on the phone card beside the debt figure. The ledger table has no Қалдық column
    any more (the Статус cell answers it, and its tooltip carries the figure), but a card has room
@@ -7616,5 +7625,775 @@ body {
   .data-table .jt-icon-btn {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   Journal, second layout: eight columns and a detail panel.
+
+   The ledger used to carry eighteen columns because eighteen facts existed. That fitted the data
+   and nothing else — every cell was three characters wide, and the page read as a spreadsheet
+   dump rather than as a day's work. The facts are unchanged; what changed is where they sit:
+   identity in one column, composition in another, and the per-material numbers in a panel that
+   opens beside the table with room to read them.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Quick-filter chips ─────────────────────────────────────────────────────────────────────── */
+.journal-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+.journal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.journal-chip:hover { border-color: var(--primary-light); color: var(--text); }
+.journal-chip-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-muted, #eef1f6);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* The active chip is filled rather than merely outlined: at a glance it has to be obvious which
+   slice of the ledger is on screen, or the totals underneath are read as the whole day's. */
+.journal-chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.journal-chip.is-active .journal-chip-count { background: rgba(255, 255, 255, 0.24); color: #fff; }
+/* Each chip keeps the colour its subject already has elsewhere on the page, so "Қарыз" reads the
+   same here as it does in a row. */
+.journal-chip.is-paid.is-active { border-color: var(--emerald); background: var(--emerald); }
+.journal-chip.is-debt.is-active { border-color: var(--danger); background: var(--danger); }
+.journal-chip.is-queued.is-active { border-color: var(--warning); background: var(--warning); color: #422006; }
+.journal-chip.is-queued.is-active .journal-chip-count { background: rgba(0, 0, 0, 0.12); color: #422006; }
+
+/* ── Export menu ────────────────────────────────────────────────────────────────────────────── */
+.journal-menu { position: relative; }
+/* A full-screen invisible button, so a click anywhere else closes the menu and Escape/Tab still
+   reach it — cheaper and more reliable than a document-level listener. */
+.journal-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.journal-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 41;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.journal-menu-list button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.journal-menu-list button:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* "Бағандар" — the same popover, holding checkboxes instead of commands. */
+.journal-menu-list.is-checks { padding: 6px; }
+.journal-col-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: var(--radius-xs);
+  font-size: 0.84rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.journal-col-toggle:hover { background: var(--primary-soft); }
+.journal-col-toggle input { width: 15px; height: 15px; cursor: pointer; }
+/* A column the ledger cannot do without reads as already on, and stays that way. */
+.journal-col-toggle.is-locked { color: var(--text-light); cursor: default; }
+.journal-col-toggle.is-locked:hover { background: transparent; }
+.journal-col-toggle.is-locked input { cursor: default; }
+
+/* ── Table + panel side by side ─────────────────────────────────────────────────────────────── */
+.journal-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+.journal-main > .journal-wrap { flex: 1 1 auto; min-width: 0; }
+
+/* Rows are two and three lines tall now, so the fixed single-line height has to go. */
+.journal-table td {
+  height: auto;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  white-space: normal;
+  vertical-align: top;
+}
+.journal-table th { vertical-align: middle; }
+/* The row being shown in the panel is marked, or clicking a second row leaves no trace of which
+   one the panel belongs to. */
+.jt-row.is-open td {
+  background: var(--primary-soft);
+}
+
+/* ── Who: number, name, phone ───────────────────────────────────────────────────────────────── */
+.jt-w-who .jt-num-link {
+  display: inline-block;
+  margin-bottom: 2px;
+  font-weight: 700;
+  font-size: var(--jt-font);
+}
+.jt-num-link.is-new {
+  color: var(--text-light);
+  font-weight: 600;
+}
+.jt-who-name { font-weight: 600; }
+.jt-who-phone {
+  font-size: var(--jt-font-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Лист саны and ПВХ: the figure, over what it is made of ─────────────────────────────────── */
+.jt-fact {
+  display: block;
+  width: 100%;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  overflow: hidden;
+}
+.jt-fact:hover { border-color: var(--border); background: var(--card); }
+/* The figure carries the weight — this is the column the shop scans down. */
+.jt-fact-value {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Which board, which roll. Read only when the figure raises a question, so it is quiet. */
+.jt-fact-note {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--jt-font-sm);
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Клиент аты: completing the name from the shop's own history ────────────────────────────── */
+
+/* Positioned in viewport coordinates by the component, because the cell it belongs to clips its
+   own overflow — the ledger relies on that for its ellipsis, and a list inside one would be cut
+   off after four pixels. */
+.cust-suggest {
+  position: fixed;
+  z-index: 250;
+  margin: 0;
+  padding: 4px;
+  max-height: 264px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.cust-suggest-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* One highlight, driven by the keyboard, that the mouse joins rather than fights: hovering moves
+   the same marker Tab will act on, so what the pointer is over and what Tab takes never differ. */
+.cust-suggest-item.is-active { background: var(--primary-soft); }
+.cust-suggest-item.is-active .cust-suggest-name { color: var(--primary); }
+.cust-suggest-name {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The number is what actually tells two Ерлans apart, so it is on the row, not in a tooltip. */
+.cust-suggest-meta {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.74rem;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums;
+}
+.cust-suggest-hint {
+  margin-top: 3px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 0.7rem;
+  color: var(--text-light);
+}
+.cust-suggest-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--card);
+  font: inherit;
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+}
+
+/* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
+
+/* Six tones, assigned from the surviving order's id (lib/journalGroups.ts). Enough to tell apart
+   the groups on one screen without the ledger turning into a paint chart — and never the only
+   signal: every grouped row also counts itself in words and names the order each line came from. */
+.jt-tone-0 { --group-tone: #4f6ef7; --group-tint: #eef1fe; }
+.jt-tone-1 { --group-tone: #059669; --group-tint: #e7f6f0; }
+.jt-tone-2 { --group-tone: #c2410c; --group-tint: #fdf0e7; }
+.jt-tone-3 { --group-tone: #7c3aed; --group-tint: #f2ecfe; }
+.jt-tone-4 { --group-tone: #be123c; --group-tint: #fdecf0; }
+.jt-tone-5 { --group-tone: #0e7490; --group-tint: #e6f4f8; }
+
+/* The stripe runs down the first cell of the parent and of every line under it, so one order
+   reads as one block even when the rows either side of it belong to somebody else. */
+.jt-row.is-group td:first-child,
+.jt-subrow.is-group td:first-child {
+  box-shadow: inset 3px 0 0 var(--group-tone);
+}
+
+/* Ticked rows are a group in waiting, so they get the same stripe the merged row will carry.
+   Placed after the merge tones on purpose: while you are choosing, the choice is what matters. */
+.jt-row.is-picked td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+
+.jt-who-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.jt-who-head .jt-num-link { margin-bottom: 0; }
+
+/* The disclosure. Present on every saved row, not just merged ones: "what does one sheet cost?"
+   is a question asked of single-material orders at the counter just as often. */
+.jt-expand {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-light);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.jt-expand:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* "⧉ 3 заказ" — how many rows this one was made of, in the group's own colour. */
+.jt-group-badge {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--group-tone);
+  border-radius: 999px;
+  background: var(--group-tint);
+  color: var(--group-tone);
+  font: inherit;
+  font-size: var(--jt-font-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* One material line, priced the way the customer asks about it. Quieter than a real row and
+   dashed underneath, so a run of them reads as detail belonging to the row above. */
+.jt-subrow td {
+  background: var(--jt-tint-subrow);
+  border-bottom: 1px dashed var(--border);
+  font-size: var(--jt-font-sm);
+}
+.jt-subrow.is-group td { background: var(--group-tint); }
+.jt-subrow .jt-w-who { padding-left: 22px; }
+.jt-sub-material {
+  display: block;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Which journal row this line was typed on before the merge folded it in here. */
+.jt-sub-source {
+  display: block;
+  margin-top: 1px;
+  color: var(--group-tone, var(--text-light));
+  font-weight: 600;
+}
+.jt-sub-total {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/* Cutting, ХДФ, delivery, discount — the part of the total no material line accounts for. */
+.jt-subrow.is-extras .jt-sub-material { font-weight: 500; color: var(--text-light); }
+
+/* ── Total ──────────────────────────────────────────────────────────────────────────────────── */
+.jt-w-total .jt-total {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--primary);
+}
+
+/* ── Payment: the status toggle, what came in, and what is still owed ───────────────────────── */
+.jt-pay-note {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  font-size: var(--jt-font-sm);
+  color: var(--text-light);
+}
+.jt-pay-note-label,
+.jt-pay-note-cur { flex: none; }
+/* The paid figure is typed into, but has to read as part of the line around it rather than as a
+   form field parked in the middle of a table row — the border arrives on hover and focus, which
+   the shared .journal-table .jt-input rules below still provide. */
+.jt-pay-note .jt-input-num {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 2px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+  font-size: var(--jt-font-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.jt-pay-note .jt-input-num.is-paid { color: var(--emerald); }
+.jt-pay-owing {
+  margin-top: 3px;
+  font-size: var(--jt-font-sm);
+  font-weight: 600;
+  color: var(--danger);
+}
+/* Overpaid is not a debt and must not be read as one — it is money to hand back. */
+.jt-pay-owing.is-over { color: var(--info); }
+
+/* ── Progress: three dots and the action button ─────────────────────────────────────────────── */
+.jt-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+.jt-step {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.jt-step-line {
+  position: absolute;
+  top: 8px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+}
+.jt-step-dot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--card);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.jt-step-label {
+  font-size: 0.62rem;
+  color: var(--text-light);
+  white-space: nowrap;
+}
+/* Never colour alone: a done step carries a tick and a blocked one an exclamation, so the column
+   still reads for anyone who cannot tell the green from the red. */
+.jt-step.is-done .jt-step-dot { border-color: var(--emerald); background: var(--emerald); color: #fff; }
+.jt-step.is-done .jt-step-line { background: var(--emerald); }
+.jt-step.is-done .jt-step-label { color: var(--emerald); }
+.jt-step.is-active .jt-step-dot { border-color: var(--primary); background: var(--card); }
+.jt-step.is-active .jt-step-label { color: var(--primary); font-weight: 600; }
+.jt-step.is-blocked .jt-step-dot { border-color: var(--danger); background: var(--danger); color: #fff; }
+.jt-step.is-blocked .jt-step-label { color: var(--danger); }
+.jt-w-progress .jt-cut-btn { margin-top: 8px; }
+.jt-steps.is-compact .jt-step-dot { width: 16px; height: 16px; }
+
+/* ── The new-order row's inline material fields ─────────────────────────────────────────────── */
+.jt-new-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 4px;
+}
+.jt-new-grid > *:last-child { grid-column: span 2; }
+
+/* ── Detail panel ───────────────────────────────────────────────────────────────────────────── */
+.journal-panel {
+  flex: 0 0 330px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.journal-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.journal-panel-head > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.journal-panel-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.journal-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.journal-panel-body section + section { margin-top: 16px; }
+.journal-panel-body h4 {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-light);
+}
+.journal-panel-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.journal-panel-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.journal-panel-facts dt {
+  font-size: 0.72rem;
+  color: var(--text-light);
+}
+.journal-panel-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.journal-line {
+  padding: 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--jt-tint-subrow);
+}
+.journal-line-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.journal-line-top .form-input { flex: 1 1 auto; min-width: 0; padding: 7px 9px; font-size: 0.84rem; }
+.journal-line-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.journal-line-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.journal-line-grid label.is-wide { grid-column: span 2; }
+.journal-line-grid span {
+  font-size: 0.7rem;
+  color: var(--text-light);
+}
+.journal-line-grid .form-input,
+.journal-line-grid .jt-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+}
+.journal-line-sum {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-money-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 0.88rem;
+}
+.journal-money-row strong { font-variant-numeric: tabular-nums; }
+.journal-money-row strong.is-paid { color: var(--emerald); }
+.journal-money-row strong.is-debt { color: var(--danger); }
+.journal-money-row strong.is-over { color: var(--info); }
+.journal-panel-money { padding-top: 12px; border-top: 1px solid var(--border); }
+.journal-money-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  font-size: 0.74rem;
+  color: var(--text-light);
+}
+.journal-panel-foot {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ── Phone cards ────────────────────────────────────────────────────────────────────────────── */
+.journal-card-summary {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.journal-card-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+.journal-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.journal-card-stat span {
+  font-size: 0.73rem;
+  color: var(--text-secondary);
+}
+.journal-card-stat strong {
+  font-size: 0.98rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.journal-card-stat strong.is-paid { color: var(--emerald); }
+.journal-card-stat strong.is-debt { color: var(--danger); }
+
+/* The card is a container now, not a button: the body opens the order and the action button at
+   the bottom does something else entirely, and nesting those was never valid markup. */
+.journal-card { padding: 0; cursor: default; }
+.journal-card-main {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 12px 30px 12px 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.journal-card-date {
+  font-size: 0.76rem;
+  color: var(--text-light);
+}
+.journal-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.journal-card-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+/* Same tone the ledger gives this merge group, so the two views name it the same way. */
+.journal-card-badge.is-group {
+  border: 1px solid var(--group-tone);
+  background: var(--group-tint);
+  color: var(--group-tone);
+  font-weight: 700;
+}
+/* The ledger's two columns as tiles: what is on the saw, what is on the ПВХ machine. Side by
+   side because they are compared, not read in sequence. */
+.journal-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.journal-card-fact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--jt-tint-subrow);
+}
+.journal-card-fact-icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--primary);
+}
+.journal-card-fact-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.journal-card-fact-text b {
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.journal-card-fact-text small {
+  font-size: 0.72rem;
+  color: var(--text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.journal-card-total {
+  font-size: 1.06rem;
+  font-weight: 800;
+}
+.journal-card-money .jt-method-pill { flex: none; cursor: default; }
+.journal-card-money {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.journal-card-owing {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+.journal-card-owing.is-over { color: var(--info); }
+.journal-card-main .jt-steps { margin-top: 10px; }
+.journal-card-chevron {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.3rem;
+  color: var(--text-light);
+}
+.journal-card-action {
+  margin: 0 14px 12px;
+  width: calc(100% - 28px);
+}
+
+@media (max-width: 1100px) {
+  /* The panel stops being a column and becomes a sheet over the ledger — below this width, side
+     by side leaves neither of them readable. */
+  .journal-panel {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    flex: none;
+    max-height: 82vh;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   }
 }

@@ -98,7 +98,11 @@ export function planMerge(orders: Order[]): { plan: MergePlan } | { refusal: Mer
   const keep = sorted[0];
   const absorbed = sorted.slice(1);
 
-  const items = sorted.flatMap(linesOf);
+  // Every line remembers the row it was typed on — including the survivor's own, so a merged
+  // order is attributable end to end rather than "these two came from somewhere, the rest is ours".
+  const items = sorted.flatMap((o) =>
+    linesOf(o).map((line) => ({ ...line, sourceOrderNumber: line.sourceOrderNumber || o.orderNumber })),
+  );
   const sum = (pick: (o: Order) => number) => sorted.reduce((s, o) => s + (pick(o) || 0), 0);
 
   const totalTiyn = sum((o) => o.totalTiyn);
