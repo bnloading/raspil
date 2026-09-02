@@ -37,6 +37,7 @@ import {
   toggleHiddenColumn,
   type JournalColumnId,
 } from "../../lib/journalColumns";
+import { SHOW_ALL, pageWindow } from "../../lib/journalPaging";
 import {
   absorbedOrdersOf,
   groupTone,
@@ -79,7 +80,9 @@ import {
 } from "../../lib/statuses";
 import type { Material, Order, Payment, PaymentMethodDef, PaymentStatus, PvcType } from "../../types/domain";
 
-const PAGE_SIZES = [25, 50, 100];
+// SHOW_ALL last: the escape hatch for "just show me everything", which is what a manager
+// reaches for the first time they notice the ledger has more pages than they expected.
+const PAGE_SIZES = [25, 50, 100, SHOW_ALL];
 
 /** "ORD-2026-000008" → "8". The year and the padding are the same on every row of the page. */
 function shortOrderNumber(orderNumber: string): string {
@@ -268,7 +271,18 @@ export default function ManagerJournal() {
   // a ledger opens at today, not at the day it was started. Paging by hand pins a page until the
   // filters change.
   const [pinnedPage, setPinnedPage] = useState<number | null>(null);
-  const [pageSize, setPageSize] = useState(50);
+  /**
+   * Remembered, so "барлығын көрсету" is a decision made once rather than every morning.
+   * Validated against PAGE_SIZES: a stale value from an older build must not leave the ledger
+   * paging by some size the dropdown can no longer show.
+   */
+  const [pageSize, setPageSize] = useState(() => {
+    const stored = Number(localStorage.getItem("journalPageSize"));
+    return PAGE_SIZES.includes(stored) ? stored : 50;
+  });
+  useEffect(() => {
+    localStorage.setItem("journalPageSize", String(pageSize));
+  }, [pageSize]);
 
   // Only the "add a new order" row still has an explicit save; existing rows write themselves.
   const [saving, setSaving] = useState(false);
@@ -483,9 +497,10 @@ export default function ManagerJournal() {
     [orders, openId],
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(pinnedPage ?? totalPages, totalPages);
-  const pageItems = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  // Not named `window`: this component also asks the real one about the phone breakpoint.
+  const pageView = pageWindow(filtered.length, pageSize, pinnedPage);
+  const { page: safePage, totalPages } = pageView;
+  const pageItems = pageView.to === 0 ? EMPTY_ORDERS : filtered.slice(pageView.from - 1, pageView.to);
   /** In screen order, so a Shift-click range follows what the eye sees. */
   const pageIds = useMemo(() => pageItems.map((o) => o.id), [pageItems]);
 
@@ -1227,7 +1242,21 @@ export default function ManagerJournal() {
                 ) : pageItems.length === 0 && !newRow ? (
                   <tr><td colSpan={bodyColSpan} className="jt-empty">Заказдар табылмады</td></tr>
                 ) : (
-                  pageItems.map((order) => (
+                  <>
+                  {/* The ledger runs oldest first and opens on the last page, so on a busy month
+                      everything before today sits above the window. Left to the pager alone that
+                      reads as "my old orders are gone" — so the table says how many there are and
+                      offers the two ways to reach them. */}
+                  {pageView.olderCount > 0 && (
+                    <HiddenRowsNotice
+                      colSpan={bodyColSpan}
+                      direction="older"
+                      count={pageView.olderCount}
+                      onStep={() => setPinnedPage(safePage - 1)}
+                      onShowAll={() => { setPageSize(SHOW_ALL); setPinnedPage(null); }}
+                    />
+                  )}
+                  {pageItems.map((order) => (
                     <JournalRow
                       key={order.id}
                       order={order}
@@ -1254,7 +1283,17 @@ export default function ManagerJournal() {
                       onOverrideQueue={() => handleOverrideQueueOrder(order)}
                       onError={showToast}
                     />
-                  ))
+                  ))}
+                  {pageView.newerCount > 0 && (
+                    <HiddenRowsNotice
+                      colSpan={bodyColSpan}
+                      direction="newer"
+                      count={pageView.newerCount}
+                      onStep={() => setPinnedPage(safePage + 1)}
+                      onShowAll={() => { setPageSize(SHOW_ALL); setPinnedPage(null); }}
+                    />
+                  )}
+                  </>
                 )}
 
                 {newRow && (
@@ -1313,7 +1352,7 @@ export default function ManagerJournal() {
 
             <div className="journal-pagination">
             <span className="journal-page-info">
-              {filtered.length === 0 ? "0" : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filtered.length)}`} / {filtered.length} заказ
+              {filtered.length === 0 ? "0" : `${pageView.from}–${pageView.to}`} / {filtered.length} заказ
             </span>
             <div className="journal-page-buttons">
               <button className="journal-page-btn" disabled={safePage <= 1} onClick={() => setPinnedPage(1)} aria-label="Бірінші бет">«</button>
@@ -1327,7 +1366,9 @@ export default function ManagerJournal() {
               value={pageSize}
               onChange={(e) => { setPageSize(Number(e.target.value)); setPinnedPage(null); }}
             >
-              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n} / бет</option>)}
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n === SHOW_ALL ? "Барлығы" : `${n} / бет`}</option>
+              ))}
             </select>
             </div>
           </div>
@@ -1550,6 +1591,43 @@ const SAVE_TITLES: Record<SaveState, string> = {
 
 /** How long after the last keystroke the row commits itself. Long enough to type a whole number. */
 const AUTOSAVE_MS = 900;
+
+/**
+ * "There are more orders this way" — a row of the table rather than a note beside it.
+ *
+ * The pager at the foot of the page was already telling the truth ("51–63 / 63 заказ"), and it
+ * was still being read as data loss: it is small, it is below the fold on a full screen, and
+ * nothing where the rows stop says that rows were cut off. This sits exactly where the missing
+ * orders would have been.
+ */
+function HiddenRowsNotice({
+  colSpan, direction, count, onStep, onShowAll,
+}: {
+  colSpan: number;
+  /** Which way the hidden rows lie: older is up the ledger, newer is down it. */
+  direction: "older" | "newer";
+  count: number;
+  /** One page towards them. */
+  onStep: () => void;
+  /** All of them, on one page. */
+  onShowAll: () => void;
+}) {
+  return (
+    <tr className={`jt-more is-${direction}`}>
+      <td colSpan={colSpan}>
+        <span className="jt-more-text">
+          {direction === "older" ? "↑ Бұдан ескі" : "↓ Бұдан кейінгі"} <b>{count}</b> заказ жасырылған
+        </span>
+        <button type="button" className="jt-more-btn" onClick={onStep}>
+          {direction === "older" ? "алдыңғы бет" : "келесі бет"}
+        </button>
+        <button type="button" className="jt-more-btn is-strong" onClick={onShowAll}>
+          барлығын көрсету
+        </button>
+      </td>
+    </tr>
+  );
+}
 
 /**
  * The three-dot progress read-out: money in, sheets cut, order finished.

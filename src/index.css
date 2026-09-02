@@ -7887,6 +7887,44 @@ body {
   color: var(--text-secondary);
 }
 
+/* ── "There are more orders this way" ───────────────────────────────────────────────────────── */
+
+/* Sits where the cut-off rows would have been, because that is where the eye looks for them. Not
+   a row of data, so it is tinted and centred rather than pretending to be one. */
+.jt-more td {
+  padding: 9px 12px;
+  text-align: center;
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--border);
+  white-space: normal;
+}
+.jt-more.is-newer td { border-top: 1px solid var(--border); }
+.jt-more-text {
+  font-size: var(--jt-font);
+  color: var(--text-secondary);
+}
+.jt-more-text b { color: var(--primary); }
+.jt-more-btn {
+  margin-left: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--primary-light);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit;
+  font-size: var(--jt-font-sm);
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+.jt-more-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+/* "Барлығын көрсету" is the one that actually ends the confusion, so it reads as the answer. */
+.jt-more-btn.is-strong {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.jt-more-btn.is-strong:hover { filter: brightness(1.08); }
+
 /* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
 
 /* Six tones, assigned from the surviving order's id (lib/journalGroups.ts). Enough to tell apart
