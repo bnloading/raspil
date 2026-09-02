@@ -806,7 +806,12 @@ export default function ManagerJournal() {
   const handleQueueOrder = async (order: Order) => {
     try {
       await enterCuttingQueue(db, actor, order, { isAdmin: false, queuePosition: computeQueuePosition(order.id) });
-      showToast("✅ Распил кезегіне жіберілді");
+      // One button covers both stations: cutting_queue is in PVC_VISIBLE_STATUSES, so the ПВХ
+      // worker has the order from the same moment the cutter does and starts once the saw is
+      // done. Saying so is the point — the manager was asking for a second button for it.
+      showToast(order.pvcMetersTotal > 0
+        ? "✅ Распил және ПВХ кезегіне жіберілді"
+        : "✅ Распил кезегіне жіберілді");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -2260,14 +2265,24 @@ function JournalDetailPanel({
         </section>
       </div>
 
+      {/* The action that moves the order on, at the bottom of the panel where it stays put while
+          the material lines above it scroll. It queues both stations at once when the order has
+          edging on it, which is what the label now says rather than leaving it to be discovered. */}
       <footer className="journal-panel-foot">
         <button className="btn btn-outline btn-full" onClick={onOpenFull}>Толық бетті ашу</button>
         {onGate && (
           canEnterCuttingQueue(order.paymentStatus) ? (
-            <button className="btn btn-primary btn-full" onClick={onQueue}>Распилге жіберу</button>
+            <button className="btn btn-primary btn-full" onClick={onQueue}>
+              {order.pvcMetersTotal > 0 ? "Распил + ПВХ кезегіне жіберу" : "Распилге жіберу"}
+            </button>
           ) : (
             <button className="btn btn-danger-outline btn-full" onClick={onOverrideQueue}>⚠️ Қарызға жіберу</button>
           )
+        )}
+        {onGate && order.pvcMetersTotal > 0 && (
+          <p className="journal-panel-note">
+            ПВХ шебері де осы кезектен көреді — распил біткен соң кірісе береді.
+          </p>
         )}
       </footer>
     </aside>

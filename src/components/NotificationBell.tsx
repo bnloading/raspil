@@ -26,7 +26,22 @@ export function NotificationBell() {
         aria-label="Хабарламалар"
         onClick={() => setOpen((v) => !v)}
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
+        {/* Every attribute spelled out, for the reason layout/icons.tsx documents: an inline
+            <svg> with a viewBox but no width/height falls back to the UA default of 300x150 css
+            px unless CSS happens to constrain it — and the only .header-icon-btn rules in the
+            stylesheet are scoped to .figma-track-page, which the app shell is not. Unstyled, the
+            bell was a 300px-wide unstroked shape, so all anyone saw was its badge. */}
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
           <path d="M10 21h4" />
         </svg>

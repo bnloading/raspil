@@ -7951,6 +7951,25 @@ body {
   font-size: 0.78rem;
 }
 
+/* The app shell's topbar icon buttons. These existed only under .figma-track-page, which the
+   shell is not — so the notification bell had no size, no stroke and no hit area, and only its
+   unread badge was ever visible. */
+.header-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.header-icon-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.header-icon-btn svg { width: 20px; height: 20px; }
+
 /* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
 
 /* Six tones, assigned from the surviving order's id (lib/journalGroups.ts). Enough to tell apart
@@ -8157,12 +8176,16 @@ body {
 /* ── Detail panel ───────────────────────────────────────────────────────────────────────────── */
 .journal-panel {
   flex: 0 0 330px;
-  /* The row stretches its children now (see .journal-main); the panel still hugs its own content
-     so `position: sticky` has somewhere to travel. */
-  align-self: flex-start;
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 40px);
+  /* Fills the row's height rather than hugging its content, so .journal-panel-body below can be
+     the thing that scrolls and the footer's action button stays on screen.
+
+     `position: sticky` and a viewport max-height used to stand in for this. Neither worked once
+     the panel was taller than the row: sticky has nowhere to travel inside a bounded flex item,
+     and `calc(100vh - 40px)` is measured against the window, not against the space the toolbar
+     and the chips left over — so the bottom of the panel fell outside .app-content.full, which
+     clips. The order's payment totals and "Распилге жіберу" were down there. */
+  align-self: stretch;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -8189,6 +8212,9 @@ body {
 .journal-panel-body {
   flex: 1 1 auto;
   overflow-y: auto;
+  /* Without this the body's default min-height:auto keeps it at content size, overflow-y never
+     engages, and the footer is pushed out of the panel instead of the lines scrolling under it. */
+  min-height: 0;
   padding: 12px 14px;
 }
 .journal-panel-body section + section { margin-top: 16px; }
@@ -8293,6 +8319,13 @@ body {
   gap: 6px 12px;
   margin-top: 8px;
   font-size: 0.74rem;
+  color: var(--text-light);
+}
+/* Explains that one button covers both stations, without crowding the button's own label. */
+.journal-panel-note {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
   color: var(--text-light);
 }
 .journal-panel-foot {
@@ -8460,6 +8493,8 @@ body {
     inset: auto 0 0 0;
     z-index: 60;
     flex: none;
+    /* Out of the flex row entirely here, so it bounds itself against the window again. */
+    align-self: auto;
     max-height: 82vh;
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   }
