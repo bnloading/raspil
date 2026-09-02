@@ -8158,6 +8158,185 @@ body {
 .cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
 .cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
 
+/* ── Есептер дашборды ────────────────────────────────────────────────── */
+
+/* Бүгін / Апта / Ай — a segmented control above the tabs, because it qualifies all of them. */
+.report-period {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.report-period-btn {
+  flex: 1;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.report-period-btn.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.rdash { display: flex; flex-direction: column; gap: 14px; }
+.rdash-income-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.rdash-income-icon { font-size: 1.1rem; }
+.rdash-income-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rdash-big {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.rdash-big.is-debt { color: var(--danger); }
+.rdash-cap { margin-top: 2px; font-size: 0.8rem; color: var(--text-light); }
+/* The comparison against the period before. Green up, red down — with the arrow saying it too. */
+.rdash-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--emerald-light);
+  color: var(--emerald);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rdash-delta.is-down { background: var(--danger-light); color: var(--danger); }
+.rdash-delta small { font-weight: 500; opacity: 0.85; }
+
+.rdash-subfigures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+.rdash-subfigures > div {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+}
+.rdash-subfigures span { display: block; font-size: 0.74rem; color: var(--text-light); }
+.rdash-subfigures strong { font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+
+.rdash-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.rdash-tile {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.rdash-tile b { display: block; font-size: 1.5rem; font-weight: 800; line-height: 1.1; }
+.rdash-tile span { font-size: 0.76rem; color: var(--text-light); }
+.rdash-tile.is-blue b { color: var(--info); }
+.rdash-tile.is-amber b { color: var(--warning); }
+.rdash-tile.is-green b { color: var(--emerald); }
+
+/* Where the floor's work is sitting, in proportion — one bar rather than four numbers to compare
+   in your head. The counts are written out under it, so the widths are never the only signal. */
+.rdash-stagebar {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+  margin-top: 14px;
+}
+.rdash-stagebar i { border-radius: 999px; min-width: 4px; }
+.rdash-stagebar i.is-queue { background: var(--emerald); }
+.rdash-stagebar i.is-cutting { background: var(--info); }
+.rdash-stagebar i.is-pvc { background: var(--warning); }
+.rdash-stagebar i.is-ready { background: var(--primary); }
+.rdash-stagekeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.rdash-stagekey.is-queue { color: var(--emerald); }
+.rdash-stagekey.is-cutting { color: var(--info); }
+.rdash-stagekey.is-pvc { color: var(--warning); }
+.rdash-stagekey.is-ready { color: var(--primary); }
+
+.rdash-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+.rdash-debt { border-color: var(--danger-light); }
+.rdash-link {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--danger);
+  text-decoration: none;
+}
+
+.rdash-methodbar {
+  display: flex;
+  gap: 3px;
+  height: 10px;
+  margin-bottom: 12px;
+}
+.rdash-methodbar i { border-radius: 999px; min-width: 4px; }
+.rdash-methods { list-style: none; margin: 0; padding: 0; }
+.rdash-methods li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 0.82rem;
+}
+.rdash-methods b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.rdash-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+/* Five tones, reused by the bar and its key so a slice and its label always match. */
+.tone-0 { background: var(--primary); }
+.tone-1 { background: var(--emerald); }
+.tone-2 { background: var(--warning); }
+.tone-3 { background: var(--danger); }
+.tone-4 { background: var(--info); }
+
+.rdash-today { list-style: none; margin: 0; padding: 0; }
+.rdash-today li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 0.86rem;
+}
+.rdash-today li + li { border-top: 1px solid var(--border); }
+.rdash-today b { font-weight: 800; font-variant-numeric: tabular-nums; }
+
 /* ── Айлық: аванс ────────────────────────────────────────────────────── */
 
 /* Money already handed over, shown next to what was earned rather than folded into it — the

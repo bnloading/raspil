@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { db } from "../../firebase";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
@@ -32,10 +33,20 @@ import {
   computeKpis,
   computeLowStock,
   computeMaterialCutBreakdown,
+  computeMethodBreakdown,
   computeMonthlyRevenue,
   computePaymentSummary,
   computePvcProductivity,
 } from "../../lib/dashboardStats";
+import {
+  PERIOD_LABELS,
+  debtOverview,
+  periodStart,
+  pvcMetersSince,
+  revenueFor,
+  weeklyRevenue,
+  type ReportPeriod,
+} from "../../lib/reportsDashboard";
 
 type Tab = "dashboard" | "finance" | "pvc" | "sales" | "payments" | "production" | "warehouse" | "expenses" | "expenselog";
 
@@ -43,6 +54,8 @@ export default function AdminReports() {
   const { userData } = useAuth();
   const isAdmin = userData?.role === "admin";
   const [tab, setTab] = useState<Tab>("dashboard");
+  /** Which stretch of time the dashboard's figures cover. */
+  const [period, setPeriod] = useState<ReportPeriod>("week");
   const { orders, loading: ordersLoading } = useAllOrders();
   const { payments, loading: paymentsLoading } = useAllPayments();
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
@@ -55,7 +68,21 @@ export default function AdminReports() {
   const loading = ordersLoading || paymentsLoading || movementsLoading;
 
   return (
-    <AppShell title="Есептер" subtitle="Сату, төлемдер, өндіріс, қойма есептері">
+    <AppShell title="Есептер" subtitle="Қаржы және өндіріс қорытындысы">
+      {/* Бүгін / Апта / Ай sits above the tabs because it qualifies all of them: the question is
+          "how much", and it is meaningless without saying over what. */}
+      <div className="report-period">
+        {(Object.keys(PERIOD_LABELS) as ReportPeriod[]).map((p) => (
+          <button
+            key={p}
+            className={`report-period-btn${period === p ? " is-active" : ""}`}
+            onClick={() => setPeriod(p)}
+          >
+            {PERIOD_LABELS[p]}
+          </button>
+        ))}
+      </div>
+
       <div className="tab-pill-row">
         {/* Editing the allocation percentages (or logging an expense) writes to an Admin-only
             collection, so a Manager sees the resulting numbers on Қаржы but is not offered either
@@ -71,7 +98,15 @@ export default function AdminReports() {
         <Spinner />
       ) : (
         <>
-          {tab === "dashboard" && <DashboardTab orders={orders} payments={payments} movements={movements} materials={materials} />}
+          {tab === "dashboard" && (
+            <DashboardTab
+              orders={orders}
+              payments={payments}
+              movements={movements}
+              materials={materials}
+              period={period}
+            />
+          )}
           {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} expenses={expenses} />}
           {tab === "pvc" && <PvcTab orders={orders} pvcTypes={pvcTypes} />}
           {tab === "sales" && <SalesTab orders={orders} />}
@@ -807,43 +842,146 @@ function PvcTab({
   );
 }
 
+/**
+ * The Дашборд tab: what came in, what the shop floor is doing, what is owed, and what today
+ * actually produced — in that order, because that is the order the owner asks in.
+ *
+ * The thirteen identical stat cards this replaces gave every figure the same weight, so the one
+ * being looked for had to be found by reading all of them.
+ */
 function DashboardTab({
   orders,
   payments,
   movements,
   materials,
+  period,
 }: {
   orders: ReturnType<typeof useAllOrders>["orders"];
   payments: ReturnType<typeof useAllPayments>["payments"];
   movements: ReturnType<typeof useAllInventoryMovements>["movements"];
   materials: ReturnType<typeof useMaterials>["materials"];
+  period: ReportPeriod;
 }) {
   const kpis = computeKpis({ orders, payments, movements, materials });
+  const revenue = useMemo(() => revenueFor(payments, period), [payments, period]);
+  const week = useMemo(() => weeklyRevenue(payments), [payments]);
+  const debts = useMemo(() => debtOverview(orders), [orders]);
+  const methods = useMemo(() => computeMethodBreakdown(payments), [payments]);
+  const pvcToday = useMemo(() => pvcMetersSince(orders, periodStart("today", new Date())), [orders]);
 
-  const cards = [
-    { label: "Бүгінгі заказдар", value: kpis.todayOrders },
-    { label: "Кезекте", value: kpis.queueCount },
-    { label: "Кесіліп жатыр", value: kpis.cuttingCount },
-    { label: "ПВХ күтуде", value: kpis.pvcPendingCount },
-    { label: "Дайын", value: kpis.readyCount },
-    { label: "Бүгінгі табыс", value: formatMoney(kpis.todayRevenueTiyn) },
-    { label: "Апталық табыс", value: formatMoney(kpis.weekRevenueTiyn) },
-    { label: "Айлық табыс", value: formatMoney(kpis.monthRevenueTiyn) },
-    { label: "Төленбеген сома", value: formatMoney(kpis.unpaidTotalTiyn) },
-    { label: "Жалпы қарыз", value: formatMoney(kpis.totalDebtTiyn) },
-    { label: "Аз қалдық материалдар", value: kpis.lowStockCount },
-    { label: "Бүгін кесілген лист", value: kpis.sheetsToday },
-    { label: "Осы ай кесілген лист", value: kpis.sheetsMonth },
+  const methodTotal = methods.reduce((s, m) => s + m.value, 0);
+  const stages = [
+    { key: "queue", label: "Кезек", value: kpis.queueCount },
+    { key: "cutting", label: "Распил", value: kpis.cuttingCount },
+    { key: "pvc", label: "ПВХ", value: kpis.pvcPendingCount },
+    { key: "ready", label: "Дайын", value: kpis.readyCount },
   ];
+  const stageTotal = stages.reduce((s, x) => s + x.value, 0);
 
   return (
-    <div className="stat-grid">
-      {cards.map((c) => (
-        <div key={c.label} className="stat-card">
-          <div className="number">{c.value}</div>
-          <div className="label">{c.label}</div>
+    <div className="rdash">
+      <section className="panel-card rdash-income">
+        <div className="rdash-income-head">
+          <span className="rdash-income-icon" aria-hidden="true">💰</span>
+          <span>Кіріс</span>
         </div>
-      ))}
+        <div className="rdash-income-row">
+          <div>
+            <div className="rdash-big">{formatMoney(revenue.currentTiyn)}</div>
+            <div className="rdash-cap">{PERIOD_LABELS[period]} табысы</div>
+          </div>
+          {/* No badge at all when there is nothing to compare with — see revenueFor. */}
+          {revenue.changePct !== null && (
+            <span className={`rdash-delta${revenue.changePct < 0 ? " is-down" : ""}`}>
+              {revenue.changePct >= 0 ? "↗" : "↘"} {revenue.changePct > 0 ? "+" : ""}{revenue.changePct}%
+              <small>өткен кезеңнен</small>
+            </span>
+          )}
+        </div>
+
+        <div className="rdash-subfigures">
+          <div><span>Апталық</span><strong>{formatMoney(kpis.weekRevenueTiyn)}</strong></div>
+          <div><span>Айлық</span><strong>{formatMoney(kpis.monthRevenueTiyn)}</strong></div>
+        </div>
+
+        <BarChart
+          data={week.map((d) => ({ label: d.label, value: d.valueTiyn / 100 }))}
+          valueFormatter={(v) => `${Math.round(v / 1000)}к`}
+        />
+      </section>
+
+      <section className="panel-card">
+        <div className="panel-head">
+          <h3>Цех барысы</h3>
+        </div>
+        <div className="rdash-tiles">
+          <div className="rdash-tile"><b>{kpis.todayOrders}</b><span>Бүгінгі заказ</span></div>
+          <div className="rdash-tile is-blue"><b>{kpis.queueCount}</b><span>Кезекте</span></div>
+          <div className="rdash-tile is-amber"><b>{kpis.pvcPendingCount}</b><span>ПВХ күтуде</span></div>
+          <div className="rdash-tile is-green"><b>{kpis.readyCount}</b><span>Дайын</span></div>
+        </div>
+
+        {/* One bar for the whole floor: where the work is sitting, in proportion. */}
+        {stageTotal > 0 && (
+          <>
+            <div className="rdash-stagebar" aria-hidden="true">
+              {stages.map((st) => (
+                <i key={st.key} className={`is-${st.key}`} style={{ flexGrow: st.value }} />
+              ))}
+            </div>
+            <div className="rdash-stagekeys">
+              {stages.map((st) => (
+                <span key={st.key} className={`rdash-stagekey is-${st.key}`}>{st.label} {st.value}</span>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <div className="rdash-pair">
+        <section className="panel-card rdash-debt">
+          <div className="panel-head"><h3>Қарыздар</h3></div>
+          <div className="rdash-big is-debt">{formatMoney(debts.totalTiyn)}</div>
+          <div className="rdash-cap">
+            {debts.customers} клиент
+            {debts.overdue > 0 && <> · {debts.overdue} мерзімі өткен</>}
+          </div>
+          <Link to="/manager/debt" className="rdash-link">Қарыздарды ашу →</Link>
+        </section>
+
+        <section className="panel-card">
+          <div className="panel-head"><h3>Төлем түрлері</h3></div>
+          {methodTotal === 0 ? (
+            <p className="jt-muted">Бұл кезеңде төлем жоқ</p>
+          ) : (
+            <>
+              <div className="rdash-methodbar" aria-hidden="true">
+                {methods.map((m, i) => (
+                  <i key={m.label} className={`tone-${i % 5}`} style={{ flexGrow: m.value }} />
+                ))}
+              </div>
+              <ul className="rdash-methods">
+                {methods.map((m, i) => (
+                  <li key={m.label}>
+                    <span className={`rdash-dot tone-${i % 5}`} aria-hidden="true" />
+                    {m.label}
+                    <b>{Math.round((m.value / methodTotal) * 100)}%</b>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      </div>
+
+      <section className="panel-card">
+        <div className="panel-head"><h3>Бүгінгі қорытынды</h3></div>
+        <ul className="rdash-today">
+          <li><span>🪚 Кесілген лист</span><b>{kpis.sheetsToday}</b></li>
+          <li><span>🧻 ПВХ жабыстырылды</span><b>{pvcToday} м</b></li>
+          <li><span>📦 Қоймада аз қалған</span><b>{kpis.lowStockCount} материал</b></li>
+        </ul>
+      </section>
     </div>
   );
 }
