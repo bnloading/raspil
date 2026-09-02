@@ -10,6 +10,8 @@ import {
   PVC_PRICE_OTHER_TIYN,
   EXTERNAL_CUT_PER_SHEET_TIYN,
   EXTERNAL_PVC_PER_METER_TIYN,
+  countertopLengthM,
+  externalCountertopPriceTiyn,
 } from "./journalPricing";
 
 const m = (name: string, color = "") => ({ name, color });
@@ -199,5 +201,63 @@ describe("matchPvcTypeFor — Ақ and Белый are one finish", () => {
 
   it("still refuses a fragment: Белая is not Белый", () => {
     expect(matchPvcTypeFor({ name: "ЛДСП Белая ночь", color: "Белая ночь" }, ROLLS)).toBeUndefined();
+  });
+});
+
+// ── A customer's own countertop, quoted by length ────────────────────────────
+
+const top = (name: string) => ({ name, color: "" });
+
+describe("countertopLengthM", () => {
+  it("reads the length off the catalogue name", () => {
+    expect(countertopLengthM(top("Сырттан келетін столешница 3м"))).toBe(3);
+    expect(countertopLengthM(top("Сырттан келетін столешница 4 м"))).toBe(4);
+  });
+
+  it("is null for a length the shop does not price", () => {
+    expect(countertopLengthM(top("Сырттан келетін столешница 5м"))).toBeNull();
+  });
+
+  it("is null for anything that is not a countertop", () => {
+    expect(countertopLengthM(top("Сырттан келетін лист"))).toBeNull();
+    expect(countertopLengthM(top("ЛДСП Ақ 3м"))).toBeNull();
+    expect(countertopLengthM(undefined)).toBeNull();
+  });
+
+  it("does not read a metre out of a word that merely starts with м", () => {
+    expect(countertopLengthM(top("Столешница 3 мрамор"))).toBeNull();
+  });
+});
+
+describe("externalCountertopPriceTiyn", () => {
+  it("charges 2000 for 3 м and 3000 for 4 м", () => {
+    expect(externalCountertopPriceTiyn(top("Сырттан келетін столешница 3м"))).toBe(200000);
+    expect(externalCountertopPriceTiyn(top("Сырттан келетін столешница 4м"))).toBe(300000);
+  });
+
+  it("does not apply to a countertop the shop itself sells", () => {
+    // Stock is priced as stock; only the "Сырттан келетін" placeholders are labour-only.
+    expect(externalCountertopPriceTiyn(top("Столешница 3м"))).toBeNull();
+  });
+
+  it("does not apply to a customer's own sheet", () => {
+    expect(externalCountertopPriceTiyn(top("Сырттан келетін лист"))).toBeNull();
+  });
+});
+
+describe("journalDefaultsFor — customer's own countertop", () => {
+  it("fills the length price in as the job charge", () => {
+    expect(journalDefaultsFor(top("Сырттан келетін столешница 3м")).cuttingPerSheetTiyn).toBe(200000);
+    expect(journalDefaultsFor(top("Сырттан келетін столешница 4м")).cuttingPerSheetTiyn).toBe(300000);
+  });
+
+  it("falls back to the per-sheet rate for a customer's own board", () => {
+    expect(journalDefaultsFor(top("Сырттан келетін лист")).cuttingPerSheetTiyn)
+      .toBe(EXTERNAL_CUT_PER_SHEET_TIYN);
+  });
+
+  it("still prices the ПВХ at the external rate either way", () => {
+    expect(journalDefaultsFor(top("Сырттан келетін столешница 4м")).pvcPricePerMeterTiyn)
+      .toBe(EXTERNAL_PVC_PER_METER_TIYN);
   });
 });

@@ -1,6 +1,7 @@
 import { collection, doc, serverTimestamp, setDoc, Timestamp, updateDoc, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { computeJournalRowTotals } from "./journal";
+import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
@@ -171,7 +172,11 @@ export function itemsFromDraft(draft: JournalDraft, materials: Map<string, Mater
     pvcPricePerMeterTiyn: line.pvcPricePerMeterTiyn,
     pvcTypeId: line.pvcTypeId,
     pvcColorName: line.pvcColorName,
-    sourceOrderNumber: line.sourceOrderNumber,
+    // Defaulted, never passed through: Firestore rejects an undefined value outright, so a draft
+    // line built without this field would fail the whole save rather than just missing an
+    // attribution. TypeScript requires it, but the field is newer than some of the code that
+    // builds lines, and a write that throws is far worse than a line that says nothing.
+    sourceOrderNumber: line.sourceOrderNumber ?? "",
   }));
 }
 
@@ -332,9 +337,15 @@ export async function saveJournalRow(
   const alreadyCut =
     !!order.cuttingCompletedAt || (order.lineJobs ?? []).some((job) => job.confirmedSheets !== undefined);
 
+  // Re-checked on every save, not just at creation: the phone is often typed a moment after the
+  // name, and a customer may open their account long after the order was written down. Only ever
+  // fills a gap — an order already attached to somebody is never moved by an edit here.
+  const linkedId = order.customerId ? null : await findCustomerIdByPhone(db, draft.customerPhone);
+
   await updateDoc(doc(db, "orders", order.id), {
     customerName: draft.customerName.trim(),
     customerPhone: draft.customerPhone.trim(),
+    ...(linkedId ? { customerId: linkedId } : {}),
     ...aggregatesFor(draft, catalog),
     ...(alreadyCut ? {} : { confirmedSheets: draft.lines.reduce((s, l) => s + l.sheetQty, 0) }),
     materialCostTiyn: totals.materialCostTiyn,
@@ -373,10 +384,15 @@ export async function createJournalOrder(
   const orderRef = doc(collection(db, "orders"));
   const orderNumber = await generateOrderNumber(db);
 
+  // Attached to the customer's own account when the phone matches one, so the order shows up in
+  // their "Заказдарым" and their debt without anybody re-entering it. A walk-in with no account
+  // simply has no customerId, exactly as before — computeCustomerDebts() keys those by phone so
+  // they still roll up onto the right customer card either way.
+  const linkedId = await findCustomerIdByPhone(db, draft.customerPhone);
+
   await setDoc(orderRef, {
     orderNumber,
-    // No customerId: a walk-in has no account. computeCustomerDebts() keys these by phone so they
-    // still roll up onto the right customer card.
+    ...(linkedId ? { customerId: linkedId } : {}),
     customerName: draft.customerName.trim() || "Клиент",
     customerPhone: draft.customerPhone.trim(),
     ...aggregates,

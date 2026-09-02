@@ -16,6 +16,18 @@ export const EXTERNAL_CUT_PER_SHEET_TIYN = 1600_00;
 export const EXTERNAL_PVC_PER_METER_TIYN = 160_00;
 
 /**
+ * A customer's own countertop, charged by its length rather than per sheet.
+ *
+ * A столешница is not a sheet: it comes in fixed lengths, it is cut once, and the shop quotes the
+ * job — 3 м for 2000 ₸, 4 м for 3000 ₸ — not a per-sheet rate. Falling through to the 1600 ₸
+ * sheet rate would under-charge the 4 м and over-charge nothing, so it is worth its own rule.
+ */
+export const EXTERNAL_COUNTERTOP_PRICES_TIYN: Record<number, number> = {
+  3: 2000_00,
+  4: 3000_00,
+};
+
+/**
  * The letters of a string, as whole words.
  *
  * Whole words, never substrings: "Бежевый" must not read as white and "Ақсай" must not read as
@@ -176,6 +188,37 @@ export function isWhiteMaterial(material: Pick<Material, "name" | "color"> | und
   return words.includes("ақ") || words.includes("белый");
 }
 
+/**
+ * The length in metres of a countertop named in the catalogue — "Сырттан келетін столешница 3м".
+ *
+ * Read off the name because that is how the row is entered and how the two lengths are told apart;
+ * the catalogue holds one placeholder material per length. Returns null for anything that is not
+ * one of the lengths the shop prices.
+ */
+export function countertopLengthM(material: Pick<Material, "name"> | undefined): number | null {
+  const name = (material?.name ?? "").toLowerCase();
+  if (!name.includes("столеш")) return null;
+  // "3м", "3 м", "3.5м" — the number immediately before the metre mark.
+  const match = name.match(/(\d+(?:[.,]\d+)?)\s*м(?![a-zа-яё])/u);
+  if (!match) return null;
+  const metres = Number(match[1].replace(",", "."));
+  return Number.isFinite(metres) && metres in EXTERNAL_COUNTERTOP_PRICES_TIYN ? metres : null;
+}
+
+/**
+ * What the shop charges to cut a customer's own countertop, or null when this is not one.
+ *
+ * Both halves have to be true: a countertop the SHOP sells is priced as stock like any other
+ * board, so only the "Сырттан келетін" placeholders reach this rule.
+ */
+export function externalCountertopPriceTiyn(
+  material: Pick<Material, "name" | "color"> | undefined,
+): number | null {
+  if (!isExternalMaterial(material)) return null;
+  const metres = countertopLengthM(material);
+  return metres === null ? null : EXTERNAL_COUNTERTOP_PRICES_TIYN[metres];
+}
+
 export interface JournalDefaults {
   pvcPricePerMeterTiyn: number;
   /** Per-sheet cutting charge — only non-zero for a customer's own board. */
@@ -194,9 +237,11 @@ export interface JournalDefaults {
  */
 export function journalDefaultsFor(material: Pick<Material, "name" | "color"> | undefined): JournalDefaults {
   if (isExternalMaterial(material)) {
+    // A countertop is quoted by its length, not per sheet — see EXTERNAL_COUNTERTOP_PRICES_TIYN.
+    const countertop = externalCountertopPriceTiyn(material);
     return {
       pvcPricePerMeterTiyn: EXTERNAL_PVC_PER_METER_TIYN,
-      cuttingPerSheetTiyn: EXTERNAL_CUT_PER_SHEET_TIYN,
+      cuttingPerSheetTiyn: countertop ?? EXTERNAL_CUT_PER_SHEET_TIYN,
     };
   }
   return {

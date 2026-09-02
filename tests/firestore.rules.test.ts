@@ -370,6 +370,36 @@ describe("cutter/PVC can list admin+manager accounts to fan out notifyManagers()
   });
 });
 
+describe("manager can find the customer account behind a phone, and nothing broader", () => {
+  it("manager CAN look up a customer account by phone, to attach a journal order to it", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      getDocs(query(
+        collection(db, "users"),
+        where("role", "==", "customer"),
+        where("phone", "==", "77770001122"),
+      )),
+    );
+  });
+
+  it("manager CAN list customer accounts", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(getDocs(query(collection(db, "users"), where("role", "==", "customer"))));
+  });
+
+  it("manager still CANNOT list every account", async () => {
+    // The permission is per candidate document, so an unfiltered listing still fails on the
+    // admin and manager rows it would return.
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(getDocs(collection(db, "users")));
+  });
+
+  it("a customer still cannot list other customers", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(getDocs(query(collection(db, "users"), where("role", "==", "customer"))));
+  });
+});
+
 describe("payment method can be corrected without reversing the payment", () => {
   it("manager CAN change the method a payment was recorded under", async () => {
     const db = testEnv.authenticatedContext(MANAGER_UID).firestore();

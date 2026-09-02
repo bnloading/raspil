@@ -82,8 +82,15 @@ service cloud.firestore {
       // turn needs to list admin+manager accounts purely to fan out lib/orderStatus.ts's
       // notifyManagers() calls (startCutting/completeCutting/startPvc/completePvc/...) — likewise
       // scoped to exactly those two roles, so it never lets a worker browse other workers/customers.
+      // Manager also needs to find the customer account behind a phone number, so an order typed
+      // into the journal can be attached to it (lib/customerLink.ts) and the customer sees their
+      // own orders and debt when they sign in. Scoped to customer documents, and it discloses
+      // nothing new: a Manager already reads every order, and every order carries the customer's
+      // name and phone. The only fields this adds are the account's role and its synthesized
+      // auth email, which is derived from that same phone.
       allow list: if isAdmin()
         || (isManager() && resource.data.role in ['raspil', 'pvh'])
+        || (isManager() && resource.data.role == 'customer')
         || (isStaff() && resource.data.role in ['admin', 'manager']);
       allow create: if isAdmin() || (isSignedIn() && uid() == userId
         && request.resource.data.role == 'customer'
