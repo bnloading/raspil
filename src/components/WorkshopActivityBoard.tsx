@@ -1,28 +1,35 @@
 import { Link } from "react-router-dom";
 import { useWorkshopActivity } from "../hooks/useWorkshopActivity";
 import { boardProgress, boardSummary } from "../lib/boardProgress";
-import { formatMoney } from "../lib/money";
+import { sheetSummary } from "../lib/journalColumns";
+import { linesOf } from "../lib/orderMerge";
+import { customerOrderCode } from "../lib/orderCode";
 import type { Order } from "../types/domain";
 
-/** What each state draws in its circle — mirrors OrderProgress so the two strips read alike. */
-const GLYPH: Record<string, string> = { done: "✓", active: "", problem: "!", pending: "", skipped: "–" };
-
-/** Public display code — the trailing digits only, so the board never advertises volume or
- *  lets one customer infer anything about another's order beyond its position. */
+/**
+ * Public display code — the trailing digits only, so the board never advertises volume or
+ * lets one customer infer anything about another's order beyond its position.
+ */
 function publicCode(orderNumber: string): string {
   const digits = orderNumber.match(/(\d+)$/)?.[1];
   return digits ? `#A-${digits.slice(-3)}` : orderNumber;
 }
 
 /**
- * "Цех жұмысы" — the live workshop board every signed-in customer can see, as cards with the same
- * progress strip the order lists use.
+ * "Цех жұмысы" — the live workshop board every signed-in customer can see.
  *
- * The board itself is anonymous by construction: WorkshopActivityEntry carries no name, phone,
- * price or dimensions, so a row about someone else's order can only ever show a short public code
- * and which stage it is at. The viewer's OWN rows are matched by order number against orders they
- * already hold, and only those are enriched with the sum and sheet count — data they own anyway.
- * That is why `myOrders` is passed in rather than the board fetching anything richer.
+ * A compact list, one line per order. It used to be a column of full-height cards, each with a
+ * labelled four-step strip, and a phone showed three of them: a customer scrolled past a wall of
+ * anonymous codes without finding their own. Their own rows now carry their name and what the
+ * order is made of — "6 лист · Ақ 6 · ХДФ 5" — which is the line that answers "which one is
+ * mine" at a glance.
+ *
+ * Everyone else's row stays a code and a stage, and that is not an oversight. The whole feed is
+ * readable by any signed-in user (firestore.rules: `allow read: if isSignedIn()` on
+ * /workshopActivity) and that permission is only defensible because WorkshopActivityEntry carries
+ * no name, no phone, no price and no dimensions. The viewer's OWN rows are matched by order
+ * number against orders they already hold, so naming those adds nothing they cannot see anyway —
+ * which is why `myOrders` is passed in rather than the board fetching anything richer.
  */
 export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] }) {
   const { entries, loading } = useWorkshopActivity();
@@ -54,57 +61,65 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
       {entries.length === 0 ? (
         <p className="workshop-board-empty">Қазір цехта белсенді заказ жоқ.</p>
       ) : (
-        <div className="ocards workshop-cards">
+        <ul className="workshop-list">
           {entries.map((e) => {
             const own = mineByNumber.get(e.orderNumber);
             const steps = boardProgress(e.stage, e.needsPvc);
-            const card = (
-              <>
-                <div className="ocard-top">
-                  <span className="otable-num">{own ? own.orderNumber : publicCode(e.orderNumber)}</span>
-                </div>
+            const sheets = own ? sheetSummary(linesOf(own)) : null;
 
-                {/* Only the viewer's own rows carry money and sheet counts. */}
+            const row = (
+              <>
+                <span className="workshop-row-id">
+                  {own ? customerOrderCode(own.orderNumber) : publicCode(e.orderNumber)}
+                </span>
+
+                <span className="workshop-row-stage">{boardSummary(e.stage, e.queuePosition)}</span>
+
+                {/* Only the viewer's own rows are named and itemised — everything here is theirs.
+                    On its own line, because "Дин · 11 лист · Ақ 6 · ХДФ 5" does not fit beside a
+                    code and a stage on a 390px phone, and this is the line they came to read. */}
                 {own && (
-                  <div className="ocard-mid">
-                    <span className="otable-strong">
-                      {own.confirmedSheets ?? own.estimatedSheets ?? 0} лист
-                      {own.pvcMetersTotal > 0 && ` · ${Number(own.pvcMetersTotal.toFixed(2))} м ПВХ`}
-                    </span>
-                    <span className="otable-money">{formatMoney(own.totalTiyn)}</span>
-                  </div>
+                  <span className="workshop-row-what">
+                    <b>{own.customerName}</b>
+                    {sheets && sheets.headline !== "—" && (
+                      <>
+                        {" · "}
+                        {sheets.headline}
+                        {sheets.detail && <span className="workshop-row-detail"> · {sheets.detail}</span>}
+                      </>
+                    )}
+                    {own.pvcMetersTotal > 0 && (
+                      <span className="workshop-row-detail"> · {Math.round(own.pvcMetersTotal)} м ПВХ</span>
+                    )}
+                  </span>
                 )}
 
-                <div className="ocard-meta">
-                  <span className="otable-sub">{boardSummary(e.stage, e.queuePosition)}</span>
-                  {own && <span className="workshop-mine-tag">Сіздің заказыңыз</span>}
-                </div>
-
-                <div className="oprog">
-                  {steps.map((step, i) => (
-                    <div className="oprog-step" key={step.key}>
-                      {i > 0 && <span className={`oprog-line is-${steps[i - 1].state}`} aria-hidden="true" />}
-                      <span className={`oprog-dot is-${step.state}`}>{GLYPH[step.state]}</span>
-                      <span className="oprog-label">{step.label}</span>
-                    </div>
+                {/* The same four steps as before, as a slim bar: a whole labelled strip per row is
+                    what made the list unreadable on a phone. The stage is written out above it. */}
+                <span className="workshop-row-bar" aria-hidden="true">
+                  {steps.map((step) => (
+                    <i key={step.key} className={`is-${step.state}`} />
                   ))}
-                </div>
+                </span>
               </>
             );
 
             // Someone else's row is not a link — there is nothing the viewer may open.
-            return own ? (
-              <Link key={e.id} to={`/order/${own.id}`} className="ocard is-mine">
-                {card}
-                <span className="ocard-chev" aria-hidden="true">›</span>
-              </Link>
-            ) : (
-              <div key={e.id} className="ocard">{card}</div>
+            return (
+              <li key={e.id} className={`workshop-row${own ? " is-mine" : ""}`}>
+                {own ? (
+                  <Link to={`/order/${own.id}`} className="workshop-row-inner">
+                    {row}
+                    <span className="workshop-row-chev" aria-hidden="true">›</span>
+                  </Link>
+                ) : (
+                  <div className="workshop-row-inner">{row}</div>
+                )}
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-
     </section>
   );
 }

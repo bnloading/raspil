@@ -7310,28 +7310,83 @@ body {
 
 /* "Цех жұмысы" as cards. Someone else's row is a plain card; the viewer's own is a link and is
    tinted, so their order stands out on a shared board without needing a legend. */
-.workshop-cards { gap: 10px; margin-top: 12px; }
-.workshop-cards .ocard {
-  position: relative;
-  padding: 13px 14px;
+/* One line per order. The board used to be a column of full-height cards with a labelled
+   four-step strip on each, and a phone fitted three — a customer scrolled past a wall of
+   anonymous codes without ever finding their own row. */
+.workshop-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
-.workshop-cards .ocard.is-mine {
-  display: block;
-  text-decoration: none;
+.workshop-row + .workshop-row { border-top: 1px solid var(--border); }
+.workshop-row-inner {
+  display: grid;
+  /* Code and stage share the first line; everything else takes a full-width line of its own. A
+     three-column row put the customer's own contents between the two and clipped it on a phone —
+     which is the one line they opened the page to read. */
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 9px 12px;
   color: inherit;
-  border-color: var(--primary-light);
-  background: var(--primary-soft);
-  padding-right: 26px;
+  text-decoration: none;
 }
-.workshop-cards .ocard-meta { margin-bottom: 10px; }
-.workshop-mine-tag {
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--primary);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
+.workshop-row-stage { justify-self: end; }
+.workshop-row-what { grid-column: 1 / -1; }
+/* The viewer's own row: tinted, with a stripe, so it is found without being read. */
+.workshop-row.is-mine {
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.workshop-row.is-mine .workshop-row-inner { padding-right: 26px; position: relative; }
+.workshop-row-id {
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
   white-space: nowrap;
+}
+.workshop-row.is-mine .workshop-row-id { color: var(--primary); }
+.workshop-row-what {
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+  /* Wraps rather than truncates: the sheet breakdown is the point of the line. */
+  overflow-wrap: anywhere;
+}
+.workshop-row-detail { color: var(--text-light); }
+.workshop-row-stage {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* The four steps as a slim bar; the stage is written out beside it, so this adds colour to a
+   fact already in words rather than carrying it alone. */
+.workshop-row-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 3px;
+  margin-top: 5px;
+}
+.workshop-row-bar i {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.workshop-row-bar i.is-done { background: var(--success); }
+.workshop-row-bar i.is-active { background: var(--info); }
+.workshop-row-bar i.is-problem { background: var(--danger); }
+.workshop-row-bar i.is-skipped { background: var(--border); opacity: 0.5; }
+.workshop-row-chev {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-size: 1.1rem;
+  color: var(--primary);
 }
 
 /* On a phone the live badge squeezed the heading into "Цех / жұмысы" — give it its own line. */
