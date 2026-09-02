@@ -15,6 +15,7 @@ import { useToast } from "../hooks";
 import { normalizePhone, phoneToSyntheticEmail } from "../lib/phone";
 import { roleHome } from "../lib/rbac";
 import type { UserDoc } from "../types/domain";
+import moderaLogo from "../assets/modera-logo.png";
 
 export default function Login() {
   const { user, userData, loading } = useAuth();
@@ -123,7 +124,9 @@ export default function Login() {
         {/* Brand panel — desktop only. On a phone it would push the form below the fold, which is
             the one thing this page must never do. */}
         <aside className="login-brand">
-          <div className="login-brand-mark">🏭</div>
+          {/* One asset for both panels: the mark is black, and the CSS inverts it here rather
+              than the repo carrying a second, white copy to keep in step with the first. */}
+          <img src={moderaLogo} alt="MODERA Interior Objects" className="brand-logo is-inverted" />
           <h2>Цех Трекер</h2>
           <p className="login-brand-lead">
             Жиһаз цехының заказдарын қабылдаудан клиентке тапсырғанға дейін бір жерден бақылаңыз.
@@ -138,7 +141,7 @@ export default function Login() {
 
         <div className="login-card">
           <div className="login-logo">
-            <div className="icon">🏭</div>
+            <img src={moderaLogo} alt="MODERA Interior Objects" className="brand-logo" />
             <h1>Қош келдіңіз</h1>
             <p>Аккаунтыңызға кіріңіз</p>
           </div>

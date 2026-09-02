@@ -9,6 +9,7 @@ import { useAuth } from "../AuthContext";
 import { useToast } from "../hooks";
 import { normalizePhone, phoneToSyntheticEmail } from "../lib/phone";
 import { roleHome } from "../lib/rbac";
+import moderaLogo from "../assets/modera-logo.png";
 
 export default function Register() {
   const { user, userData, loading } = useAuth();
@@ -86,7 +87,7 @@ export default function Register() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div className="icon">🏭</div>
+          <img src={moderaLogo} alt="MODERA Interior Objects" className="brand-logo" />
           <h1>Цех Трекер</h1>
           <p>Клиент ретінде тіркелу</p>
         </div>

@@ -440,8 +440,9 @@ h3 {
     gap: 40px;
   }
   .login-brand { display: block; }
-  /* The brand panel already says the product name, so the card drops its own logo block. */
-  .login-shell .login-logo .icon { display: none; }
+  /* The brand panel already carries the mark, so the card does not repeat it. */
+  .login-shell .login-logo .icon,
+  .login-shell .login-logo .brand-logo { display: none; }
   .login-card { padding: 44px 36px; }
 }
 
@@ -476,6 +477,17 @@ h3 {
   text-align: center;
   margin-bottom: 32px;
 }
+/* The MODERA mark. One black asset used on both panels — `is-inverted` turns it white for the
+   dark brand column rather than the repo carrying a second copy to keep in step with the first. */
+.brand-logo {
+  display: block;
+  width: min(240px, 68%);
+  height: auto;
+  margin: 0 auto 18px;
+}
+.login-brand .brand-logo { margin: 0 0 22px; width: min(220px, 80%); }
+.brand-logo.is-inverted { filter: brightness(0) invert(1); }
+
 .login-logo .icon {
   width: 72px;
   height: 72px;
