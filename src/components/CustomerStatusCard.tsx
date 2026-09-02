@@ -11,6 +11,30 @@ import { OrderProgressStepper } from "./OrderProgressStepper";
  * a PVC-labeled stage: an order with no PVC never passes through pvc_queue/pvc_started, so for it
  * `cutting_completed` falls back to the cutting-stage phrase instead of an inapplicable PVC one.
  */
+/**
+ * Which colour the stage pill wears. Green is finished, blue is being worked on, amber is waiting
+ * on somebody, red is cancelled — and the label beside it always says the same thing in words.
+ */
+export function getCustomerStageTone(status: ProductionStatus): "green" | "blue" | "amber" | "red" | "grey" {
+  switch (status) {
+    case "cancelled":
+      return "red";
+    case "pvc_completed":
+    case "ready":
+    case "delivered":
+      return "green";
+    case "cutting_started":
+    case "pvc_started":
+      return "blue";
+    case "cutting_queue":
+    case "cutting_completed":
+    case "pvc_queue":
+      return "amber";
+    default:
+      return "grey";
+  }
+}
+
 export function getCustomerStageLabel(status: ProductionStatus, needsPvc: boolean): string {
   switch (status) {
     case "draft":

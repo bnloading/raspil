@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { formatDateDMY, monthKey, bucketByPeriod, monthLabel, weekKey, weekLabel } from "./dates";
+import {
+  formatDateDMY,
+  formatRelativeDateTime,
+  monthKey,
+  bucketByPeriod,
+  monthLabel,
+  weekKey,
+  weekLabel,
+} from "./dates";
 
 describe("formatDateDMY", () => {
   it("formats as DD.MM.YYYY", () => {
@@ -71,5 +79,33 @@ describe("weekLabel", () => {
 
   it("names both months when the week crosses one", () => {
     expect(weekLabel("2026-08-31")).toBe("31 там – 6 қыр");
+  });
+});
+
+describe("formatRelativeDateTime", () => {
+  // Almaty is UTC+5, so these UTC instants are the Almaty times named beside them.
+  const now = Date.UTC(2026, 8, 2, 7, 0, 0); // 02.09.2026 12:00 Almaty
+
+  it("says бүгін for something changed earlier today", () => {
+    expect(formatRelativeDateTime(Date.UTC(2026, 8, 2, 5, 24), now)).toBe("бүгін, 10:24");
+  });
+
+  it("says кеше for yesterday, whatever the hour", () => {
+    expect(formatRelativeDateTime(Date.UTC(2026, 8, 1, 10, 30), now)).toBe("кеше, 15:30");
+    expect(formatRelativeDateTime(Date.UTC(2026, 8, 1, 15, 5), now)).toBe("кеше, 20:05");
+  });
+
+  it("falls back to a date without the year for anything older", () => {
+    expect(formatRelativeDateTime(Date.UTC(2026, 7, 31, 4, 15), now)).toBe("31.08, 09:15");
+  });
+
+  it("uses the Almaty calendar day, not the viewer's", () => {
+    // 22:30 UTC on the 1st is 03:30 Almaty on the 2nd — today, not yesterday.
+    expect(formatRelativeDateTime(Date.UTC(2026, 8, 1, 22, 30), now)).toBe("бүгін, 03:30");
+  });
+
+  it("accepts a Firestore-shaped timestamp", () => {
+    expect(formatRelativeDateTime({ seconds: Date.UTC(2026, 8, 2, 5, 24) / 1000 }, now))
+      .toBe("бүгін, 10:24");
   });
 });

@@ -7,13 +7,16 @@ import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { PaymentStatusBadge } from "../../components/StatusBadge";
 import { OrderProgress } from "../../components/OrderProgress";
+import { WorkshopActivityBoard } from "../../components/WorkshopActivityBoard";
+import { getCustomerStageLabel, getCustomerStageTone } from "../../components/CustomerStatusCard";
+import { IconLayers, IconOrders, IconPvc } from "../../components/layout/icons";
 import { useCustomerOrders } from "../../hooks/useOrders";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
 import { customerOrderCode } from "../../lib/orderCode";
-import { formatDateDMY } from "../../lib/dates";
+import { formatRelativeDateTime } from "../../lib/dates";
+import { orderTiles } from "../../lib/orderTiles";
 import { isCancellable } from "../../lib/statuses";
-import { progressSummary } from "../../lib/orderProgress";
 import type { Order } from "../../types/domain";
 
 /**
@@ -45,14 +48,20 @@ function inBucket(order: Order, bucket: Bucket): boolean {
   }
 }
 
-/** "6 лист · 89 м ПВХ" — what the order is made of. */
-function materialLine(order: Order): string {
-  const sheets = order.confirmedSheets ?? order.estimatedSheets ?? 0;
-  const bits = [`${sheets} лист`];
-  // Metres are summed from per-edge millimetre divisions, so round before showing.
-  if (order.pvcMetersTotal > 0) bits.push(`${Number(order.pvcMetersTotal.toFixed(2))} м ПВХ`);
-  return bits.join(" · ");
+/**
+ * The stage, in the customer's words, with the queue position when there is one.
+ *
+ * "Распил кезегінде" on its own leaves the obvious question unanswered, and the position is the
+ * whole reason a customer opens this page while they are waiting.
+ */
+function stageLine(order: Order): string {
+  const label = getCustomerStageLabel(order.productionStatus, order.pvcMetersTotal > 0);
+  const queued = order.productionStatus === "cutting_queue" || order.productionStatus === "pvc_queue";
+  return queued ? `${label} · №${(order.priority ?? 0) + 1}` : label;
 }
+
+/** Which half of the page is showing: this customer's own orders, or the shop's live board. */
+type Tab = "mine" | "shop";
 
 export default function CustomerOrders() {
   const { user, userData } = useAuth();
@@ -61,6 +70,7 @@ export default function CustomerOrders() {
   const { message, visible, showToast } = useToast();
   const [search, setSearch] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
+  const [tab, setTab] = useState<Tab>("mine");
 
   const counts = useMemo(
     () => ({
@@ -112,6 +122,25 @@ export default function CustomerOrders() {
       }}
       fab={{ to: "/order/new", label: "Жаңа заказ" }}
     >
+      {/* Two halves of the same question — "where is mine" and "what is the shop doing" — kept
+          apart so neither is scrolled past to reach the other. */}
+      <div className="customer-tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "mine"}
+          className={`customer-tab${tab === "mine" ? " is-active" : ""}`}
+          onClick={() => setTab("mine")}>
+          Менің заказдарым
+        </button>
+        <button role="tab" aria-selected={tab === "shop"}
+          className={`customer-tab${tab === "shop" ? " is-active" : ""}`}
+          onClick={() => setTab("shop")}>
+          Цех барысы
+        </button>
+      </div>
+
+      {tab === "shop" ? (
+        <WorkshopActivityBoard myOrders={orders} />
+      ) : (
+      <>
       <div className="kpi-row">
         <div className="kpi-card">
           <div className="kpi-text">
@@ -173,24 +202,54 @@ export default function CustomerOrders() {
           </div>
         ) : (
           <div className="ocards">
-            {filtered.map((o) => (
-              <div key={o.id} className="ocard is-static">
+            {filtered.map((o) => {
+              const tiles = orderTiles(o);
+              return (
+              <div key={o.id} className="ocard is-static corder-card">
                 {/* The whole summary is one link; the action buttons live outside it, since a
                     button nested inside an anchor is neither valid nor reliably clickable. */}
                 <Link to={`/order/${o.id}`} className="ocard-link">
-                  <div className="ocard-top">
+                  <div className="corder-head">
                     <span className="otable-num">{customerOrderCode(o.orderNumber)}</span>
-                    <span className="otable-sub">{o.createdAt ? formatDateDMY(o.createdAt) : "—"}</span>
+                    <span className="corder-name">{o.customerName}</span>
+                    <span className={`corder-stage is-${getCustomerStageTone(o.productionStatus)}`}>
+                      {stageLine(o)}
+                    </span>
                   </div>
-                  <div className="ocard-mid">
-                    <span className="otable-strong">{materialLine(o)}</span>
-                    <span className="otable-money">{formatMoney(o.totalTiyn)}</span>
+
+                  {/* Sheets, edging and ХДФ as three figures rather than one run-on line: they are
+                      counted separately in the shop, and ХДФ takes no edging at all. */}
+                  <div className="corder-tiles">
+                    <span className="corder-tile">
+                      <IconOrders className="corder-tile-icon" />
+                      <b>{tiles.sheets}</b>
+                      <small>лист</small>
+                    </span>
+                    <span className="corder-tile">
+                      <IconPvc className="corder-tile-icon" />
+                      <b>{tiles.pvcMeters} м</b>
+                      <small>ПВХ</small>
+                    </span>
+                    <span className="corder-tile">
+                      <IconLayers className="corder-tile-icon" />
+                      <b>{tiles.hdfSheets}</b>
+                      <small>ХДФ</small>
+                    </span>
                   </div>
-                  <div className="ocard-meta">
-                    <span className="otable-sub">{progressSummary(o)}</span>
-                    <PaymentStatusBadge status={o.paymentStatus} />
-                  </div>
+
                   <OrderProgress order={o} />
+
+                  <div className="corder-foot">
+                    {(o.updatedAt ?? o.createdAt) && (
+                      <span className="corder-updated">
+                        🕐 Жаңартылды: {formatRelativeDateTime((o.updatedAt ?? o.createdAt)!)}
+                      </span>
+                    )}
+                    <span className="corder-money">
+                      {formatMoney(o.totalTiyn)}
+                      <PaymentStatusBadge status={o.paymentStatus} />
+                    </span>
+                  </div>
                   <span className="ocard-chev" aria-hidden="true">›</span>
                 </Link>
 
@@ -224,10 +283,13 @@ export default function CustomerOrders() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+      </>
+      )}
 
       <Toast message={message} visible={visible} />
     </AppShell>

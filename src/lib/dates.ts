@@ -31,6 +31,42 @@ export function formatDateTimeDMY(input: Date | number | { seconds: number }): s
   return `${date}, ${time}`;
 }
 
+/**
+ * "бүгін, 10:24" / "кеше, 15:30" / "01.09, 09:15" — when something last changed.
+ *
+ * A customer checking on their order reads the gap, not the calendar: "бүгін, 10:24" says the shop
+ * is working on it, where "02.09.2026, 10:24" makes them count days. Anything older than yesterday
+ * falls back to a date, without the year — a year-old update is not something this line is for.
+ *
+ * `now` is injectable so the boundary is testable; both are compared as Almaty calendar days, so
+ * an evening update does not read as "кеше" to someone in a different timezone.
+ */
+export function formatRelativeDateTime(
+  input: Date | number | { seconds: number },
+  now: Date | number = Date.now(),
+): string {
+  const d = toDate(input);
+  const time = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: ALMATY_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+
+  const today = dayKey(now);
+  const yesterday = dayKey(toDate(now).getTime() - 86_400_000);
+  const day = dayKey(d);
+
+  if (day === today) return `бүгін, ${time}`;
+  if (day === yesterday) return `кеше, ${time}`;
+
+  const dayMonth = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: ALMATY_TZ,
+    day: "2-digit",
+    month: "2-digit",
+  }).format(d);
+  return `${dayMonth}, ${time}`;
+}
+
 /** YYYY-MM-DD key in Asia/Almaty, for grouping by day. */
 export function dayKey(input: Date | number | { seconds: number }): string {
   const d = toDate(input);
