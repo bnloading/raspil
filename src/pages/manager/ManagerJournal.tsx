@@ -15,7 +15,7 @@ import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
-import { journalDefaultsFor } from "../../lib/journalPricing";
+import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
   journalProgress,
@@ -2104,17 +2104,22 @@ function JournalDetailPanel({
     const rates = journalDefaultsFor(m);
     touch();
     setDraft((prev) => {
-      const lines = prev.lines.map((line, i) =>
-        i === index
-          ? {
-              ...line,
-              materialId,
-              materialName: m?.name ?? "",
-              sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
-              pvcPricePerMeterTiyn: rates.pvcPricePerMeterTiyn,
-            }
-          : line,
-      );
+      const lines = prev.lines.map((line, i) => {
+        if (i !== index) return line;
+        // The edge follows the board: Ақ board, Ақ edge. ХДФ takes none at all, so its ПВХ
+        // fields are cleared rather than left carrying a rate for work the shop cannot do.
+        const pvc = pvcDefaultsFor(m, pvcTypes, line);
+        return {
+          ...line,
+          materialId,
+          materialName: m?.name ?? "",
+          sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
+          pvcTypeId: pvc.pvcTypeId,
+          pvcColorName: pvc.pvcColorName,
+          pvcPricePerMeterTiyn: pvc.pvcPricePerMeterTiyn,
+          ...(pvc.pvcMeters !== undefined ? { pvcMeters: pvc.pvcMeters } : {}),
+        };
+      });
       const sheets = lines.reduce((sum, l) => sum + l.sheetQty, 0);
       return {
         ...prev,
@@ -2200,21 +2205,29 @@ function JournalDetailPanel({
                   <NumberField className="form-input" value={line.sheetPriceTiyn / 100} min={0} ariaLabel="Лист бағасы"
                     onChange={(v) => patchLine(index, { sheetPriceTiyn: Math.round(v * 100) })} />
                 </label>
-                <label>
-                  <span>ПВХ, м</span>
-                  <NumberField className="form-input" value={line.pvcMeters} min={0} ariaLabel="ПВХ метр"
-                    onChange={(v) => patchLine(index, { pvcMeters: v })} />
-                </label>
-                <label>
-                  <span>ПВХ бағасы</span>
-                  <NumberField className="form-input" value={line.pvcPricePerMeterTiyn / 100} min={0}
-                    ariaLabel="ПВХ 1 м бағасы"
-                    onChange={(v) => patchLine(index, { pvcPricePerMeterTiyn: Math.round(v * 100) })} />
-                </label>
-                <label className="is-wide">
-                  <span>ПВХ түсі</span>
-                  <PvcColorSelect pvcTypes={pvcTypes} line={line} onPick={(id) => pickPvcType(index, id)} />
-                </label>
+                {/* ХДФ is the panel behind the cabinet — nobody edge-bands it, so the cells that
+                    would price that work are not offered at all. */}
+                {isHdfMaterial(materialsById.get(line.materialId)) ? (
+                  <p className="jt-no-pvc">ХДФ — ПВХ жүрмейді</p>
+                ) : (
+                  <>
+                    <label>
+                      <span>ПВХ, м</span>
+                      <NumberField className="form-input" value={line.pvcMeters} min={0} ariaLabel="ПВХ метр"
+                        onChange={(v) => patchLine(index, { pvcMeters: v })} />
+                    </label>
+                    <label>
+                      <span>ПВХ бағасы</span>
+                      <NumberField className="form-input" value={line.pvcPricePerMeterTiyn / 100} min={0}
+                        ariaLabel="ПВХ 1 м бағасы"
+                        onChange={(v) => patchLine(index, { pvcPricePerMeterTiyn: Math.round(v * 100) })} />
+                    </label>
+                    <label className="is-wide">
+                      <span>ПВХ түсі</span>
+                      <PvcColorSelect pvcTypes={pvcTypes} line={line} onPick={(id) => pickPvcType(index, id)} />
+                    </label>
+                  </>
+                )}
               </div>
 
               <div className="journal-line-sum">
@@ -2376,6 +2389,7 @@ function NewJournalRow({
 }) {
   const patch = (p: Partial<JournalDraft>) => setDraft({ ...draft, ...p });
   const line = draft.lines[0];
+  const edgeBanded = !isHdfMaterial(materials.find((m) => m.id === line.materialId));
   const patchLine = (p: Partial<JournalDraftLine>) =>
     setDraft({ ...draft, lines: [{ ...line, ...p }, ...draft.lines.slice(1)] });
   const preview = computeJournalRowTotals(totalsInputFor(draft, 0));
@@ -2410,8 +2424,11 @@ function NewJournalRow({
           onChange={(e) => {
             const m = materials.find((x) => x.id === e.target.value);
             // Picking a material fills in the shop's standing rates: ПВХ 200 for Ақ, 220 for the
-            // rest, and 1600/лист + 160/м of labour on a customer's own board. All stay editable.
+            // rest, and 1600/лист + 160/м of labour on a customer's own board. It also picks the
+            // edge to match the board — Ақ board, Ақ edge — and clears ПВХ entirely for ХДФ.
+            // All of it stays editable.
             const rates = journalDefaultsFor(m);
+            const pvc = pvcDefaultsFor(m, pvcTypes, line);
             setDraft({
               ...draft,
               lines: [{
@@ -2419,7 +2436,10 @@ function NewJournalRow({
                 materialId: e.target.value,
                 materialName: m?.name ?? "",
                 sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
-                pvcPricePerMeterTiyn: rates.pvcPricePerMeterTiyn,
+                pvcTypeId: pvc.pvcTypeId,
+                pvcColorName: pvc.pvcColorName,
+                pvcPricePerMeterTiyn: pvc.pvcPricePerMeterTiyn,
+                ...(pvc.pvcMeters !== undefined ? { pvcMeters: pvc.pvcMeters } : {}),
               }, ...draft.lines.slice(1)],
               cuttingCostTiyn: rates.cuttingPerSheetTiyn * (line.sheetQty || 0),
             });
@@ -2436,8 +2456,13 @@ function NewJournalRow({
       </td>
 
       {/* The roll and its metres. Colour first: it is what decides the price per metre, and
-          picking it fills that in on a line that has not been priced yet. */}
+          picking it fills that in on a line that has not been priced yet. Filled in already if
+          the board named a colour the shop stocks — and absent entirely for ХДФ. */}
       <td className="jt-w-pvc">
+        {!edgeBanded ? (
+          <span className="jt-no-pvc">ХДФ — ПВХ жүрмейді</span>
+        ) : (
+        <>
         <PvcColorSelect
           pvcTypes={pvcTypes}
           line={line}
@@ -2457,6 +2482,8 @@ function NewJournalRow({
             ariaLabel="ПВХ 1 м бағасы" placeholder="ПВХ баға"
             onChange={(v) => patchLine({ pvcPricePerMeterTiyn: Math.round(v * 100) })} />
         </div>
+        </>
+        )}
       </td>
 
       <td className="jt-w-total jt-num jt-total">{formatMoneyBare(preview.totalTiyn)}</td>

@@ -7934,6 +7934,23 @@ body {
 }
 .jt-more-btn.is-strong:hover { filter: brightness(1.08); }
 
+/* ХДФ takes no edging, so the cells that would price it are replaced by the reason they are gone
+   rather than left empty for someone to fill in anyway. */
+.jt-no-pvc {
+  display: block;
+  margin: 0;
+  padding: 4px 2px;
+  font-size: var(--jt-font-sm);
+  color: var(--text-light);
+  font-style: italic;
+  white-space: normal;
+}
+.journal-line-grid .jt-no-pvc {
+  grid-column: 1 / -1;
+  padding: 2px 0 0;
+  font-size: 0.78rem;
+}
+
 /* ── Groups: a merged order and the lines it unfolds into ───────────────────────────────────── */
 
 /* Six tones, assigned from the surviving order's id (lib/journalGroups.ts). Enough to tell apart
