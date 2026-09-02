@@ -481,11 +481,11 @@ h3 {
    dark brand column rather than the repo carrying a second copy to keep in step with the first. */
 .brand-logo {
   display: block;
-  width: min(240px, 68%);
+  width: min(280px, 82%);
   height: auto;
   margin: 0 auto 18px;
 }
-.login-brand .brand-logo { margin: 0 0 22px; width: min(220px, 80%); }
+.login-brand .brand-logo { margin: 0 0 22px; width: min(320px, 92%); }
 .brand-logo.is-inverted { filter: brightness(0) invert(1); }
 
 .login-logo .icon {
@@ -4008,7 +4008,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 18px;
+  /* Tighter than the nav below it on purpose: the lockup's wordmark scales with its width, so
+     the 12px this gives back is the difference between 10px type and 13px type. */
+  padding: 22px 12px 18px;
   color: #fff;
   font-weight: 800;
   font-size: 1.05rem;
@@ -4022,7 +4024,7 @@ body {
   height: auto;
   filter: brightness(0) invert(1);
 }
-.sidebar-brand-full { width: 100%; max-width: 168px; }
+.sidebar-brand-full { width: 100%; }
 /* Only the KDA glyphs, for the 76px rail. */
 .sidebar-brand-icon { display: none; width: 40px; }
 .sidebar-groups {
