@@ -6,6 +6,7 @@ import {
   isExactly,
   suggestCustomers,
   type CustomerSuggestion,
+  mergeCustomerSources,
 } from "./customerSuggest";
 import type { Order } from "../types/domain";
 
@@ -155,5 +156,58 @@ describe("isExactly", () => {
   it("knows when there is nothing left to complete", () => {
     expect(isExactly(person({ name: "Нурик" }), " нурик ")).toBe(true);
     expect(isExactly(person({ name: "Нурик" }), "нур")).toBe(false);
+  });
+});
+
+describe("mergeCustomerSources", () => {
+  const order = (name: string, phone: string, seconds = 100) =>
+    person({ name, phone, orderCount: 2, lastOrderSeconds: seconds });
+  const account = (name: string, phone: string) =>
+    person({ name, phone, orderCount: 0, lastOrderSeconds: 0 });
+
+  it("gives a phone to a customer the ledger only knows by name", () => {
+    // This is the case the journal is actually in: rows carry names, accounts carry numbers.
+    const merged = mergeCustomerSources([order("Дин", "")], [account("Дин", "77011234567")]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ name: "Дин", phone: "77011234567", orderCount: 2 });
+  });
+
+  it("matches the name however it was capitalised or spaced", () => {
+    const merged = mergeCustomerSources([order(" дин ", "")], [account("Дин", "77011234567")]);
+    expect(merged[0].phone).toBe("77011234567");
+  });
+
+  it("keeps a number the ledger already has rather than overwriting it", () => {
+    const merged = mergeCustomerSources(
+      [order("Дин", "77770000000")],
+      [account("Дин", "77011234567")],
+    );
+    expect(merged[0].phone).toBe("77770000000");
+  });
+
+  it("offers an account nobody has ordered for yet", () => {
+    const merged = mergeCustomerSources([order("Ерлан", "77778889900")], [account("Жаңа", "77011112233")]);
+    expect(merged.map((c) => c.name)).toEqual(["Ерлан", "Жаңа"]);
+  });
+
+  it("does not list an account twice once it has been folded in", () => {
+    const acc = account("Дин", "77011234567");
+    const merged = mergeCustomerSources([order("Дин", ""), order("Ерлан", "")], [acc]);
+    expect(merged.filter((c) => c.name.trim() === "Дин")).toHaveLength(1);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("recognises the account behind a row that already carries the same number", () => {
+    const acc = account("Дин Мұратұлы", "8 701 123 45 67");
+    const merged = mergeCustomerSources([order("Дин", "+7 (701) 123-45-67")], [acc]);
+    // Same person, one entry — the ledger's own spelling and number are kept.
+    expect(merged).toHaveLength(1);
+    expect(merged[0].name).toBe("Дин");
+  });
+
+  it("survives either side being empty", () => {
+    expect(mergeCustomerSources([], [])).toEqual([]);
+    expect(mergeCustomerSources([], [account("Жаңа", "77011112233")])).toHaveLength(1);
+    expect(mergeCustomerSources([order("Ерлан", "")], [])).toHaveLength(1);
   });
 });

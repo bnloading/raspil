@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { collection, doc, getDoc, getDocs, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -68,7 +68,11 @@ import {
 } from "../../lib/journalOrders";
 import { RowMenu } from "../../components/RowMenu";
 import { CustomerNameInput } from "../../components/CustomerNameInput";
-import { customerDirectory, type CustomerSuggestion } from "../../lib/customerSuggest";
+import {
+  customerDirectory,
+  mergeCustomerSources,
+  type CustomerSuggestion,
+} from "../../lib/customerSuggest";
 import { IconCut, IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
 import { reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
@@ -244,6 +248,14 @@ export default function ManagerJournal() {
 
   const [searchParams] = useSearchParams();
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
+  /**
+   * The shop's registered customers, for the name cell to complete from.
+   *
+   * The journal's own rows mostly carry a name and no number, so past orders alone can fill in
+   * half of a customer. The account is where the phone lives — it is what they sign in with — and
+   * it is also what an order has to be attached to for them to see it. Read once per visit.
+   */
+  const [accounts, setAccounts] = useState<CustomerSuggestion[]>([]);
   // Seeded from ?q= so "Заказдарын көру →" on the debt ledger lands here pre-filtered.
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
@@ -386,6 +398,27 @@ export default function ManagerJournal() {
       .catch(() => setMethods([]));
   }, []);
 
+  useEffect(() => {
+    // The role filter is not decoration: firestore.rules only lets a Manager list users when
+    // every candidate document is a customer, so without it the whole query is denied.
+    getDocs(query(collection(db, "users"), where("role", "==", "customer")))
+      .then((snap) =>
+        setAccounts(
+          snap.docs.map((d) => {
+            const u = d.data() as { name?: string; phone?: string };
+            return {
+              name: (u.name ?? "").trim(),
+              phone: (u.phone ?? "").trim(),
+              orderCount: 0,
+              lastOrderSeconds: 0,
+            };
+          }).filter((a) => a.name !== ""),
+        ),
+      )
+      // A manager whose account cannot read this still gets the order-derived names.
+      .catch(() => setAccounts([]));
+  }, []);
+
   // Keyed on "is the row open", not on the draft object: the draft is replaced on every keystroke,
   // so depending on it would yank the cursor back to the name field mid-typing.
   useEffect(() => {
@@ -403,7 +436,10 @@ export default function ManagerJournal() {
    * Built from the whole order history rather than the filtered page: a customer who last came in
    * six months ago is exactly the one whose name nobody remembers how to spell.
    */
-  const customerDir = useMemo(() => customerDirectory(orders), [orders]);
+  const customerDir = useMemo(
+    () => mergeCustomerSources(customerDirectory(orders), accounts),
+    [orders, accounts],
+  );
 
   /** absorbed order id → the order it was folded into, for every merge the ledger has seen. */
   const mergedInto = useMemo(() => {

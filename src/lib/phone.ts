@@ -33,6 +33,37 @@ export function formatPhone(raw: string): string {
 }
 
 /**
+ * The ten national digits, from whatever shape a number is currently in.
+ *
+ * Every Kazakh number the shop deals with is +7 followed by ten digits, so the country code is
+ * the one part nobody should have to type — or be able to delete by accident. The input shows it
+ * as a fixed prefix and edits only what this returns.
+ */
+export function nationalDigits(raw: string): string {
+  let digits = (raw ?? "").replace(DIGITS_ONLY, "");
+  // A pasted "+7 701…" or "8 701…" carries the country code; drop it rather than pushing the
+  // real number out of the ten places it has.
+  if (digits.length > 10 && (digits.startsWith("7") || digits.startsWith("8"))) digits = digits.slice(1);
+  return digits.slice(0, 10);
+}
+
+/** "(701) 123-45-67" — the national part alone, for an input that prints +7 beside it. */
+export function formatNational(digits: string): string {
+  const d = nationalDigits(digits);
+  const p1 = d.slice(0, 3);
+  const p2 = d.slice(3, 6);
+  const p3 = d.slice(6, 8);
+  const p4 = d.slice(8, 10);
+  let out = "";
+  if (p1) out += `(${p1}`;
+  if (p1.length === 3) out += ")";
+  if (p2) out += ` ${p2}`;
+  if (p3) out += `-${p3}`;
+  if (p4) out += `-${p4}`;
+  return out;
+}
+
+/**
  * Firebase Auth's password provider needs an email-shaped identifier. Customers register with
  * phone + password (no phone-auth/SMS, which needs the Blaze billing plan), so we synthesize a
  * stable fake address from the normalized phone number. Never shown to the user.

@@ -65,6 +65,52 @@ export function customerDirectory(orders: readonly Order[]): CustomerSuggestion[
   return [...byKey.values()];
 }
 
+/**
+ * Folds the shop's registered accounts into the directory built from past orders.
+ *
+ * Two sources answer two halves of the same question. Past orders know who the shop actually
+ * serves and how recently; the accounts know the PHONE, because that is what the customer signs
+ * in with — and the journal's own rows mostly have none, so on their own they can fill in a name
+ * and nothing else.
+ *
+ * An account's number therefore wins for a customer the ledger only knows by name, and an account
+ * nobody has ordered for yet is still offered, so a customer who registers today can be picked
+ * tomorrow without their number being typed at all.
+ */
+export function mergeCustomerSources(
+  fromOrders: readonly CustomerSuggestion[],
+  fromAccounts: readonly CustomerSuggestion[],
+): CustomerSuggestion[] {
+  const nameKey = (name: string) => name.trim().toLowerCase();
+
+  const accountByPhone = new Map<string, CustomerSuggestion>();
+  const accountByName = new Map<string, CustomerSuggestion>();
+  for (const a of fromAccounts) {
+    const digits = normalizePhone(a.phone);
+    if (digits) accountByPhone.set(digits, a);
+    // First one wins: two accounts under one name is a data problem to look at, not one to guess
+    // the answer to — the second simply keeps its own entry below.
+    if (!accountByName.has(nameKey(a.name))) accountByName.set(nameKey(a.name), a);
+  }
+
+  const used = new Set<CustomerSuggestion>();
+  const merged = fromOrders.map((entry) => {
+    const digits = normalizePhone(entry.phone);
+    if (digits) {
+      const byPhone = accountByPhone.get(digits);
+      if (byPhone) used.add(byPhone);
+      return entry;
+    }
+    // Known to the ledger by name only — this is the case the phone is missing from.
+    const account = accountByName.get(nameKey(entry.name));
+    if (!account) return entry;
+    used.add(account);
+    return { ...entry, phone: account.phone };
+  });
+
+  return [...merged, ...fromAccounts.filter((a) => !used.has(a))];
+}
+
 /** Which tier a match landed in — lower is a better match, and they never interleave. */
 const MATCH_NAME_PREFIX = 0;
 const MATCH_WORD_PREFIX = 1;

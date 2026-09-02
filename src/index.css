@@ -8140,6 +8140,40 @@ body {
 .cut-timer.is-overdue .cut-timer-caption { color: var(--danger); }
 .cut-timer.is-overdue .cut-timer-bar > span { background: var(--danger); }
 
+/* ── Телефон енгізу ──────────────────────────────────────────────────── */
+
+/* "+7" is a label, not a value: outside the input it cannot be backspaced away, and the ten
+   digits that actually differ are all that is left to type. */
+.phone-field {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  overflow: hidden;
+}
+.phone-field:focus-within { border-color: var(--primary); }
+.phone-field.is-invalid { border-color: var(--danger); }
+.phone-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* The input keeps its own class from the caller, so its border is dropped rather than doubled. */
+.phone-field .form-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.phone-field .form-input:focus { outline: none; box-shadow: none; }
+
 /* ── Листтер: the catalogue ──────────────────────────────────────────── */
 
 .assort-filters {
