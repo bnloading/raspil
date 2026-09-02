@@ -9,6 +9,7 @@ import {
   materialSummary,
   type JournalRowInput,
   type JournalLineInput,
+  customerDebtKey,
 } from "./journal";
 import type { Order, Payment } from "../types/domain";
 
@@ -341,5 +342,57 @@ describe("materialSummary", () => {
   });
   it("falls back to a dash when there is nothing to summarize", () => {
     expect(materialSummary(order({ estimatedSheets: 0, pvcMetersTotal: 0 }))).toBe("—");
+  });
+});
+
+describe("customerDebtKey", () => {
+  const o = (over: Partial<Order>) => order({ customerId: undefined, customerPhone: "", ...over });
+
+  it("prefers the account when the customer has one", () => {
+    expect(customerDebtKey(o({ customerId: "uid-1", customerPhone: "77011234567" }))).toBe("uid-1");
+  });
+
+  it("treats one phone written three ways as one customer", () => {
+    const a = customerDebtKey(o({ customerPhone: "+7 (701) 123-45-67" }));
+    const b = customerDebtKey(o({ customerPhone: "87011234567" }));
+    const c = customerDebtKey(o({ customerPhone: "77011234567" }));
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it("falls back to the name when there is no phone at all", () => {
+    // The journal's own rows mostly have none, and without this every one of them shared a key.
+    expect(customerDebtKey(o({ customerName: "Бахытжан" }))).toBe("name:бахытжан");
+    expect(customerDebtKey(o({ customerName: " БАХЫТЖАН " }))).toBe("name:бахытжан");
+  });
+
+  it("keeps two phoneless customers apart", () => {
+    expect(customerDebtKey(o({ customerName: "Бахытжан" })))
+      .not.toBe(customerDebtKey(o({ customerName: "Ерлан" })));
+  });
+});
+
+describe("computeCustomerDebts — walk-ins with no phone", () => {
+  const walkIn = (name: string, totalTiyn: number) =>
+    order({ id: name, customerId: undefined, customerPhone: "", customerName: name, totalTiyn, paidTiyn: 0 });
+
+  it("gives each phoneless customer their own row", () => {
+    // Before: all three shared the key "phone:" and appeared as one row under the first name,
+    // carrying the sum of everybody's debt.
+    const debts = computeCustomerDebts([
+      walkIn("Бахытжан", 234440_00),
+      walkIn("Ерлан", 15000_00),
+      walkIn("Рустем", 30000_00),
+    ]);
+    expect(debts).toHaveLength(3);
+    expect(debts.map((d) => d.customerName)).toEqual(["Бахытжан", "Рустем", "Ерлан"]);
+    expect(debts[0].debtTiyn).toBe(234440_00);
+  });
+
+  it("still rolls one customer's several orders into one row", () => {
+    const debts = computeCustomerDebts([walkIn("Бахытжан", 100_00), walkIn("Бахытжан", 50_00)]);
+    expect(debts).toHaveLength(1);
+    expect(debts[0].debtTiyn).toBe(150_00);
+    expect(debts[0].unpaidOrderCount).toBe(2);
   });
 });

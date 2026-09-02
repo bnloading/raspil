@@ -1,4 +1,5 @@
 import type { Order, Payment, PaymentStatus } from "../types/domain";
+import { normalizePhone } from "./phone";
 import { computePaymentStatus } from "./statuses";
 
 /**
@@ -137,17 +138,36 @@ export interface CustomerDebt {
 }
 
 /**
+ * Which customer an order belongs to, for rolling money up.
+ *
+ * The account when there is one, then the phone, then the NAME — and that last step is the one
+ * that matters. The rule used to end at the phone, so every walk-in typed into the journal
+ * without a number shared the key "phone:" and the debt ledger folded eight different people into
+ * a single row carrying the sum of all of them, under whichever name happened to be read first.
+ *
+ * The phone is normalised so "+7 701…" and "87 01…" are one customer rather than two. This is the
+ * same rule orderMerge.ts checks before allowing a merge and customerSuggest.ts groups the name
+ * completions by — the three have to agree, or the ledger will show a debt for somebody the shop
+ * is not allowed to merge and cannot look up.
+ */
+export function customerDebtKey(order: Pick<Order, "customerId" | "customerName" | "customerPhone">): string {
+  if (order.customerId) return order.customerId;
+  const digits = normalizePhone(order.customerPhone ?? "");
+  if (digits) return `phone:${digits}`;
+  return `name:${(order.customerName ?? "").trim().toLowerCase()}`;
+}
+
+/**
  * Debt per customer, derived from orders rather than stored — the spec's "do not manually type a
- * debt value that can become inconsistent". Orders are keyed by customerId when the customer has
- * an account and by normalized phone otherwise, so a walk-in order typed straight into the journal
- * still lands on the same customer card as their online orders.
+ * debt value that can become inconsistent". Keyed by customerDebtKey, so a walk-in order typed
+ * straight into the journal lands on the same customer card as that customer's online orders.
  */
 export function computeCustomerDebts(orders: Order[]): CustomerDebt[] {
   const byCustomer = new Map<string, CustomerDebt>();
 
   for (const order of orders) {
     if (NON_DEBT_STATUSES.includes(order.productionStatus)) continue;
-    const customerKey = order.customerId || `phone:${order.customerPhone}`;
+    const customerKey = customerDebtKey(order);
     const existing = byCustomer.get(customerKey);
     const entry: CustomerDebt = existing ?? {
       customerKey,
