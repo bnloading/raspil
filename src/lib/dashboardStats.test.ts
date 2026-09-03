@@ -200,6 +200,32 @@ describe("computeKpis / computeMethodBreakdown: reversed payments are excluded",
   });
 });
 
+describe("computeKpis: totalDebtTiyn matches computeCustomerDebts' notion of real debt", () => {
+  it("excludes a cancelled order's balance from the dashboard total", () => {
+    const orders = [
+      makeOrder({ productionStatus: "cutting_queue", totalTiyn: 10000, paidTiyn: 4000, debtTiyn: 6000 }),
+      makeOrder({ productionStatus: "cancelled", totalTiyn: 7500, paidTiyn: 0, debtTiyn: 7500 }),
+    ];
+    const kpis = computeKpis({ orders, payments: [], movements: [], materials: [] });
+    expect(kpis.totalDebtTiyn).toBe(6000);
+  });
+
+  it("excludes a draft order's balance from the dashboard total", () => {
+    const orders = [makeOrder({ productionStatus: "draft", totalTiyn: 5000, paidTiyn: 0, debtTiyn: 5000 })];
+    const kpis = computeKpis({ orders, payments: [], movements: [], materials: [] });
+    expect(kpis.totalDebtTiyn).toBe(0);
+  });
+
+  it("does not let an overpaid order's negative balance offset another order's real debt", () => {
+    const orders = [
+      makeOrder({ productionStatus: "cutting_queue", totalTiyn: 10000, paidTiyn: 4000, debtTiyn: 6000 }),
+      makeOrder({ productionStatus: "delivered", totalTiyn: 5000, paidTiyn: 8000, debtTiyn: -3000 }),
+    ];
+    const kpis = computeKpis({ orders, payments: [], movements: [], materials: [] });
+    expect(kpis.totalDebtTiyn).toBe(6000);
+  });
+});
+
 describe("computeIncomeAllocation", () => {
   it("adds a Таза пайда remainder bucket when active percentages sum to less than 100", () => {
     const categories = [

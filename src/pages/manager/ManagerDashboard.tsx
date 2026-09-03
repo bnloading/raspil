@@ -37,8 +37,7 @@ export default function ManagerDashboard() {
     const cuttingQueue = orders.filter((o) => o.productionStatus === "cutting_queue").length;
     const pvcQueue = orders.filter((o) => o.productionStatus === "pvc_queue").length;
     const ready = orders.filter((o) => o.productionStatus === "ready").length;
-    const totalDebtTiyn = orders.reduce((s, o) => s + (o.debtTiyn || 0), 0);
-    return { submitted, awaitingPrice, unpaid, paid, cuttingQueue, pvcQueue, ready, totalDebtTiyn };
+    return { submitted, awaitingPrice, unpaid, paid, cuttingQueue, pvcQueue, ready };
   }, [orders]);
 
   const handleExportOrders = () => {
@@ -125,7 +124,7 @@ export default function ManagerDashboard() {
               <div className="stat-card-icon">
                 <IconWarehouse />
               </div>
-              <div className="number">{formatMoney(counts.totalDebtTiyn)}</div>
+              <div className="number">{formatMoney(kpis.totalDebtTiyn)}</div>
               <div className="label">Жалпы қарыз</div>
             </div>
           </div>

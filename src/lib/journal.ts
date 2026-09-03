@@ -124,7 +124,7 @@ export function groupPaymentsByOrder(payments: Payment[]): Map<string, Payment[]
 }
 
 /** Statuses whose debt is not real money owed — a cancelled order can't be "collected". */
-const NON_DEBT_STATUSES: Order["productionStatus"][] = ["draft", "cancelled"];
+export const NON_DEBT_STATUSES: Order["productionStatus"][] = ["draft", "cancelled"];
 
 export interface CustomerDebt {
   customerKey: string;

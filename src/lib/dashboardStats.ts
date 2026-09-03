@@ -11,6 +11,7 @@ import {
   startOfMonthAlmaty,
   startOfWeekAlmaty,
 } from "./dates";
+import { NON_DEBT_STATUSES } from "./journal";
 
 export interface DashboardInput {
   orders: Order[];
@@ -81,7 +82,11 @@ export function computeKpis(input: DashboardInput): {
   const readyCount = orders.filter((o) => o.productionStatus === "ready").length;
 
   const unpaidTotalTiyn = orders.reduce((s, o) => s + (o.paymentStatus === "unpaid" ? o.totalTiyn : 0), 0);
-  const totalDebtTiyn = orders.reduce((s, o) => s + (o.debtTiyn || 0), 0);
+  // Matches computeCustomerDebts() in journal.ts: a cancelled/draft order's balance isn't real debt,
+  // and an overpaid order's negative balance must not silently offset a different order's debt.
+  const totalDebtTiyn = orders
+    .filter((o) => !NON_DEBT_STATUSES.includes(o.productionStatus))
+    .reduce((s, o) => s + Math.max(0, o.debtTiyn || 0), 0);
 
   const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption");
   const sheetsToday = cuttingMovements.filter((m) => inRange(m.createdAt, today)).reduce((s, m) => s + -m.qty, 0);
