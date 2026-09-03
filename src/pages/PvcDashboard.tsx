@@ -120,13 +120,7 @@ export default function PvcDashboard() {
               finish independently here too, so this is never one blended "ПВХ" per order. */}
           <div className="job-card-list">
             {upNext.map((o) => (
-              <PvcJobCard
-                key={o.id}
-                order={o}
-                actor={actor}
-                onToast={showToast}
-                onOpen={() => navigate(`/pvc/order/${o.id}`)}
-              />
+              <PvcJobCard key={o.id} order={o} actor={actor} onToast={showToast} />
             ))}
           </div>
         </section>
@@ -147,12 +141,10 @@ function PvcJobCard({
   order,
   actor,
   onToast,
-  onOpen,
 }: {
   order: Order;
   actor: Actor;
   onToast: (m: string) => void;
-  onOpen: () => void;
 }) {
   const waitingForSaw = order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started";
 
@@ -179,14 +171,7 @@ function PvcJobCard({
           <span className="jt-pill jt-tone-muted">Распил күтілуде</span>
         </div>
       ) : (
-        <>
-          <div className="job-card-actions">
-            <button className="btn btn-outline btn-sm" onClick={onOpen}>
-              ⊞ Размерлер
-            </button>
-          </div>
-          <PvcActionsPanel order={order} actor={actor} onToast={onToast} />
-        </>
+        <PvcActionsPanel order={order} actor={actor} onToast={onToast} />
       )}
     </article>
   );
