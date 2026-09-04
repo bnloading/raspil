@@ -33,6 +33,10 @@ export interface UserDoc {
    * from their role and never set this field.
    */
   department?: Department;
+  /** True hides "Айлығым" (salary/pay) everywhere in this worker's own UI — the piece-rate math
+   *  still runs and Admin still sees/pays it on АдминSalary, this worker just never sees the
+   *  figure. Meaningless for admin/manager/customer; only ever set on a worker role. */
+  hideSalary?: boolean;
   blocked: boolean;
   createdAt?: Timestamp;
 }
@@ -322,16 +326,28 @@ export interface MdfStageJob {
   byName?: string;
 }
 
-/** The routed face pattern milled into a МДФ panel before wrapping — a design choice independent
- *  of the wrap film colour (Order.mdfFilmColor). Fixed set, not an admin-managed catalogue like
- *  pvcTypes — the shop only ever offers these four. */
-export type MdfPattern = "vyborka" | "riflenka" | "modern" | "kvadro";
-export const MDF_PATTERNS: MdfPattern[] = ["vyborka", "riflenka", "modern", "kvadro"];
+/**
+ * The routed face pattern milled into a МДФ panel before wrapping — a design choice independent
+ * of the wrap film colour (Order.mdfFilmColor). Fixed set, not an admin-managed catalogue like
+ * pvcTypes: each pattern except "basqa" carries a fixed shop price per m² (see lib/mdfJournal.ts's
+ * MDF_PATTERN_PRICE_TIYN), which is what lets MdfOrderBuilder.tsx auto-price and skip the Manager
+ * review step entirely for a normal order.
+ *
+ * "vyborka" is the pre-split legacy value — every "Выборка" panel ordered before 50мм/20мм became
+ * separate options. It stays in the type/labels so those old orders still render correctly, but is
+ * no longer offered in MDF_PATTERNS (the form's own dropdown list), and has no fixed price: like
+ * "basqa", a panel carrying it falls back to the Manager quoting the whole order by hand.
+ */
+export type MdfPattern = "vyborka" | "vyborka50" | "vyborka20" | "riflenka" | "modern" | "kvadro" | "basqa";
+export const MDF_PATTERNS: MdfPattern[] = ["modern", "riflenka", "kvadro", "vyborka50", "vyborka20", "basqa"];
 export const MDF_PATTERN_LABELS: Record<MdfPattern, string> = {
   vyborka: "Выборка",
+  vyborka50: "Выборка 50мм",
+  vyborka20: "20мм выборка",
   riflenka: "Рифленка",
   modern: "Модерн",
   kvadro: "Квадро",
+  basqa: "Басқа",
 };
 
 /**

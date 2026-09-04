@@ -286,6 +286,21 @@ service cloud.firestore {
         return request.resource.data.productionStatus == 'cutting_queue'
           && order().productionStatus != 'cutting_queue';
       }
+      // MdfOrderBuilder.tsx auto-prices a МДФ order and sends it straight to WAITING_PAYMENT
+      // whenever every panel uses a known, shop-fixed pattern (lib/mdfJournal.ts's
+      // MDF_PATTERN_PRICE_TIYN) — no Manager review needed. Rules can't loop over `mdfPanels` to
+      // re-derive the exact total (no per-pattern arithmetic here), so this only floors totalTiyn
+      // at the area times the CHEAPEST listed pattern's rate (16 500 ₸/m², "Модерн") — it rejects a
+      // customer typing an implausibly low total, not a perfectly-priced one. The two remaining
+      // checkpoints against a customer under-declaring mdfAreaM2 itself are human: the Manager/Admin
+      // who has to actually take the payment, and the МДФ worker who sees the real panel dimensions
+      // once it reaches production.
+      function mdfSelfPriced() {
+        return request.resource.data.orderKind == 'mdf_wrap'
+          && request.resource.data.productionStatus == 'waiting_payment'
+          && request.resource.data.pricePublished == true
+          && request.resource.data.totalTiyn >= request.resource.data.mdfAreaM2 * 1650000;
+      }
       function paymentGateOk() {
         return order().paymentStatus == 'paid' || order().paymentStatus == 'overpaid';
       }
@@ -310,7 +325,7 @@ service cloud.firestore {
       ) || (
         isCustomer()
         && request.resource.data.customerId == uid()
-        && request.resource.data.productionStatus in ['draft', 'submitted']
+        && (request.resource.data.productionStatus in ['draft', 'submitted'] || mdfSelfPriced())
         && request.resource.data.paidTiyn == 0
         && request.resource.data.priority == 0
         && request.resource.data.get('assignedCutterId', null) == null

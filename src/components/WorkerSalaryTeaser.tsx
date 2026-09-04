@@ -18,11 +18,21 @@ import type { Order } from "../types/domain";
  * salaryRule (`get` on their uid), their own attendance and entries, and the orders already loaded
  * by the dashboard. Nothing here can show another worker's pay.
  */
-export function WorkerSalaryTeaser({ uid, orders = [] }: { uid: string; orders?: Order[] }) {
+export function WorkerSalaryTeaser({
+  uid,
+  orders = [],
+  hideSalary = false,
+}: {
+  uid: string;
+  orders?: Order[];
+  hideSalary?: boolean;
+}) {
   const { entries } = useSalaryEntries(uid);
   const { rule } = useSalaryRule(uid);
   const { records } = useAttendance(uid);
   const { materials } = useMaterials(false);
+
+  if (hideSalary) return null;
 
   const period = monthKey(new Date());
   const entry = entries.find((e) => e.periodKey === period);

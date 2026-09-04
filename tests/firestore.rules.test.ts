@@ -784,6 +784,39 @@ describe("customer can self-submit a МДФ order (MdfOrderBuilder.tsx), under t
     const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
     await assertFails(setDoc(doc(db, "orders", "mdf-new-3"), { ...validMdfOrder, customerId: CUSTOMER_B_UID }));
   });
+
+  // MdfOrderBuilder.tsx's auto-price fast path (every panel a known, fixed-price pattern): the
+  // order is born already priced and in WAITING_PAYMENT, skipping the Manager's "Баға белгілеу".
+  const selfPriced = {
+    ...validMdfOrder,
+    productionStatus: "waiting_payment",
+    pricePublished: true,
+    mdfAreaM2: 4,
+    totalTiyn: 4 * 1650000, // area × the cheapest listed pattern's rate — exactly at the floor
+    debtTiyn: 4 * 1650000,
+  };
+
+  it("customer CAN create a self-priced МДФ order straight into waiting_payment", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "orders", "mdf-new-4"), selfPriced));
+  });
+
+  it("customer cannot self-price it below the cheapest pattern's rate for its area", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(setDoc(doc(db, "orders", "mdf-new-5"), { ...selfPriced, totalTiyn: 1 }));
+  });
+
+  it("customer cannot self-price it without pricePublished:true", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(setDoc(doc(db, "orders", "mdf-new-6"), { ...selfPriced, pricePublished: false }));
+  });
+
+  it("customer cannot use the self-priced fast path for a regular (non-МДФ) order", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(
+      setDoc(doc(db, "orders", "mdf-new-7"), { ...selfPriced, orderKind: "cutting" }),
+    );
+  });
 });
 
 describe("manager can review/price/pay orders but cannot manage users or audit history", () => {

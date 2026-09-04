@@ -1,4 +1,4 @@
-import type { MdfPanel, PaymentStatus } from "../types/domain";
+import type { MdfPanel, MdfPattern, PaymentStatus } from "../types/domain";
 import { computePaymentStatus } from "./statuses";
 
 /**
@@ -23,6 +23,50 @@ export function computeMdfPanelsAreaM2(panels: readonly Pick<MdfPanel, "lengthMm
  *  than interpolating the raw number. */
 export function formatMdfArea(areaM2: number | undefined | null): string {
   return `${(areaM2 ?? 0).toFixed(2)} м²`;
+}
+
+/**
+ * Fixed shop price per m² for each pattern that has one. "basqa" (custom/unlisted) and the legacy
+ * "vyborka" value (see types/domain.ts) are deliberately absent — those still go through the
+ * Manager's own "Баға белгілеу" step, exactly as every МДФ order did before this table existed.
+ */
+export const MDF_PATTERN_PRICE_TIYN: Partial<Record<MdfPattern, number>> = {
+  modern: 1_650_000,
+  riflenka: 1_750_000,
+  kvadro: 1_850_000,
+  vyborka50: 1_950_000,
+  vyborka20: 2_050_000,
+};
+
+/** A panel's cost at the shop's fixed rate for its pattern, or undefined when that pattern has no
+ *  fixed price (see MDF_PATTERN_PRICE_TIYN). */
+export function mdfPanelCostTiyn(
+  panel: Pick<MdfPanel, "lengthMm" | "widthMm" | "qty" | "pattern">,
+): number | undefined {
+  const priceTiyn = MDF_PATTERN_PRICE_TIYN[panel.pattern];
+  if (priceTiyn === undefined) return undefined;
+  const areaM2 = (panel.lengthMm / 1000) * (panel.widthMm / 1000) * panel.qty;
+  return Math.round(areaM2 * priceTiyn);
+}
+
+/**
+ * Sum of every panel's fixed-price cost — or undefined the moment even one panel's pattern has no
+ * fixed price. All-or-nothing on purpose: a mixed order still needs the Manager to quote the whole
+ * job, not just the one panel that happens to be "Басқа".
+ *
+ * This is what lets MdfOrderBuilder.tsx show the customer a real total and submit straight to
+ * WAITING_PAYMENT (pricePublished: true) whenever every panel is a known pattern.
+ */
+export function computeMdfPanelsCostTiyn(
+  panels: readonly Pick<MdfPanel, "lengthMm" | "widthMm" | "qty" | "pattern">[],
+): number | undefined {
+  let totalTiyn = 0;
+  for (const panel of panels) {
+    const cost = mdfPanelCostTiyn(panel);
+    if (cost === undefined) return undefined;
+    totalTiyn += cost;
+  }
+  return totalTiyn;
 }
 export interface MdfOrderInput {
   areaM2: number;

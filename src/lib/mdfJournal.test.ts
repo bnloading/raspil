@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { computeMdfOrderTotal, computeMdfPanelsAreaM2, formatMdfArea, type MdfOrderInput } from "./mdfJournal";
+import {
+  computeMdfOrderTotal,
+  computeMdfPanelsAreaM2,
+  computeMdfPanelsCostTiyn,
+  formatMdfArea,
+  mdfPanelCostTiyn,
+  type MdfOrderInput,
+} from "./mdfJournal";
+import type { MdfPanel } from "../types/domain";
+
+function panel(overrides: Partial<MdfPanel> = {}): Pick<MdfPanel, "lengthMm" | "widthMm" | "qty" | "pattern"> {
+  return { lengthMm: 1000, widthMm: 1000, qty: 1, pattern: "modern", ...overrides };
+}
 
 const T = (n: number) => n * 100; // ₸ → tiyn
 
@@ -72,6 +84,52 @@ describe("computeMdfPanelsAreaM2", () => {
 
   it("is zero for an empty panel list", () => {
     expect(computeMdfPanelsAreaM2([])).toBe(0);
+  });
+});
+
+describe("mdfPanelCostTiyn", () => {
+  it("prices a 1m² panel at the pattern's fixed rate", () => {
+    expect(mdfPanelCostTiyn(panel({ lengthMm: 1000, widthMm: 1000, qty: 1, pattern: "modern" }))).toBe(1_650_000);
+  });
+
+  it("multiplies by quantity", () => {
+    expect(mdfPanelCostTiyn(panel({ lengthMm: 1000, widthMm: 1000, qty: 2, pattern: "modern" }))).toBe(3_300_000);
+  });
+
+  it("is undefined for a custom (\"basqa\") pattern — the Manager quotes it by hand", () => {
+    expect(mdfPanelCostTiyn(panel({ pattern: "basqa" }))).toBeUndefined();
+  });
+
+  it("is undefined for the pre-split legacy \"vyborka\" value", () => {
+    expect(mdfPanelCostTiyn(panel({ pattern: "vyborka" }))).toBeUndefined();
+  });
+
+  it("prices the two выборка depths differently", () => {
+    const p50 = mdfPanelCostTiyn(panel({ pattern: "vyborka50" }))!;
+    const p20 = mdfPanelCostTiyn(panel({ pattern: "vyborka20" }))!;
+    expect(p50).toBeLessThan(p20);
+  });
+});
+
+describe("computeMdfPanelsCostTiyn", () => {
+  it("sums several panels of known patterns", () => {
+    const total = computeMdfPanelsCostTiyn([
+      panel({ lengthMm: 1000, widthMm: 1000, qty: 1, pattern: "modern" }), // 1_650_000
+      panel({ lengthMm: 1000, widthMm: 1000, qty: 1, pattern: "riflenka" }), // 1_750_000
+    ]);
+    expect(total).toBe(3_400_000);
+  });
+
+  it("is undefined the moment any one panel's pattern has no fixed price", () => {
+    const total = computeMdfPanelsCostTiyn([
+      panel({ pattern: "modern" }),
+      panel({ pattern: "basqa" }),
+    ]);
+    expect(total).toBeUndefined();
+  });
+
+  it("is zero for an empty panel list", () => {
+    expect(computeMdfPanelsCostTiyn([])).toBe(0);
   });
 });
 

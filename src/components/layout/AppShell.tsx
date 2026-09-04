@@ -66,7 +66,7 @@ export function AppShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const items = getNavForRole(userData?.role, userData ? departmentOf(userData) : undefined);
+  const items = getNavForRole(userData?.role, userData ? departmentOf(userData) : undefined, userData?.hideSalary);
   const activeKey = navKey ?? matchNavKey(location.pathname, location.search, items);
 
   return (

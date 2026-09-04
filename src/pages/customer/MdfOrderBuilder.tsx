@@ -8,7 +8,9 @@ import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { generateOrderNumber } from "../../lib/orderNumber";
 import { MDF_MATERIAL_SNAPSHOT } from "../../lib/mdfJournalOrders";
-import { computeMdfPanelsAreaM2, formatMdfArea } from "../../lib/mdfJournal";
+import { computeMdfPanelsAreaM2, computeMdfPanelsCostTiyn, formatMdfArea, mdfPanelCostTiyn } from "../../lib/mdfJournal";
+import { formatMoney } from "../../lib/money";
+import { computePaymentStatus } from "../../lib/statuses";
 import { MDF_PATTERNS, MDF_PATTERN_LABELS } from "../../types/domain";
 import type { MdfPanel, MdfPattern } from "../../types/domain";
 
@@ -36,8 +38,13 @@ function isPanelFilled(p: PanelDraft): boolean {
  * same "measure what you actually want" shape as OrderBuilder.tsx's parts list, just far lighter:
  * no per-part edging, no material catalogue, just dimensions, quantity and a face pattern. The
  * total area is always derived from these rows (computeMdfPanelsAreaM2), never typed directly.
- * Submitted as an estimate — the Manager sets the real price when they review it in
- * ManagerMdfJournal (pricePublished stays false until then).
+ *
+ * Every pattern except "Басқа" has a fixed shop price per m² (lib/mdfJournal.ts's
+ * MDF_PATTERN_PRICE_TIYN), so a normal order prices itself live as the customer fills it in and
+ * submits straight through to WAITING_PAYMENT — no Manager review step in between. The one
+ * exception is "Басқа" (a pattern outside the fixed list): the moment any panel uses it, the whole
+ * order's cost is unknown and falls back to the old flow (pricePublished stays false, SUBMITTED,
+ * the Manager quotes it by hand in ManagerMdfJournal).
  */
 export default function MdfOrderBuilder() {
   const { user, userData } = useAuth();
@@ -50,13 +57,19 @@ export default function MdfOrderBuilder() {
   const [submitting, setSubmitting] = useState(false);
 
   const filledPanels = useMemo(() => panels.filter(isPanelFilled), [panels]);
-  const totalAreaM2 = useMemo(
+  const filledMdfPanels = useMemo(
     () =>
-      computeMdfPanelsAreaM2(
-        filledPanels.map((p) => ({ lengthMm: Number(p.lengthMm), widthMm: Number(p.widthMm), qty: Number(p.qty) })),
-      ),
+      filledPanels.map((p) => ({
+        lengthMm: Number(p.lengthMm),
+        widthMm: Number(p.widthMm),
+        qty: Number(p.qty),
+        pattern: p.pattern,
+      })),
     [filledPanels],
   );
+  const totalAreaM2 = useMemo(() => computeMdfPanelsAreaM2(filledMdfPanels), [filledMdfPanels]);
+  // undefined the moment any panel uses "Басқа" (or the legacy "vyborka") — see the file doc comment.
+  const totalCostTiyn = useMemo(() => computeMdfPanelsCostTiyn(filledMdfPanels), [filledMdfPanels]);
 
   if (!user || !userData) return <Spinner />;
 
@@ -80,6 +93,10 @@ export default function MdfOrderBuilder() {
       pattern: p.pattern,
     }));
 
+    // Every panel a known (fixed-price) pattern: price it now and send straight to payment — no
+    // Manager review in between. Any "Басқа" panel: unpriced, same SUBMITTED flow as before.
+    const priced = totalCostTiyn !== undefined;
+
     setSubmitting(true);
     try {
       const orderRef = doc(collection(db, "orders"));
@@ -95,8 +112,8 @@ export default function MdfOrderBuilder() {
         mdfAreaM2: totalAreaM2,
         mdfPanels,
         mdfFilmColor: filmColor.trim(),
-        productionStatus: "submitted",
-        paymentStatus: "unpaid",
+        productionStatus: priced ? "waiting_payment" : "submitted",
+        paymentStatus: priced ? computePaymentStatus(totalCostTiyn, 0) : "unpaid",
         priority: 0,
         estimatedSheets: 0,
         pvcMetersTotal: 0,
@@ -107,10 +124,12 @@ export default function MdfOrderBuilder() {
         extraServicesTiyn: 0,
         deliveryCostTiyn: 0,
         discountTiyn: 0,
-        totalTiyn: 0,
+        totalTiyn: priced ? totalCostTiyn : 0,
         paidTiyn: 0,
-        debtTiyn: 0,
-        pricePublished: false,
+        debtTiyn: priced ? totalCostTiyn : 0,
+        ...(priced ? { mdfPricePerM2Tiyn: Math.round(totalCostTiyn / totalAreaM2) } : {}),
+        pricePublished: priced,
+        ...(priced ? { pricePublishedAt: serverTimestamp() } : {}),
         customerNote: note.trim(),
         isDraft: false,
         createdAt: serverTimestamp(),
@@ -182,6 +201,15 @@ export default function MdfOrderBuilder() {
               {isPanelFilled(p) && (
                 <span className="form-hint">
                   {formatMdfArea((Number(p.lengthMm) / 1000) * (Number(p.widthMm) / 1000) * Number(p.qty))}
+                  {(() => {
+                    const cost = mdfPanelCostTiyn({
+                      lengthMm: Number(p.lengthMm),
+                      widthMm: Number(p.widthMm),
+                      qty: Number(p.qty),
+                      pattern: p.pattern,
+                    });
+                    return cost !== undefined ? ` · ${formatMoney(cost)}` : "";
+                  })()}
                 </span>
               )}
               {i < panels.length - 1 && <hr className="mdf-panel-divider" />}
@@ -196,6 +224,12 @@ export default function MdfOrderBuilder() {
           <span>Жалпы аудан</span>
           <strong>{formatMdfArea(totalAreaM2)}</strong>
         </div>
+        {filledPanels.length > 0 && totalCostTiyn !== undefined && (
+          <div className="track-card-meta-row">
+            <span>Жалпы бағасы</span>
+            <strong>{formatMoney(totalCostTiyn)}</strong>
+          </div>
+        )}
 
         <div className="form-group">
           <label>Пленка түсі (білсеңіз)</label>
@@ -217,7 +251,11 @@ export default function MdfOrderBuilder() {
           />
         </div>
         <p className="form-hint">
-          Бағаны менеджер есептеп, сізге жібереді — заказ алдымен баға есептеуге түседі.
+          {filledPanels.length === 0
+            ? "Бөлшектің ұзындығы, ені және санын енгізіңіз."
+            : totalCostTiyn !== undefined
+              ? "Баға жоғарыда көрсетілді — тапсырыс тікелей төлемге өтеді, менеджер бағаны қайта есептемейді."
+              : "«Басқа» өрнегінің бағасы белгіленбеген — оны менеджер есептеп, сізге жібереді."}
         </p>
         <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
           {submitting ? "Жіберілуде..." : "Тапсырыс беру"}

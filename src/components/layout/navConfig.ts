@@ -160,26 +160,35 @@ function publicNav(): NavItem[] {
   ];
 }
 
-export function getNavForRole(role: UserRole | undefined, department: Department = "ldsp"): NavItem[] {
-  switch (role) {
-    case "admin":
-      return adminNav(department);
-    case "manager":
-      return managerNav(department);
-    case "customer":
-      return customerNav();
-    case "raspil":
-      return cutterNav();
-    case "pvh":
-      return pvcNav();
-    case "cnc":
-    case "sanding":
-    case "painting":
-    case "vacuum":
-      return mdfWorkerNav(role);
-    default:
-      return publicNav();
-  }
+export function getNavForRole(
+  role: UserRole | undefined,
+  department: Department = "ldsp",
+  hideSalary = false,
+): NavItem[] {
+  const items = (() => {
+    switch (role) {
+      case "admin":
+        return adminNav(department);
+      case "manager":
+        return managerNav(department);
+      case "customer":
+        return customerNav();
+      case "raspil":
+        return cutterNav();
+      case "pvh":
+        return pvcNav();
+      case "cnc":
+      case "sanding":
+      case "painting":
+      case "vacuum":
+        return mdfWorkerNav(role);
+      default:
+        return publicNav();
+    }
+  })();
+  // A worker paid/managed outside the app's piece-rate math (or whose pay the owner would rather
+  // not show them directly) keeps every other worker screen — just not "Айлығым" itself.
+  return hideSalary ? items.filter((item) => item.key !== "salary") : items;
 }
 
 /**

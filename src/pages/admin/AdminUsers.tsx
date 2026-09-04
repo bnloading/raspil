@@ -17,6 +17,10 @@ interface UserRow extends UserDoc {
 
 const STAFF_ROLES: UserRole[] = ["admin", "manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"];
 
+/** Only these roles have an "Айлығым" page at all (see navConfig.ts's worker nav builders) — the
+ *  hide-salary toggle is meaningless, so hidden, for admin/manager. */
+const WORKER_ROLES: UserRole[] = ["raspil", "pvh", "cnc", "sanding", "painting", "vacuum"];
+
 /**
  * Which roles an admin/manager of one line may create or reassign staff into — the two lines now
  * run as separate businesses (see lib/rbac.ts departmentOf()), so a МДФ admin manages the МДФ
@@ -129,6 +133,24 @@ export default function AdminUsers() {
         });
       }
       showToast(target.blocked ? "🔓 Бұғаттан шығарылды" : "🔒 Бұғатталды");
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  const handleToggleHideSalary = async (target: UserRow) => {
+    try {
+      await updateDoc(doc(db, "users", target.id), { hideSalary: !target.hideSalary });
+      if (auth.user && auth.userData) {
+        await logAudit(db, { user: auth.user, userData: auth.userData }, {
+          action: target.hideSalary ? "user.show_salary" : "user.hide_salary",
+          entityType: "user",
+          entityId: target.id,
+          before: { hideSalary: !!target.hideSalary },
+          after: { hideSalary: !target.hideSalary },
+        });
+      }
+      showToast(target.hideSalary ? "👁 Айлығы қайта көрсетілді" : "🙈 Айлығы жасырылды");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -258,13 +280,25 @@ export default function AdminUsers() {
                       </select>
                     </td>
                     <td data-label="Әрекеттер">
-                      <button
-                        type="button"
-                        className={`btn btn-outline btn-sm${u.blocked ? "" : " btn-danger-outline"}`}
-                        onClick={() => handleToggleBlocked(u)}
-                      >
-                        {u.blocked ? "Бұғаттан шығару" : "Бұғаттау"}
-                      </button>
+                      <div className="data-row-actions">
+                        <button
+                          type="button"
+                          className={`btn btn-outline btn-sm${u.blocked ? "" : " btn-danger-outline"}`}
+                          onClick={() => handleToggleBlocked(u)}
+                        >
+                          {u.blocked ? "Бұғаттан шығару" : "Бұғаттау"}
+                        </button>
+                        {WORKER_ROLES.includes(u.role) && (
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => handleToggleHideSalary(u)}
+                            title="Айлығым бетін көрсету/жасыру"
+                          >
+                            {u.hideSalary ? "Айлықты көрсету" : "Айлықты жасыру"}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

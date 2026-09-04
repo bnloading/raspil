@@ -100,7 +100,7 @@ export default function MdfWorkerDashboard() {
             <div className="worker-stat-cap">Бүгін дайын</div>
           </div>
         </div>
-        <WorkerSalaryTeaser uid={user.uid} orders={orders} />
+        <WorkerSalaryTeaser uid={user.uid} orders={orders} hideSalary={userData.hideSalary} />
       </div>
 
       {loading ? (
