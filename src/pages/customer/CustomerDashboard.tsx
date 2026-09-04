@@ -22,13 +22,27 @@ export default function CustomerDashboard() {
   );
   const ready = useMemo(() => orders.filter((o) => o.productionStatus === "ready"), [orders]);
   // Debt only counts orders that can still be collected on — a cancelled order owes nothing.
-  const totalDebt = useMemo(
-    () =>
-      orders
-        .filter((o) => o.productionStatus !== "cancelled" && o.productionStatus !== "draft")
-        .reduce((sum, o) => sum + Math.max(0, o.debtTiyn || 0), 0),
+  // Split by line (распил vs МДФ) per the shop's "распильде осынша, МДФ те осынша" requirement —
+  // the two are shown separately on /debt, and summarised together here.
+  const billable = useMemo(
+    () => orders.filter((o) => o.productionStatus !== "cancelled" && o.productionStatus !== "draft"),
     [orders],
   );
+  const cuttingDebt = useMemo(
+    () =>
+      billable
+        .filter((o) => (o.orderKind ?? "cutting") === "cutting")
+        .reduce((sum, o) => sum + Math.max(0, o.debtTiyn || 0), 0),
+    [billable],
+  );
+  const mdfDebt = useMemo(
+    () =>
+      billable
+        .filter((o) => o.orderKind === "mdf_wrap")
+        .reduce((sum, o) => sum + Math.max(0, o.debtTiyn || 0), 0),
+    [billable],
+  );
+  const totalDebt = cuttingDebt + mdfDebt;
 
   if (!user || !userData) return <Spinner />;
 
@@ -53,6 +67,12 @@ export default function CustomerDashboard() {
         <Link to="/debt" className="panel-card customer-debt-card">
           <span className="customer-debt-label">Жалпы қарызыңыз</span>
           <strong className="customer-debt-amount">{formatMoney(totalDebt)}</strong>
+          {cuttingDebt > 0 && mdfDebt > 0 && (
+            <div className="track-card-meta-row">
+              <span>Распил: {formatMoney(cuttingDebt)}</span>
+              <span>МДФ: {formatMoney(mdfDebt)}</span>
+            </div>
+          )}
           <span className="customer-debt-link">Толығырақ →</span>
         </Link>
       )}
@@ -68,6 +88,9 @@ export default function CustomerDashboard() {
         </Link>
         <Link to="/order/new?scan=1" className="btn btn-outline">
           📷 Фото арқылы енгізу
+        </Link>
+        <Link to="/order/mdf/new" className="btn btn-outline">
+          🪵 МДФ тапсырыс беру
         </Link>
       </div>
 
@@ -108,11 +131,15 @@ export default function CustomerDashboard() {
           orders.slice(0, 5).map((o) => (
             <Link key={o.id} to={`/order/${o.id}`} className="track-card">
               <div className="track-card-header">
-                <span className="track-card-num">{customerOrderCode(o.orderNumber)}</span>
+                <span className="track-card-num">
+                  {customerOrderCode(o.orderNumber)}
+                  {/* Both lines show up together here — this tag is what tells them apart. */}
+                  {o.orderKind === "mdf_wrap" && <span className="jt-pill jt-tone-muted"> МДФ</span>}
+                </span>
                 <ProductionStatusBadge status={o.productionStatus} />
               </div>
               <div className="track-card-meta-row">
-                <span>{getCustomerStageLabel(o.productionStatus, o.pvcMetersTotal > 0)}</span>
+                <span>{getCustomerStageLabel(o.productionStatus, o.pvcMetersTotal > 0, o.mdfStage)}</span>
                 {o.pricePublished ? <span>{formatMoney(o.totalTiyn)}</span> : <span>Баға есептелуде...</span>}
                 {o.createdAt && <span>{formatDateDMY(o.createdAt)}</span>}
               </div>

@@ -22,7 +22,7 @@ import { syncWorkshopBoard, clearWorkshopBoard } from "./workshopActivity";
 
 type Actor = { user: User; userData: UserDoc };
 
-async function writeStatusHistory(
+export async function writeStatusHistory(
   db: Firestore,
   actor: Actor,
   orderId: string,
@@ -44,7 +44,7 @@ async function writeStatusHistory(
   });
 }
 
-async function notify(db: Firestore, userId: string | undefined, title: string, body: string, orderId: string) {
+export async function notify(db: Firestore, userId: string | undefined, title: string, body: string, orderId: string) {
   if (!userId) return;
   await addDoc(collection(db, "notifications"), {
     userId,
@@ -59,7 +59,7 @@ async function notify(db: Firestore, userId: string | undefined, title: string, 
 
 /** Notifies every non-blocked admin+manager — used for the "Notify Manager" steps the spec
  *  requires on every worker action, since any manager (not just the one assigned) should see it. */
-async function notifyManagers(db: Firestore, title: string, body: string, orderId: string) {
+export async function notifyManagers(db: Firestore, title: string, body: string, orderId: string) {
   const snap = await getDocs(query(collection(db, "users"), where("role", "in", ["admin", "manager"])));
   await Promise.all(
     snap.docs
@@ -68,7 +68,7 @@ async function notifyManagers(db: Firestore, title: string, body: string, orderI
   );
 }
 
-async function logAudit(
+export async function logAudit(
   db: Firestore,
   actor: Actor,
   entry: { action: string; entityId: string; before?: Record<string, unknown>; after?: Record<string, unknown>; comment?: string },

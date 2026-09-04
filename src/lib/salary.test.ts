@@ -119,6 +119,50 @@ describe("measureWork", () => {
     expect(work.pvcMeters).toBe(20);
   });
 
+  it("credits a МДФ worker's finished station's m² in the month it was completed", () => {
+    const CNC = "cnc-1";
+    const work = measureWork(
+      [
+        order({
+          orderKind: "mdf_wrap",
+          mdfAreaM2: 8.4,
+          mdfStageJobs: { cnc: { byUid: CNC, completedAt: MARCH } },
+        }),
+      ],
+      [],
+      CNC,
+      "2026-03",
+    );
+    expect(work.mdfM2Processed).toBe(8.4);
+    expect(work.ordersCompleted).toBe(1);
+  });
+
+  it("ignores a МДФ station not yet completed, and one completed by someone else", () => {
+    const CNC = "cnc-1";
+    const orders = [
+      order({ orderKind: "mdf_wrap", mdfAreaM2: 5, mdfStageJobs: { cnc: { byUid: CNC, startedAt: MARCH } } }),
+      order({ orderKind: "mdf_wrap", mdfAreaM2: 5, mdfStageJobs: { cnc: { byUid: "someone-else", completedAt: MARCH } } }),
+    ];
+    expect(measureWork(orders, [], CNC, "2026-03").mdfM2Processed).toBe(0);
+  });
+
+  it("credits each of the 4 stations independently on the same order", () => {
+    const CNC = "cnc-1";
+    const SANDING = "sanding-1";
+    const orders = [
+      order({
+        orderKind: "mdf_wrap",
+        mdfAreaM2: 10,
+        mdfStageJobs: {
+          cnc: { byUid: CNC, completedAt: MARCH },
+          sanding: { byUid: SANDING, completedAt: MARCH },
+        },
+      }),
+    ];
+    expect(measureWork(orders, [], CNC, "2026-03").mdfM2Processed).toBe(10);
+    expect(measureWork(orders, [], SANDING, "2026-03").mdfM2Processed).toBe(10);
+  });
+
   it("counts present/late as worked days and absent separately; day-off and sick count as neither", () => {
     const work = measureWork([], [
       attendance({ id: "1", date: "2026-03-02", status: "present", workedHours: 8 }),
@@ -168,6 +212,13 @@ describe("computeSalaryBase — MANUAL is the default and invents nothing", () =
   it("PER_PVC_METER multiplies metres by the per-metre rate", () => {
     const rule: SalaryRule = { id: PVC, userId: PVC, mode: "PER_PVC_METER", perPvcMeterTiyn: T(120) };
     expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(6000));
+  });
+
+  it("PER_MDF_M2 multiplies processed area by the per-m² rate", () => {
+    const CNC = "cnc-1";
+    const rule: SalaryRule = { id: CNC, userId: CNC, mode: "PER_MDF_M2", perMdfM2Tiyn: T(3000) };
+    const mdfWork = { ...EMPTY_WORK_TOTALS, mdfM2Processed: 12 };
+    expect(computeSalaryBase(rule, mdfWork).baseTiyn).toBe(T(36000));
   });
 
   it("PER_ORDER multiplies completed orders by the per-order rate", () => {
@@ -406,6 +457,15 @@ describe("availablePeriods — new months appear automatically", () => {
       new Date("2026-04-20T12:00:00+05:00"),
     );
     expect(periods).toEqual(["2026-04", "2026-03", "2026-01"]);
+  });
+
+  it("also derives a month from a completed МДФ station", () => {
+    const periods = availablePeriods(
+      [order({ orderKind: "mdf_wrap", mdfStageJobs: { vacuum: { completedAt: MARCH } } })],
+      [],
+      new Date("2026-04-20T12:00:00+05:00"),
+    );
+    expect(periods).toContain("2026-03");
   });
 });
 

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { useAuth } from "../../AuthContext";
 import { SimpleOrderList } from "../../components/SimpleOrderList";
 import { useAllOrders } from "../../hooks/useOrders";
+import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 
 /**
  * Filtered on `paymentStatus`, not `productionStatus`.
@@ -17,13 +19,20 @@ const NOT_BILLABLE = new Set(["draft", "cancelled"]);
  *  history/reversal lives on the order detail page and in AdminReports; this is deliberately a thin
  *  triage list, not a duplicate of the reports payments tab. */
 export default function ManagerPayments() {
+  const { userData } = useAuth();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const { orders, loading } = useAllOrders();
   const list = useMemo(
     () =>
       orders
-        .filter((o) => OWES.has(o.paymentStatus) && !NOT_BILLABLE.has(o.productionStatus))
+        .filter(
+          (o) =>
+            OWES.has(o.paymentStatus) &&
+            !NOT_BILLABLE.has(o.productionStatus) &&
+            departmentOfOrder(o) === myDepartment,
+        )
         .sort((a, b) => b.debtTiyn - a.debtTiyn),
-    [orders],
+    [orders, myDepartment],
   );
 
   return (

@@ -30,12 +30,22 @@ import {
   computePaymentSummary,
   computeQueueOrders,
 } from "../../lib/dashboardStats";
+import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 
 export default function AdminHome() {
   const { userData } = useAuth();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const navigate = useNavigate();
-  const { orders, loading: ordersLoading } = useAllOrders();
-  const { payments, loading: paymentsLoading } = useAllPayments();
+  const { orders: allOrders, loading: ordersLoading } = useAllOrders();
+  const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
+  // Home page stays scoped to the viewer's own line, same as ManagerDashboard — a МДФ admin's home
+  // never shows ЛДСП revenue/queue and vice versa (lib/rbac.ts departmentOf()/departmentOfOrder()).
+  const orders = useMemo(() => allOrders.filter((o) => departmentOfOrder(o) === myDepartment), [allOrders, myDepartment]);
+  const orderDeptById = useMemo(() => new Map(allOrders.map((o) => [o.id, departmentOfOrder(o)])), [allOrders]);
+  const payments = useMemo(
+    () => allPayments.filter((p) => (orderDeptById.get(p.orderId) ?? "ldsp") === myDepartment),
+    [allPayments, orderDeptById, myDepartment],
+  );
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
   const { materials, loading: materialsLoading } = useMaterials(false);
   const { categories: expenseCategories, loading: expenseCategoriesLoading } = useExpenseCategories();

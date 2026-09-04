@@ -547,6 +547,36 @@ textarea.form-input {
   min-height: 80px;
 }
 
+/* МДФ panel-dimension row (MdfOrderBuilder) — length/width/qty/pattern + remove button. */
+.mdf-panel-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 70px auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.mdf-panel-row .form-hint {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+}
+@media (max-width: 560px) {
+  .mdf-panel-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "length width" "qty pattern" "remove remove";
+  }
+  .mdf-panel-row input[aria-label="Ұзындығы (мм)"] { grid-area: length; }
+  .mdf-panel-row input[aria-label="Ені (мм)"] { grid-area: width; }
+  .mdf-panel-row input[aria-label="Саны"] { grid-area: qty; }
+  .mdf-panel-row select { grid-area: pattern; }
+  .mdf-panel-row button { grid-area: remove; }
+}
+.mdf-panel-divider {
+  grid-column: 1 / -1;
+  border: none;
+  border-top: 1px dashed var(--border);
+  margin: 6px 0;
+}
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -6394,6 +6424,43 @@ body {
   .dashboard-grid .span-2 {
     grid-column: span 2;
   }
+}
+
+/* МДФ production board (AdminMdfHome) — one column per station, count-only (no draggable cards). */
+.mdf-board {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .mdf-board {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (min-width: 1024px) {
+  .mdf-board {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+.mdf-board-col {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  text-align: center;
+}
+.mdf-board-col-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.mdf-board-col-head span {
+  font-size: 0.8rem;
+  color: var(--text-light);
+}
+.mdf-board-col-head b {
+  font-size: 1.4rem;
 }
 
 .panel-card {

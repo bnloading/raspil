@@ -27,6 +27,7 @@ import {
   type FinanceSummary,
 } from "../../lib/finance";
 import { CASH_ACCOUNTS, CASH_ACCOUNT_LABELS, accountForExpense } from "../../lib/cashbox";
+import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder } from "../../lib/rbac";
 import type { CashAccount, Expense, ExpenseCategory } from "../../types/domain";
 import {
   computeCutterProductivity,
@@ -50,25 +51,45 @@ import {
 
 type Tab = "dashboard" | "finance" | "pvc" | "sales" | "payments" | "production" | "warehouse" | "expenses" | "expenselog";
 
+// These four tabs are shaped entirely around the ЛДСП/распил floor — production stages named
+// "Распил"/"ПВХ", sheet-cutting inventory, edge-banding metres — none of which exists for a МДФ
+// order (its own equivalent dashboard is AdminMdfHome.tsx). Showing them to a МДФ viewer would mean
+// every figure reads zero, so they're hidden rather than left to look broken.
+const LDSP_ONLY_TABS = new Set<Tab>(["dashboard", "pvc", "production", "warehouse"]);
+
 export default function AdminReports() {
   const { userData } = useAuth();
   const isAdmin = userData?.role === "admin";
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
+  const [tab, setTab] = useState<Tab>(myDepartment === "mdf" ? "finance" : "dashboard");
   /** Which stretch of time the dashboard's figures cover. */
   const [period, setPeriod] = useState<ReportPeriod>("week");
-  const { orders, loading: ordersLoading } = useAllOrders();
-  const { payments, loading: paymentsLoading } = useAllPayments();
+  const { orders: allOrders, loading: ordersLoading } = useAllOrders();
+  const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
   const { materials } = useMaterials(false);
   const { pvcTypes } = usePvcTypes(false);
   const { categories, loading: categoriesLoading } = useExpenseCategories();
-  const { expenses, loading: expensesLoading } = useExpenses();
+  const { expenses: allExpenses, loading: expensesLoading } = useExpenses();
   const { message, visible, showToast } = useToast();
+
+  // Every figure on this page stays scoped to the viewer's own line — a МДФ admin's Есептер never
+  // sums in ЛДСП revenue/debt and vice versa (see lib/rbac.ts departmentOf()/departmentOfOrder()).
+  const orders = useMemo(() => allOrders.filter((o) => departmentOfOrder(o) === myDepartment), [allOrders, myDepartment]);
+  const orderDeptById = useMemo(() => new Map(allOrders.map((o) => [o.id, departmentOfOrder(o)])), [allOrders]);
+  const payments = useMemo(
+    () => allPayments.filter((p) => (orderDeptById.get(p.orderId) ?? "ldsp") === myDepartment),
+    [allPayments, orderDeptById, myDepartment],
+  );
+  const expenses = useMemo(
+    () => allExpenses.filter((e) => (e.department ?? "ldsp") === myDepartment),
+    [allExpenses, myDepartment],
+  );
 
   const loading = ordersLoading || paymentsLoading || movementsLoading;
 
   return (
-    <AppShell title="Есептер" subtitle="Қаржы және өндіріс қорытындысы">
+    <AppShell title={`Есептер — ${DEPARTMENT_LABELS[myDepartment]}`} subtitle="Қаржы және өндіріс қорытындысы">
       {/* Бүгін / Апта / Ай sits above the tabs because it qualifies all of them: the question is
           "how much", and it is meaningless without saying over what. */}
       <div className="report-period">
@@ -87,11 +108,13 @@ export default function AdminReports() {
         {/* Editing the allocation percentages (or logging an expense) writes to an Admin-only
             collection, so a Manager sees the resulting numbers on Қаржы but is not offered either
             settings tab. */}
-        {(["dashboard", "finance", "pvc", "sales", "payments", "production", "warehouse", ...(isAdmin ? ["expenses", "expenselog"] : [])] as Tab[]).map((t) => (
-          <button key={t} className={`tab-pill${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
-            {tabLabel(t)}
-          </button>
-        ))}
+        {(["dashboard", "finance", "pvc", "sales", "payments", "production", "warehouse", ...(isAdmin ? ["expenses", "expenselog"] : [])] as Tab[])
+          .filter((t) => myDepartment !== "mdf" || !LDSP_ONLY_TABS.has(t))
+          .map((t) => (
+            <button key={t} className={`tab-pill${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
+              {tabLabel(t)}
+            </button>
+          ))}
       </div>
 
       {loading ? (
@@ -457,7 +480,14 @@ function ExpenseModal({
     }
     setSubmitting(true);
     try {
-      await addExpense(db, { user, userData }, { name: name.trim(), amountTiyn, date, account, comment: comment.trim() });
+      await addExpense(db, { user, userData }, {
+        name: name.trim(),
+        amountTiyn,
+        date,
+        account,
+        department: departmentOf(userData),
+        comment: comment.trim(),
+      });
       showToast("✅ Шығын жазылды");
       onClose();
     } catch (err: unknown) {

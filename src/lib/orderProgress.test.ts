@@ -95,6 +95,21 @@ describe("orderProgress", () => {
     // "cancelled" sorts last in PRODUCTION_STATUS_ORDER; a naive rank comparison would call it done.
     expect(state(order({ productionStatus: "cancelled" }), "cutting")).not.toBe("done");
   });
+
+  describe("МДФ orders", () => {
+    it("collapses to three milestones instead of the cutting/pvc four", () => {
+      expect(orderProgress(order({ orderKind: "mdf_wrap" })).map((s) => s.key)).toEqual([
+        "payment",
+        "mdf",
+        "ready",
+      ]);
+    });
+    it("МДФ step is pending before production, active during it, done once ready", () => {
+      expect(state(order({ orderKind: "mdf_wrap", productionStatus: "paid" }), "mdf")).toBe("pending");
+      expect(state(order({ orderKind: "mdf_wrap", productionStatus: "mdf_production" }), "mdf")).toBe("active");
+      expect(state(order({ orderKind: "mdf_wrap", productionStatus: "ready" }), "mdf")).toBe("done");
+    });
+  });
 });
 
 describe("progressSummary", () => {

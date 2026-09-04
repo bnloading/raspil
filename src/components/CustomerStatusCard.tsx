@@ -1,4 +1,5 @@
-import type { Order, ProductionStatus } from "../types/domain";
+import type { MdfStage, Order, ProductionStatus } from "../types/domain";
+import { MDF_STAGE_LABELS } from "../types/domain";
 import { OrderProgressStepper } from "./OrderProgressStepper";
 
 /**
@@ -25,6 +26,7 @@ export function getCustomerStageTone(status: ProductionStatus): "green" | "blue"
       return "green";
     case "cutting_started":
     case "pvc_started":
+    case "mdf_production":
       return "blue";
     case "cutting_queue":
     case "cutting_completed":
@@ -35,7 +37,11 @@ export function getCustomerStageTone(status: ProductionStatus): "green" | "blue"
   }
 }
 
-export function getCustomerStageLabel(status: ProductionStatus, needsPvc: boolean): string {
+export function getCustomerStageLabel(
+  status: ProductionStatus,
+  needsPvc: boolean,
+  mdfStage?: MdfStage,
+): string {
   switch (status) {
     case "draft":
     case "submitted":
@@ -63,6 +69,8 @@ export function getCustomerStageLabel(status: ProductionStatus, needsPvc: boolea
       return "Клиентке берілді";
     case "cancelled":
       return "Бас тартылды";
+    case "mdf_production":
+      return mdfStage ? `${MDF_STAGE_LABELS[mdfStage]} жасалып жатыр` : "МДФ өндірісінде";
   }
 }
 
@@ -80,7 +88,7 @@ export function CustomerStatusCard({ order }: CustomerStatusCardProps) {
   const isReady = order.productionStatus === "ready" || order.productionStatus === "delivered";
   const isCancelled = order.productionStatus === "cancelled";
   const needsPvc = order.pvcMetersTotal > 0;
-  const stageLabel = getCustomerStageLabel(order.productionStatus, needsPvc);
+  const stageLabel = getCustomerStageLabel(order.productionStatus, needsPvc, order.mdfStage);
 
   const isQueued = order.productionStatus === "cutting_queue" || order.productionStatus === "pvc_queue";
   const aheadCount = order.priority ?? 0;

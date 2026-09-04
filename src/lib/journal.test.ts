@@ -277,6 +277,25 @@ describe("computeCustomerDebts — debt matches every unpaid order", () => {
     expect(debts[0].unpaidOrderCount).toBe(2);
   });
 
+  it("reports the same customer's распил and МДФ debt as two separate rows", () => {
+    const debts = computeCustomerDebts([
+      order({ id: "o1", customerId: "c1", totalTiyn: T(100000), paidTiyn: T(40000) }),
+      order({ id: "o2", customerId: "c1", totalTiyn: T(50000), paidTiyn: 0, orderKind: "mdf_wrap" }),
+    ]);
+    expect(debts).toHaveLength(2);
+    const cutting = debts.find((d) => d.orderKind === "cutting")!;
+    const mdf = debts.find((d) => d.orderKind === "mdf_wrap")!;
+    expect(cutting.debtTiyn).toBe(T(60000));
+    expect(mdf.debtTiyn).toBe(T(50000));
+    // Same customer identity on both rows, so a caller can still recognise they're the same person.
+    expect(cutting.customerKey).toBe(mdf.customerKey);
+  });
+
+  it("orders with no orderKind default to the распил (cutting) bucket", () => {
+    const debts = computeCustomerDebts([order({ id: "o1", customerId: "c1", totalTiyn: T(10000), paidTiyn: 0 })]);
+    expect(debts[0].orderKind).toBe("cutting");
+  });
+
   it("keeps separate customers separate and sorts by who owes most", () => {
     const debts = computeCustomerDebts([
       order({ id: "o1", customerId: "c1", customerName: "A", totalTiyn: T(10000), paidTiyn: 0 }),

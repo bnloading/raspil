@@ -28,7 +28,7 @@ interface StaffUser extends UserDoc {
   id: string;
 }
 
-const MODES: SalaryMode[] = ["MANUAL", "FIXED_MONTHLY", "PER_SHEET", "PER_PVC_METER", "PER_ORDER", "HOURLY", "MIXED"];
+const MODES: SalaryMode[] = ["MANUAL", "FIXED_MONTHLY", "PER_SHEET", "PER_PVC_METER", "PER_MDF_M2", "PER_ORDER", "HOURLY", "MIXED"];
 const STATUS_TONE: Record<string, string> = {
   calculating: "muted",
   calculated: "blue",
@@ -60,7 +60,7 @@ export default function AdminSalary() {
   const [editRuleFor, setEditRuleFor] = useState<string | null>(null);
 
   useEffect(() => {
-    getDocs(query(collection(db, "users"), where("role", "in", ["manager", "raspil", "pvh"])))
+    getDocs(query(collection(db, "users"), where("role", "in", ["manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"])))
       .then((snap) => setStaff(snap.docs.map((d) => ({ id: d.id, ...(d.data() as UserDoc) }))))
       .catch(() => setStaff([]));
   }, []);
@@ -361,6 +361,7 @@ function SalaryRuleEditor({
     perCountertopTiyn: rule?.perCountertopTiyn ?? sameAsBase,
     perMdfSheetTiyn: rule?.perMdfSheetTiyn ?? sameAsBase,
     perPvcMeterTiyn: rule?.perPvcMeterTiyn ?? 0,
+    perMdfM2Tiyn: rule?.perMdfM2Tiyn ?? 0,
     perOrderTiyn: rule?.perOrderTiyn ?? 0,
     hourlyTiyn: rule?.hourlyTiyn ?? 0,
     absentDayDeductionTiyn: rule?.absentDayDeductionTiyn ?? 0,
@@ -418,6 +419,12 @@ function SalaryRuleEditor({
             <div className="form-group">
               <label>ПВХ метрі үшін (₸)</label>
               <MoneyInput valueTiyn={draft.perPvcMeterTiyn ?? 0} onChange={(v) => patch({ perPvcMeterTiyn: v })} />
+            </div>
+          )}
+          {(draft.mode === "PER_MDF_M2" || draft.mode === "MIXED") && (
+            <div className="form-group">
+              <label>МДФ м² үшін (₸)</label>
+              <MoneyInput valueTiyn={draft.perMdfM2Tiyn ?? 0} onChange={(v) => patch({ perMdfM2Tiyn: v })} />
             </div>
           )}
           {(draft.mode === "PER_ORDER" || draft.mode === "MIXED") && (

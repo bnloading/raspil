@@ -19,6 +19,10 @@ const PVC_VISIBLE_STATUSES: ProductionStatus[] = [
   "pvc_started",
   "pvc_completed",
 ];
+// Mirrors firestore.rules' mdfCanSee() exactly — a list query must carry a where clause every
+// candidate document already satisfies, or Firestore fails the WHOLE query the moment any one of
+// them (an unpaid/pre-production МДФ order) would be denied (see file header note).
+const MDF_VISIBLE_STATUSES: ProductionStatus[] = ["mdf_production", "ready", "delivered"];
 
 /**
  * The `orders` collection also holds a handful of documents from the app's pre-rewrite schema
@@ -124,5 +128,26 @@ export function usePvcOrders(uid: string | undefined) {
       query(collection(db, "orders"), where("assignedPvcId", "==", uid)),
     ];
   }, [uid]);
+  return useOrderQueries(queries);
+}
+
+/**
+ * Every МДФ-line order, for the 4 МДФ worker dashboards (ЧПУ/Шкурка/Краска/Вакуум) and the admin
+ * board. One broad query rather than one per stage — a МДФ order is always one job (no assigned*Id
+ * per stage to query on) and stays readable under this same `orderKind` filter through every stage
+ * AND after it reaches "ready", so "done today" work stays visible without a second query. Callers
+ * bucket by `mdfStage`/`mdfStageJobs` client-side, same as useAllOrders' "small shop volume" convention.
+ */
+export function useMdfOrders() {
+  const queries = useMemo(
+    () => [
+      query(
+        collection(db, "orders"),
+        where("orderKind", "==", "mdf_wrap"),
+        where("productionStatus", "in", MDF_VISIBLE_STATUSES),
+      ),
+    ],
+    [],
+  );
   return useOrderQueries(queries);
 }

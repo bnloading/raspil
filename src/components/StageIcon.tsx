@@ -1,4 +1,4 @@
-import { IconCut, IconOrders, IconPvc, IconWarehouse } from "./layout/icons";
+import { IconCut, IconLayers, IconOrders, IconPvc, IconWarehouse } from "./layout/icons";
 import type { StepKey } from "../lib/orderProgress";
 import type { WorkshopBoardStage } from "../types/domain";
 
@@ -16,6 +16,7 @@ const BY_STEP: Record<StepKey, typeof IconCut> = {
   payment: IconOrders,
   cutting: IconCut,
   pvc: IconPvc,
+  mdf: IconLayers,
   ready: IconWarehouse,
 };
 
@@ -24,6 +25,7 @@ const BY_STAGE: Record<WorkshopBoardStage, typeof IconCut> = {
   cutting: IconCut,
   pvc_wait: IconPvc,
   pvc: IconPvc,
+  mdf: IconLayers,
   ready: IconWarehouse,
 };
 

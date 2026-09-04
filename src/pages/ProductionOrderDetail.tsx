@@ -8,8 +8,10 @@ import { AppShell } from "../components/layout/AppShell";
 import { OrderView } from "../components/OrderView";
 import { CuttingActionsPanel } from "../components/CuttingActionsPanel";
 import { PvcActionsPanel } from "../components/PvcActionsPanel";
+import { MdfStageActionsPanel } from "../components/MdfStageActionsPanel";
 import { useOrderDetail } from "../hooks/useOrderDetail";
 import { useToast } from "../hooks";
+import { roleHome, ROLE_TO_MDF_STAGE } from "../lib/rbac";
 import type { Order } from "../types/domain";
 
 /** Shared "full cutting/PVC specification" view for cutter and PVC roles — no prices, no
@@ -22,9 +24,9 @@ export default function ProductionOrderDetail() {
   const { order, parts, statusHistory, payments, loading } = useOrderDetail(id);
   const { message, visible, showToast } = useToast();
 
-  // Shared route (mounted under both /cutting/order/:id and /pvc/order/:id) — pick the
+  // Shared route (mounted under /cutting, /pvc and the 4 МДФ role paths' /order/:id) — pick the
   // role-appropriate list to go back to rather than relying on the current pathname.
-  const backPath = userData?.role === "pvh" ? "/pvc" : "/cutting";
+  const backPath = roleHome(userData?.role);
 
   if (loading || !userData) return <Spinner />;
   if (!order) {
@@ -43,6 +45,8 @@ export default function ProductionOrderDetail() {
     actor && userData.role === "raspil" && (order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started");
   const showPvcActions =
     actor && userData.role === "pvh" && (order.productionStatus === "pvc_queue" || order.productionStatus === "pvc_started");
+  const myMdfStage = ROLE_TO_MDF_STAGE[userData.role];
+  const showMdfActions = actor && myMdfStage && order.orderKind === "mdf_wrap" && order.mdfStage === myMdfStage;
 
   return (
     <AppShell title={`Заказ №${order.orderNumber}`} back={backPath} contentWidth="narrow">
@@ -56,16 +60,17 @@ export default function ProductionOrderDetail() {
 
       {order.adminNote && <div className="worker-manager-note">📋 Менеджер: {order.adminNote}</div>}
 
-      {(showCuttingActions || showPvcActions) && actor && (
+      {(showCuttingActions || showPvcActions || showMdfActions) && actor && (
         <section className="panel-card no-print">
           <div className="panel-head">
             <h3>Әрекеттер</h3>
           </div>
-          {/* One shared note field — cutting and PVC both read/write the same order.productionNote,
-              so whichever stage is live here is exactly where it belongs. */}
+          {/* One shared note field — cutting, PVC and МДФ all read/write the same
+              order.productionNote, so whichever stage is live here is exactly where it belongs. */}
           <ProductionNoteField order={order} onToast={showToast} />
           {showCuttingActions && <CuttingActionsPanel order={order} actor={actor} onToast={showToast} />}
           {showPvcActions && <PvcActionsPanel order={order} actor={actor} onToast={showToast} />}
+          {showMdfActions && <MdfStageActionsPanel order={order} stage={myMdfStage} actor={actor} onToast={showToast} />}
         </section>
       )}
 

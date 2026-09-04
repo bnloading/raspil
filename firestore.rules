@@ -61,12 +61,35 @@ service cloud.firestore {
       return isSignedIn() && isNotBlocked() && role() == 'pvh';
     }
 
+    // The 4 sequential stations of the МДФ (wrapped-panel) production line — a separate line from
+    // распил/ПВХ, sharing customers/payments but not warehouse stock. See src/types/domain.ts's
+    // MdfStage doc comment.
+    function isCnc() {
+      return isSignedIn() && isNotBlocked() && role() == 'cnc';
+    }
+
+    function isSanding() {
+      return isSignedIn() && isNotBlocked() && role() == 'sanding';
+    }
+
+    function isPainting() {
+      return isSignedIn() && isNotBlocked() && role() == 'painting';
+    }
+
+    function isVacuum() {
+      return isSignedIn() && isNotBlocked() && role() == 'vacuum';
+    }
+
+    function isMdfWorker() {
+      return isCnc() || isSanding() || isPainting() || isVacuum();
+    }
+
     function isCustomer() {
       return isSignedIn() && isNotBlocked() && role() == 'customer';
     }
 
     function isStaff() {
-      return isAdmin() || isManager() || isCutter() || isPvc();
+      return isAdmin() || isManager() || isCutter() || isPvc() || isMdfWorker();
     }
 
     function unchanged(fields) {
@@ -89,7 +112,7 @@ service cloud.firestore {
       // name and phone. The only fields this adds are the account's role and its synthesized
       // auth email, which is derived from that same phone.
       allow list: if isAdmin()
-        || (isManager() && resource.data.role in ['raspil', 'pvh'])
+        || (isManager() && resource.data.role in ['raspil', 'pvh', 'cnc', 'sanding', 'painting', 'vacuum'])
         || (isManager() && resource.data.role == 'customer')
         || (isStaff() && resource.data.role in ['admin', 'manager']);
       allow create: if isAdmin() || (isSignedIn() && uid() == userId
@@ -235,6 +258,27 @@ service cloud.firestore {
           || order().assignedPvcId == uid()
         );
       }
+      // Every МДФ worker sees every order that has actually ENTERED the МДФ pipeline (any station,
+      // or already finished) — the dashboard's "upcoming from an earlier station" list (see
+      // useMdfOrders()) needs the whole pipeline, not just their own station, and there is no
+      // warehouse-stock reason (unlike распил) to narrow it further. An order still unpaid/being
+      // priced is not "in the workshop" yet, same rule cutterCanSee/pvcCanSee already enforce.
+      function mdfCanSee() {
+        return isMdfWorker() && order().orderKind == 'mdf_wrap' && (
+          order().productionStatus == 'mdf_production'
+          || order().productionStatus == 'ready'
+          || order().productionStatus == 'delivered'
+        );
+      }
+      function myMdfStage() {
+        return isCnc() ? 'cnc' : isSanding() ? 'sanding' : isPainting() ? 'painting' : isVacuum() ? 'vacuum' : null;
+      }
+      // Editing is scoped to exactly the order's current station, same "only this stage's worker"
+      // rule cutterCanSee/pvcCanEdit already enforce for their lines.
+      function mdfCanEdit() {
+        return isMdfWorker() && order().orderKind == 'mdf_wrap'
+          && order().productionStatus == 'mdf_production' && order().mdfStage == myMdfStage();
+      }
       // The one hard gate of the strict workflow: an order may only newly enter CUTTING_QUEUE if
       // it is already fully paid. Only Admin's unconditional isAdmin() branch below may bypass
       // this (the app additionally requires a typed reason + audit entry before it ever tries).
@@ -246,11 +290,11 @@ service cloud.firestore {
         return order().paymentStatus == 'paid' || order().paymentStatus == 'overpaid';
       }
 
-      allow get: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee();
+      allow get: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee() || mdfCanSee();
       // `list` is evaluated per candidate document, same as `get` — a query only succeeds if
       // EVERY document it could return would pass this check, which is why it must reference
       // resource.data instead of a blanket role check (see file header note on query shapes).
-      allow list: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee();
+      allow list: if isAdmin() || isManager() || isOwner() || cutterCanSee() || pvcCanSee() || mdfCanSee();
 
       allow create: if isAdmin() || (
         // Manager types walk-in orders straight into the order journal. Two hard limits keep the
@@ -320,6 +364,12 @@ service cloud.firestore {
           'assignedCutterId', 'discountTiyn', 'adminNote', 'confirmedSheets',
           'cuttingConsumedAt', 'cuttingConsumedMovementId', 'cuttingConsumedQty'
         ])
+      ) || (
+        mdfCanEdit()
+        && unchanged([
+          'customerId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
+          'discountTiyn', 'adminNote', 'mdfAreaM2', 'mdfFilmColor', 'mdfPricePerM2Tiyn'
+        ])
       );
 
       allow delete: if false; // orders are cancelled, never deleted
@@ -331,7 +381,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isManager()
           || (isCustomer() && parentOrder().customerId == uid())
           || (isCutter() && (parentOrder().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed'] || parentOrder().assignedCutterId == uid()))
-          || (isPvc() && (parentOrder().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed'] || parentOrder().assignedPvcId == uid()));
+          || (isPvc() && (parentOrder().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed'] || parentOrder().assignedPvcId == uid()))
+          || (isMdfWorker() && parentOrder().orderKind == 'mdf_wrap');
         // Manager may correct dimensions/specification any time before the order is fully paid
         // (spec: "Correct the order specification before calculating the final price") — once
         // payment has started, the parts list is frozen like everything else about the order.
@@ -349,7 +400,8 @@ service cloud.firestore {
         allow read: if isAdmin() || isManager()
           || (isCustomer() && parentOrderStatusHistory().customerId == uid())
           || (isCutter() && parentOrderStatusHistory().assignedCutterId == uid())
-          || (isPvc() && parentOrderStatusHistory().assignedPvcId == uid());
+          || (isPvc() && parentOrderStatusHistory().assignedPvcId == uid())
+          || (isMdfWorker() && parentOrderStatusHistory().orderKind == 'mdf_wrap');
         allow create: if isStaff() && request.resource.data.userId == uid();
         allow update, delete: if false; // immutable audit trail
       }

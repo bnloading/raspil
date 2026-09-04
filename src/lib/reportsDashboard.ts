@@ -143,10 +143,14 @@ export function debtOverview(
   const debts = computeCustomerDebts([...orders]).filter((d) => d.debtTiyn > 0);
   const cutoff = now.getTime() - overdueDays * 86_400_000;
 
+  // computeCustomerDebts now reports распил and МДФ debt as separate rows for the same customer
+  // (CustomerDebt.orderKind) — someone owing on both lines must still count once here, since this
+  // is a headcount of who gets chased, not a count of debt rows.
+  const overdueRows = debts.filter((d) => d.oldestDebtAtMs !== null && d.oldestDebtAtMs < cutoff);
   return {
     totalTiyn: debts.reduce((s, d) => s + d.debtTiyn, 0),
-    customers: debts.length,
-    overdue: debts.filter((d) => d.oldestDebtAtMs !== null && d.oldestDebtAtMs < cutoff).length,
+    customers: new Set(debts.map((d) => d.customerKey)).size,
+    overdue: new Set(overdueRows.map((d) => d.customerKey)).size,
   };
 }
 

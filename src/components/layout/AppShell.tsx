@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
+import { departmentOf } from "../../lib/rbac";
 import { getNavForRole, matchNavKey } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -65,7 +66,7 @@ export function AppShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const items = getNavForRole(userData?.role);
+  const items = getNavForRole(userData?.role, userData ? departmentOf(userData) : undefined);
   const activeKey = navKey ?? matchNavKey(location.pathname, location.search, items);
 
   return (

@@ -15,6 +15,7 @@ import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
+import { departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
@@ -237,6 +238,7 @@ function stageStates(order: Order): { cutting: StageIndicator; pvc: StageIndicat
 
 export default function ManagerJournal() {
   const { user, userData } = useAuth();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const navigate = useNavigate();
   const { orders, loading } = useAllOrders();
   const { payments, loading: paymentsLoading } = useAllPayments();
@@ -394,7 +396,13 @@ export default function ManagerJournal() {
 
   useEffect(() => {
     getDocs(collection(db, "paymentMethods"))
-      .then((snap) => setMethods(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PaymentMethodDef, "id">) }))))
+      .then((snap) =>
+        setMethods(
+          snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as Omit<PaymentMethodDef, "id">) }))
+            .filter((m) => methodVisibleTo(m, "ldsp")),
+        ),
+      )
       .catch(() => setMethods([]));
   }, []);
 
@@ -490,6 +498,7 @@ export default function ManagerJournal() {
       : null;
 
     return orders.filter((o) => {
+      if (departmentOfOrder(o) !== myDepartment) return false; // МДФ/ЛДСП journals stay separate
       if (o.productionStatus === "draft") return false; // never submitted — not journal material
       // Folded into another order by "Біріктіру": kept in the database, but it is that order's
       // business now, not a row of its own.
@@ -509,7 +518,7 @@ export default function ManagerJournal() {
       }
       return true;
     }).sort(byLedgerOrder);
-  }, [orders, search, dateFilter, methodFilter, paymentsByOrder]);
+  }, [orders, search, dateFilter, methodFilter, paymentsByOrder, myDepartment]);
 
   const paidFor = useCallback(
     (order: Order) => netPaidTiyn(paymentsByOrder.get(order.id) ?? []),

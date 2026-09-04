@@ -24,7 +24,8 @@ export function useStaff() {
 
   useEffect(() => {
     if (!role) return;
-    const roles: UserRole[] = role === "admin" ? ["manager", "raspil", "pvh"] : ["raspil", "pvh"];
+    const staffRoles: UserRole[] = ["raspil", "pvh", "cnc", "sanding", "painting", "vacuum"];
+    const roles: UserRole[] = role === "admin" ? ["manager", ...staffRoles] : staffRoles;
     getDocs(query(collection(db, "users"), where("role", "in", roles)))
       .then((snap) => {
         setStaff(snap.docs.map((d) => ({ id: d.id, ...(d.data() as UserDoc) })));

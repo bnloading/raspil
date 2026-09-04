@@ -6,6 +6,7 @@ import type {
   SalaryMode,
   SalaryRule,
 } from "../types/domain";
+import { MDF_STAGES } from "../types/domain";
 import { monthKey, dayKey } from "./dates";
 import { jobsOf } from "./orderLines";
 
@@ -26,6 +27,10 @@ export interface SalaryWorkTotals {
   countertopSheets: number;
   mdfSheets: number;
   pvcMeters: number;
+  /** m² of МДФ wrap production this worker finished a station on this period — the separate
+   *  production line (cnc/sanding/painting/vacuum roles), unrelated to mdfSheets above (which is
+   *  a распил-line cutter cutting an МДФ-category sheet — see SalaryRule.perMdfM2Tiyn). */
+  mdfM2Processed: number;
   ordersCompleted: number;
   presentDays: number;
   absentDays: number;
@@ -39,6 +44,7 @@ export const EMPTY_WORK_TOTALS: SalaryWorkTotals = {
   countertopSheets: 0,
   mdfSheets: 0,
   pvcMeters: 0,
+  mdfM2Processed: 0,
   ordersCompleted: 0,
   presentDays: 0,
   absentDays: 0,
@@ -67,6 +73,7 @@ export function measureWork(
   let countertopSheets = 0;
   let mdfSheets = 0;
   let pvcMeters = 0;
+  let mdfM2Processed = 0;
   let ordersCompleted = 0;
 
   for (const order of orders) {
@@ -100,6 +107,17 @@ export function measureWork(
         touchedThisOrder = true;
       }
     }
+    // Distinct from jobsOf() above — a МДФ order has no material lines at all, just up to 4
+    // station jobs on the order itself (see MdfStage's doc comment in types/domain.ts).
+    if (order.orderKind === "mdf_wrap" && order.mdfStageJobs) {
+      for (const stage of MDF_STAGES) {
+        const job = order.mdfStageJobs[stage];
+        if (job?.byUid === userId && job.completedAt && monthKey(job.completedAt.toDate()) === periodKey) {
+          mdfM2Processed += order.mdfAreaM2 ?? 0;
+          touchedThisOrder = true;
+        }
+      }
+    }
     // One completed order counts once, however many of its own lines this worker touched.
     if (touchedThisOrder) ordersCompleted += 1;
   }
@@ -120,7 +138,7 @@ export function measureWork(
 
   return {
     sheetsCut, ldspSheets, hdfSheets, countertopSheets, mdfSheets,
-    pvcMeters, ordersCompleted, presentDays, absentDays, workedHours,
+    pvcMeters, mdfM2Processed, ordersCompleted, presentDays, absentDays, workedHours,
   };
 }
 
@@ -176,6 +194,9 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
     case "PER_PVC_METER":
       baseTiyn = round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0));
       break;
+    case "PER_MDF_M2":
+      baseTiyn = round(work.mdfM2Processed * (rule?.perMdfM2Tiyn ?? 0));
+      break;
     case "PER_ORDER":
       baseTiyn = round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0));
       break;
@@ -188,6 +209,7 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
         (rule?.fixedMonthlyTiyn ?? 0) +
         round(pieceRateTotal(rule, work)) +
         round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0)) +
+        round(work.mdfM2Processed * (rule?.perMdfM2Tiyn ?? 0)) +
         round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0)) +
         round(work.workedHours * (rule?.hourlyTiyn ?? 0));
       break;
@@ -258,6 +280,12 @@ export function availablePeriods(orders: Order[], attendance: AttendanceRecord[]
   for (const o of orders) {
     if (o.cuttingCompletedAt) keys.add(monthKey(o.cuttingCompletedAt.toDate()));
     if (o.pvcCompletedAt) keys.add(monthKey(o.pvcCompletedAt.toDate()));
+    if (o.orderKind === "mdf_wrap" && o.mdfStageJobs) {
+      for (const stage of MDF_STAGES) {
+        const completedAt = o.mdfStageJobs[stage]?.completedAt;
+        if (completedAt) keys.add(monthKey(completedAt.toDate()));
+      }
+    }
   }
   for (const a of attendance) keys.add(a.date.slice(0, 7));
   return [...keys].sort().reverse();

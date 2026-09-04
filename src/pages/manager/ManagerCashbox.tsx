@@ -24,7 +24,8 @@ import { availableMonths } from "../../lib/finance";
 import { formatMoney } from "../../lib/money";
 import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
-import type { CashAccount, Expense, PaymentMethodDef } from "../../types/domain";
+import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
+import type { CashAccount, Department, Expense, PaymentMethodDef } from "../../types/domain";
 
 /**
  * "Касса" — where the shop's money is, and what left it.
@@ -42,10 +43,24 @@ import type { CashAccount, Expense, PaymentMethodDef } from "../../types/domain"
 export default function ManagerCashbox() {
   const { user, userData } = useAuth();
   const isAdmin = userData?.role === "admin";
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const { orders } = useAllOrders();
-  const { payments, loading: paymentsLoading } = useAllPayments();
-  const { expenses, loading: expensesLoading } = useExpenses();
+  const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
+  const { expenses: allExpenses, loading: expensesLoading } = useExpenses();
   const { message, visible, showToast } = useToast();
+
+  // Each line's касса is counted on its own orders/payments/expenses — never summed together, so
+  // ЛДСП revenue never bleeds into the МДФ number or back (see lib/rbac.ts departmentOf()).
+  const orderDeptById = useMemo(() => new Map(orders.map((o) => [o.id, departmentOfOrder(o)])), [orders]);
+  const payments = useMemo(
+    () => allPayments.filter((p) => (orderDeptById.get(p.orderId) ?? "ldsp") === myDepartment),
+    [allPayments, orderDeptById, myDepartment],
+  );
+  const expenses = useMemo(
+    () => allExpenses.filter((e) => (e.department ?? "ldsp") === myDepartment),
+    [allExpenses, myDepartment],
+  );
+  const deptOrders = useMemo(() => orders.filter((o) => departmentOfOrder(o) === myDepartment), [orders, myDepartment]);
 
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   useEffect(() => {
@@ -56,11 +71,11 @@ export default function ManagerCashbox() {
 
   const months = useMemo(() => {
     // The picker always offers this month, even before the first order or expense lands in it.
-    const set = new Set(availableMonths(orders));
+    const set = new Set(availableMonths(deptOrders));
     for (const e of expenses) set.add(e.date.slice(0, 7));
     set.add(dayKey(new Date()).slice(0, 7));
     return [...set].sort().reverse();
-  }, [orders, expenses]);
+  }, [deptOrders, expenses]);
 
   /** "" means all time — the picker's first option, so a new shop sees something on day one. */
   const [period, setPeriod] = useState<string>(() => dayKey(new Date()).slice(0, 7));
@@ -96,9 +111,11 @@ export default function ManagerCashbox() {
       "Кім жазды": e.createdByName,
     }));
 
+  const exportName = `${myDepartment}-касса-шығын`;
+
   return (
     <AppShell
-      title="Касса"
+      title={`Касса — ${DEPARTMENT_LABELS[myDepartment]}`}
       subtitle={`${effectivePeriod ? monthLabel(effectivePeriod) : "Барлық уақыт"} — түсім және шығын`}
       back="/manager"
     >
@@ -108,10 +125,10 @@ export default function ManagerCashbox() {
           <option value="">Барлық уақыт</option>
           {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
         </select>
-        <button className="btn btn-outline btn-sm" onClick={() => exportCsv("касса-шығын", exportRows())}>
+        <button className="btn btn-outline btn-sm" onClick={() => exportCsv(exportName, exportRows())}>
           ⭳ CSV
         </button>
-        <button className="btn btn-outline btn-sm" onClick={() => exportXlsx("касса-шығын", exportRows())}>
+        <button className="btn btn-outline btn-sm" onClick={() => exportXlsx(exportName, exportRows())}>
           ⭳ Excel
         </button>
       </div>
@@ -166,6 +183,7 @@ export default function ManagerCashbox() {
 
           <ExpenseForm
             defaultDate={effectivePeriod ? `${effectivePeriod}-01` : dayKey(new Date())}
+            department={myDepartment}
             onSaved={(name, amountTiyn) => showToast(`✅ ${name} — ${formatMoney(amountTiyn)} жазылды`)}
             onError={showToast}
           />
@@ -243,7 +261,9 @@ export default function ManagerCashbox() {
             </section>
           )}
 
-          {isAdmin && <MethodAccounts methods={methods} setMethods={setMethods} onError={showToast} />}
+          {isAdmin && (
+            <MethodAccounts methods={methods} setMethods={setMethods} department={myDepartment} onError={showToast} />
+          )}
         </>
       )}
 
@@ -261,10 +281,12 @@ export default function ManagerCashbox() {
  */
 function ExpenseForm({
   defaultDate,
+  department,
   onSaved,
   onError,
 }: {
   defaultDate: string;
+  department: Department;
   onSaved: (name: string, amountTiyn: number) => void;
   onError: (message: string) => void;
 }) {
@@ -295,6 +317,7 @@ function ExpenseForm({
         amountTiyn,
         date,
         account,
+        department,
         comment: comment.trim(),
       });
       onSaved(name.trim(), amountTiyn);
@@ -357,12 +380,20 @@ function ExpenseForm({
 function MethodAccounts({
   methods,
   setMethods,
+  department,
   onError,
 }: {
   methods: PaymentMethodDef[];
   setMethods: (next: PaymentMethodDef[]) => void;
+  department: Department;
   onError: (message: string) => void;
 }) {
+  // `methods` stays the full list (computeCashbox above needs every method, both lines', to price
+  // payments correctly) — only what's rendered here is scoped to the viewer's own line, and
+  // `change()` must still map over the FULL array or an optimistic update would drop the other
+  // line's methods from state until the next reload.
+  const visible = methods.filter((m) => methodVisibleTo(m, department));
+
   const change = async (method: PaymentMethodDef, account: CashAccount) => {
     const next = methods.map((m) => (m.id === method.id ? { ...m, account } : m));
     setMethods(next); // optimistic: the balances above recompute as soon as the select changes
@@ -380,7 +411,7 @@ function MethodAccounts({
         <h3>Төлем түрі қай кассаға түседі</h3>
       </div>
       <ul className="cashbox-mapping">
-        {methods.map((m) => (
+        {visible.map((m) => (
           <li key={m.id}>
             <span>{m.name}</span>
             <select className="form-input" value={accountForMethod(m)} onChange={(e) => change(m, e.target.value as CashAccount)}

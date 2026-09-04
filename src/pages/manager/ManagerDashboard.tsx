@@ -12,12 +12,23 @@ import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
 import { exportCsv } from "../../lib/exportTable";
 import { computeKpis, computeProductionBreakdown, computeQueueOrders } from "../../lib/dashboardStats";
+import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 
 export default function ManagerDashboard() {
   const { userData } = useAuth();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const navigate = useNavigate();
-  const { orders, loading: ordersLoading } = useAllOrders();
-  const { payments, loading: paymentsLoading } = useAllPayments();
+  const { orders: allOrders, loading: ordersLoading } = useAllOrders();
+  const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
+
+  // Home page stays scoped to the viewer's own line — a МДФ manager's dashboard never shows ЛДСП
+  // queues/revenue and vice versa (see lib/rbac.ts departmentOf()/departmentOfOrder()).
+  const orders = useMemo(() => allOrders.filter((o) => departmentOfOrder(o) === myDepartment), [allOrders, myDepartment]);
+  const orderDeptById = useMemo(() => new Map(allOrders.map((o) => [o.id, departmentOfOrder(o)])), [allOrders]);
+  const payments = useMemo(
+    () => allPayments.filter((p) => (orderDeptById.get(p.orderId) ?? "ldsp") === myDepartment),
+    [allPayments, orderDeptById, myDepartment],
+  );
 
   const loading = ordersLoading || paymentsLoading;
 

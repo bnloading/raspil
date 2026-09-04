@@ -7,19 +7,42 @@ import { AppShell } from "../../components/layout/AppShell";
 import { PhoneInput } from "../../components/PhoneInput";
 import { useToast } from "../../hooks";
 import { formatPhone } from "../../lib/phone";
-import { ROLE_LABELS } from "../../lib/rbac";
+import { ROLE_LABELS, departmentOf, DEPARTMENT_LABELS } from "../../lib/rbac";
 import { logAudit } from "../../lib/audit";
-import type { UserDoc, UserRole } from "../../types/domain";
+import type { Department, UserDoc, UserRole } from "../../types/domain";
 
 interface UserRow extends UserDoc {
   id: string;
 }
 
-const STAFF_ROLES: UserRole[] = ["admin", "manager", "raspil", "pvh"];
+const STAFF_ROLES: UserRole[] = ["admin", "manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"];
+
+/**
+ * Which roles an admin/manager of one line may create or reassign staff into — the two lines now
+ * run as separate businesses (see lib/rbac.ts departmentOf()), so a МДФ admin manages the МДФ
+ * team only, and a ЛДСП admin manages the ЛДСП team only.
+ */
+const ROLES_FOR_DEPARTMENT: Record<Department, UserRole[]> = {
+  ldsp: ["admin", "manager", "raspil", "pvh"],
+  mdf: ["admin", "manager", "cnc", "sanding", "painting", "vacuum"],
+};
+
+const ROLE_OPTION_LABELS: Partial<Record<UserRole, string>> = {
+  admin: "👑 Админ",
+  manager: "🗂 Менеджер",
+  raspil: "🪚 Распилшик",
+  pvh: "🪟 ПВХ жабыстырушы",
+  cnc: "🖥 ЧПУ операторы",
+  sanding: "🧽 Шкуркалаушы",
+  painting: "🎨 Бояушы",
+  vacuum: "📦 Вакуумшы",
+};
 
 export default function AdminUsers() {
   const auth = useAuth();
   const { userData } = auth;
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
+  const myRoles = ROLES_FOR_DEPARTMENT[myDepartment];
   const { message, visible, showToast } = useToast();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -28,7 +51,7 @@ export default function AdminUsers() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("raspil");
+  const [role, setRole] = useState<UserRole>(myRoles[myRoles.length - 1]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -46,7 +69,7 @@ export default function AdminUsers() {
     return unsub;
   }, []);
 
-  const staff = users.filter((u) => STAFF_ROLES.includes(u.role));
+  const staff = users.filter((u) => STAFF_ROLES.includes(u.role) && departmentOf(u) === myDepartment);
   const customers = users.filter((u) => u.role === "customer");
 
   const handleCreateStaff = async (e: FormEvent) => {
@@ -64,6 +87,9 @@ export default function AdminUsers() {
         email: email.trim(),
         authEmail: email.trim(),
         role,
+        // Only admin/manager carry an explicit department — raspil/pvh/cnc/sanding/painting/vacuum
+        // already imply one from the role itself (see lib/rbac.ts departmentOf()).
+        ...(role === "admin" || role === "manager" ? { department: myDepartment } : {}),
         blocked: false,
         createdAt: new Date(),
       });
@@ -111,7 +137,12 @@ export default function AdminUsers() {
   const handleChangeRole = async (target: UserRow, newRole: UserRole) => {
     if (newRole === target.role) return;
     try {
-      await updateDoc(doc(db, "users", target.id), { role: newRole });
+      await updateDoc(doc(db, "users", target.id), {
+        role: newRole,
+        // Reassigning into admin/manager here only ever happens within the acting admin's own
+        // department list (myRoles), so the promoted account inherits that same department.
+        ...(newRole === "admin" || newRole === "manager" ? { department: myDepartment } : {}),
+      });
       if (auth.user && auth.userData) {
         await logAudit(db, { user: auth.user, userData: auth.userData }, {
           action: "user.role_change",
@@ -172,16 +203,15 @@ export default function AdminUsers() {
             />
           </div>
           <div className="form-group">
-            <label>Рөл</label>
+            <label>Рөл ({DEPARTMENT_LABELS[myDepartment]})</label>
             <select
               className="form-input"
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
-              <option value="admin">👑 Админ</option>
-              <option value="manager">🗂 Менеджер</option>
-              <option value="raspil">🪚 Распилшик</option>
-              <option value="pvh">🪟 ПВХ жабыстырушы</option>
+              {myRoles.map((r) => (
+                <option key={r} value={r}>{ROLE_OPTION_LABELS[r]}</option>
+              ))}
             </select>
           </div>
           <button type="submit" className="btn btn-primary btn-full span-2" disabled={submitting}>
@@ -192,7 +222,7 @@ export default function AdminUsers() {
 
       <div className="panel-card">
         <div className="panel-head">
-          <h3>👷 Персонал</h3>
+          <h3>👷 Персонал — {DEPARTMENT_LABELS[myDepartment]}</h3>
           <span>{staff.length}</span>
         </div>
         {loadingUsers ? (
@@ -222,10 +252,9 @@ export default function AdminUsers() {
                         value={u.role}
                         onChange={(e) => handleChangeRole(u, e.target.value as UserRole)}
                       >
-                        <option value="admin">Админ</option>
-                        <option value="manager">Менеджер</option>
-                        <option value="raspil">Распилшик</option>
-                        <option value="pvh">ПВХ</option>
+                        {myRoles.map((r) => (
+                          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                        ))}
                       </select>
                     </td>
                     <td data-label="Әрекеттер">

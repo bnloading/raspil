@@ -13,6 +13,7 @@ import { IconLayers, IconOrders, IconPvc } from "../../components/layout/icons";
 import { useCustomerOrders } from "../../hooks/useOrders";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
+import { formatMdfArea } from "../../lib/mdfJournal";
 import { customerOrderCode } from "../../lib/orderCode";
 import { formatRelativeDateTime } from "../../lib/dates";
 import { orderTiles } from "../../lib/orderTiles";
@@ -55,7 +56,7 @@ function inBucket(order: Order, bucket: Bucket): boolean {
  * whole reason a customer opens this page while they are waiting.
  */
 function stageLine(order: Order): string {
-  const label = getCustomerStageLabel(order.productionStatus, order.pvcMetersTotal > 0);
+  const label = getCustomerStageLabel(order.productionStatus, order.pvcMetersTotal > 0, order.mdfStage);
   const queued = order.productionStatus === "cutting_queue" || order.productionStatus === "pvc_queue";
   return queued ? `${label} · №${(order.priority ?? 0) + 1}` : label;
 }
@@ -210,32 +211,45 @@ export default function CustomerOrders() {
                     button nested inside an anchor is neither valid nor reliably clickable. */}
                 <Link to={`/order/${o.id}`} className="ocard-link">
                   <div className="corder-head">
-                    <span className="otable-num">{customerOrderCode(o.orderNumber)}</span>
+                    <span className="otable-num">
+                      {customerOrderCode(o.orderNumber)}
+                      {o.orderKind === "mdf_wrap" && <span className="jt-pill jt-tone-muted"> МДФ</span>}
+                    </span>
                     <span className="corder-name">{o.customerName}</span>
                     <span className={`corder-stage is-${getCustomerStageTone(o.productionStatus)}`}>
                       {stageLine(o)}
                     </span>
                   </div>
 
-                  {/* Sheets, edging and ХДФ as three figures rather than one run-on line: they are
-                      counted separately in the shop, and ХДФ takes no edging at all. */}
-                  <div className="corder-tiles">
-                    <span className="corder-tile">
-                      <IconOrders className="corder-tile-icon" />
-                      <b>{tiles.sheets}</b>
-                      <small>лист</small>
-                    </span>
-                    <span className="corder-tile">
-                      <IconPvc className="corder-tile-icon" />
-                      <b>{tiles.pvcMeters} м</b>
-                      <small>ПВХ</small>
-                    </span>
-                    <span className="corder-tile">
-                      <IconLayers className="corder-tile-icon" />
-                      <b>{tiles.hdfSheets}</b>
-                      <small>ХДФ</small>
-                    </span>
-                  </div>
+                  {o.orderKind === "mdf_wrap" ? (
+                    <div className="corder-tiles">
+                      <span className="corder-tile">
+                        <IconLayers className="corder-tile-icon" />
+                        <b>{formatMdfArea(o.mdfAreaM2)}</b>
+                        <small>{o.mdfFilmColor || "пленка көрсетілмеген"}</small>
+                      </span>
+                    </div>
+                  ) : (
+                    // Sheets, edging and ХДФ as three figures rather than one run-on line: they are
+                    // counted separately in the shop, and ХДФ takes no edging at all.
+                    <div className="corder-tiles">
+                      <span className="corder-tile">
+                        <IconOrders className="corder-tile-icon" />
+                        <b>{tiles.sheets}</b>
+                        <small>лист</small>
+                      </span>
+                      <span className="corder-tile">
+                        <IconPvc className="corder-tile-icon" />
+                        <b>{tiles.pvcMeters} м</b>
+                        <small>ПВХ</small>
+                      </span>
+                      <span className="corder-tile">
+                        <IconLayers className="corder-tile-icon" />
+                        <b>{tiles.hdfSheets}</b>
+                        <small>ХДФ</small>
+                      </span>
+                    </div>
+                  )}
 
                   <OrderProgress order={o} />
 

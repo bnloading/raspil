@@ -21,6 +21,15 @@ const BASE_STAGES: Stage[] = [
 ];
 const PVC_STAGE: Stage = { key: "pvc", label: "ПВХ", completionStatus: "pvc_completed" };
 const READY_STAGE: Stage = { key: "ready", label: "Дайын", completionStatus: "ready" };
+// МДФ orders never touch cutting_queue/cutting_completed/pvc_*, so they get their own base list —
+// the 4 stations (ЧПУ/Шкурка/Краска/Вакуум) collapse into one "Өндірісте" stage here, since
+// mdf_production's own position in PRODUCTION_STATUS_ORDER (between paid and ready) is all this
+// index-based done/active check needs; which station exactly is shown elsewhere (getCustomerStageLabel).
+const MDF_BASE_STAGES: Stage[] = [
+  { key: "accepted", label: "Қабылданды", completionStatus: "manager_review" },
+  { key: "paid", label: "Төленді", completionStatus: "paid" },
+  { key: "mdf", label: "Өндірісте", completionStatus: "mdf_production" },
+];
 
 type StageState = "done" | "active" | "pending";
 
@@ -33,7 +42,12 @@ export function OrderProgressStepper({ order }: { order: Order }) {
   if (order.productionStatus === "cancelled") return null;
 
   const needsPvc = order.pvcMetersTotal > 0;
-  const stages = needsPvc ? [...BASE_STAGES, PVC_STAGE, READY_STAGE] : [...BASE_STAGES, READY_STAGE];
+  const stages =
+    order.orderKind === "mdf_wrap"
+      ? [...MDF_BASE_STAGES, READY_STAGE]
+      : needsPvc
+        ? [...BASE_STAGES, PVC_STAGE, READY_STAGE]
+        : [...BASE_STAGES, READY_STAGE];
   const curIdx = STATUS_INDEX[order.productionStatus];
 
   const states: StageState[] = stages.map((stage, i) => {

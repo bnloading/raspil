@@ -21,7 +21,7 @@ export type StepState =
   /** Not applicable to this order at all, e.g. PVC on an order with no edging. */
   | "skipped";
 
-export type StepKey = "payment" | "cutting" | "pvc" | "ready";
+export type StepKey = "payment" | "cutting" | "pvc" | "mdf" | "ready";
 
 export interface ProgressStep {
   key: StepKey;
@@ -33,6 +33,7 @@ const LABELS: Record<StepKey, string> = {
   payment: "Төлем",
   cutting: "Распил",
   pvc: "ПВХ",
+  mdf: "МДФ",
   ready: "Дайын",
 };
 
@@ -56,6 +57,27 @@ export function orderProgress(order: Order): ProgressStep[] {
     : partly ? "active"
     : "problem"; // unpaid is what actually blocks the queue, so it reads as a problem, not "pending"
 
+  const ready: StepState =
+    cancelled ? "skipped"
+    : s === "delivered" ? "done"
+    : s === "ready" ? "done"
+    : "pending";
+
+  // МДФ orders never pass through cutting_queue/pvc_* at all — their 4 stations (ЧПУ/Шкурка/
+  // Краска/Вакуум) collapse into one "МДФ" step here, same as OrderProgressStepper's mdf branch.
+  if (order.orderKind === "mdf_wrap") {
+    const mdf: StepState =
+      cancelled ? "skipped"
+      : reached("ready") ? "done"
+      : s === "mdf_production" ? "active"
+      : "pending";
+    return [
+      { key: "payment", label: LABELS.payment, state: payment },
+      { key: "mdf", label: LABELS.mdf, state: mdf },
+      { key: "ready", label: LABELS.ready, state: ready },
+    ];
+  }
+
   const cutting: StepState =
     cancelled ? "skipped"
     : reached("cutting_completed") ? "done"
@@ -69,12 +91,6 @@ export function orderProgress(order: Order): ProgressStep[] {
     : !hasPvc ? "skipped"
     : reached("pvc_completed") ? "done"
     : s === "pvc_started" || s === "pvc_queue" ? "active"
-    : "pending";
-
-  const ready: StepState =
-    cancelled ? "skipped"
-    : s === "delivered" ? "done"
-    : s === "ready" ? "done"
     : "pending";
 
   return [

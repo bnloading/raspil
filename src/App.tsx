@@ -9,6 +9,7 @@ const Register = lazy(() => import("./pages/Register"));
 const CutterDashboard = lazy(() => import("./pages/CutterDashboard"));
 const CutterHistory = lazy(() => import("./pages/CutterHistory"));
 const PvcDashboard = lazy(() => import("./pages/PvcDashboard"));
+const MdfWorkerDashboard = lazy(() => import("./pages/MdfWorkerDashboard"));
 const ProductionOrderDetail = lazy(() => import("./pages/ProductionOrderDetail"));
 
 const AdminHome = lazy(() => import("./pages/admin/AdminHome"));
@@ -33,6 +34,9 @@ const Assortment = lazy(() => import("./pages/Assortment"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Camera = lazy(() => import("./pages/Camera"));
 
+const AdminMdfHome = lazy(() => import("./pages/admin/AdminMdfHome"));
+const ManagerMdfJournal = lazy(() => import("./pages/manager/ManagerMdfJournal"));
+
 const ManagerDashboard = lazy(() => import("./pages/manager/ManagerDashboard"));
 const ManagerJournal = lazy(() => import("./pages/manager/ManagerJournal"));
 const ManagerDebt = lazy(() => import("./pages/manager/ManagerDebt"));
@@ -47,6 +51,7 @@ const CustomerDashboard = lazy(() => import("./pages/customer/CustomerDashboard"
 const CustomerOrders = lazy(() => import("./pages/customer/CustomerOrders"));
 const CustomerDebt = lazy(() => import("./pages/customer/CustomerDebt"));
 const OrderBuilder = lazy(() => import("./pages/customer/OrderBuilder"));
+const MdfOrderBuilder = lazy(() => import("./pages/customer/MdfOrderBuilder"));
 const OrderDetail = lazy(() => import("./pages/customer/OrderDetail"));
 const Profile = lazy(() => import("./pages/customer/Profile"));
 
@@ -93,6 +98,14 @@ export default function App() {
               element={
                 <RouteGuard roles={["customer"]}>
                   <OrderBuilder />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/order/mdf/new"
+              element={
+                <RouteGuard roles={["customer"]}>
+                  <MdfOrderBuilder />
                 </RouteGuard>
               }
             />
@@ -169,6 +182,14 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/mdf"
+              element={
+                <RouteGuard roles={["admin", "manager"]}>
+                  <AdminMdfHome />
+                </RouteGuard>
+              }
+            />
+            <Route
               path="/admin/reports"
               element={
                 // Есептер (and Manager's own Төлемдер nav item) point here — Manager can view every
@@ -228,7 +249,7 @@ export default function App() {
             <Route
               path="/salary"
               element={
-                <RouteGuard roles={["admin", "manager", "raspil", "pvh"]}>
+                <RouteGuard roles={["admin", "manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"]}>
                   <MySalary />
                 </RouteGuard>
               }
@@ -236,7 +257,7 @@ export default function App() {
             <Route
               path="/my-attendance"
               element={
-                <RouteGuard roles={["admin", "manager", "raspil", "pvh"]}>
+                <RouteGuard roles={["admin", "manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"]}>
                   <MyAttendance />
                 </RouteGuard>
               }
@@ -288,6 +309,14 @@ export default function App() {
               element={
                 <RouteGuard roles={["manager", "admin"]}>
                   <ManagerJournal />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/manager/mdf-journal"
+              element={
+                <RouteGuard roles={["manager", "admin"]}>
+                  <ManagerMdfJournal />
                 </RouteGuard>
               }
             />
@@ -399,6 +428,70 @@ export default function App() {
               path="/pvc/order/:id"
               element={
                 <RouteGuard roles={["pvh"]}>
+                  <ProductionOrderDetail />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/cnc"
+              element={
+                <RouteGuard roles={["cnc"]}>
+                  <MdfWorkerDashboard />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/cnc/order/:id"
+              element={
+                <RouteGuard roles={["cnc"]}>
+                  <ProductionOrderDetail />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/sanding"
+              element={
+                <RouteGuard roles={["sanding"]}>
+                  <MdfWorkerDashboard />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/sanding/order/:id"
+              element={
+                <RouteGuard roles={["sanding"]}>
+                  <ProductionOrderDetail />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/painting"
+              element={
+                <RouteGuard roles={["painting"]}>
+                  <MdfWorkerDashboard />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/painting/order/:id"
+              element={
+                <RouteGuard roles={["painting"]}>
+                  <ProductionOrderDetail />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/vacuum"
+              element={
+                <RouteGuard roles={["vacuum"]}>
+                  <MdfWorkerDashboard />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/vacuum/order/:id"
+              element={
+                <RouteGuard roles={["vacuum"]}>
                   <ProductionOrderDetail />
                 </RouteGuard>
               }

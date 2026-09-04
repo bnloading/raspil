@@ -1,6 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import type { CashAccount, Expense, UserDoc } from "../types/domain";
+import type { CashAccount, Department, Expense, UserDoc } from "../types/domain";
 import { logAudit } from "./audit";
 
 type Actor = { user: User; userData: UserDoc };
@@ -9,18 +9,27 @@ type Actor = { user: User; userData: UserDoc };
  * Logs one real, named expense — "Мусор — 15 000 ₸", "Лист алуға — 20 000 ₸".
  *
  * `account` says which pot it came out of, so the Касса page can take it off the right balance;
- * it defaults to cash, which is what an expense with no account recorded always was.
+ * it defaults to cash, which is what an expense with no account recorded always was. `department`
+ * says which line's касса it belongs to (see lib/cashbox.ts) and defaults to "ldsp" the same way.
  */
 export async function addExpense(
   db: Firestore,
   actor: Actor,
-  data: { name: string; amountTiyn: number; date: string; comment?: string; account?: CashAccount },
+  data: {
+    name: string;
+    amountTiyn: number;
+    date: string;
+    comment?: string;
+    account?: CashAccount;
+    department?: Department;
+  },
 ): Promise<string> {
   const ref = await addDoc(collection(db, "expenses"), {
     name: data.name,
     amountTiyn: data.amountTiyn,
     date: data.date,
     account: data.account ?? "cash",
+    department: data.department ?? "ldsp",
     comment: data.comment ?? "",
     createdByUid: actor.user.uid,
     createdByName: actor.userData.name,

@@ -66,6 +66,15 @@ describe("getNextProductionStatuses", () => {
     expect(getNextProductionStatuses("delivered", false)).toEqual([]);
     expect(getNextProductionStatuses("cancelled", false)).toEqual([]);
   });
+  it("a paid МДФ order enters mdf_production instead of the cutting queue", () => {
+    expect(getNextProductionStatuses("paid", false, true)).toEqual(["mdf_production"]);
+  });
+  it("defaults to the cutting queue when isMdf is omitted", () => {
+    expect(getNextProductionStatuses("paid", false)).toEqual(["cutting_queue"]);
+  });
+  it("mdf_production advances straight to ready", () => {
+    expect(getNextProductionStatuses("mdf_production", false, true)).toEqual(["ready"]);
+  });
 });
 
 describe("isCancellable", () => {

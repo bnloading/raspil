@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { SimpleOrderList } from "../../components/SimpleOrderList";
 import { useAllOrders } from "../../hooks/useOrders";
+import { departmentOfOrder } from "../../lib/rbac";
 
 // Everything the Manager role is responsible for, up to (but not including) the cutting queue.
 const STATUSES = new Set([
@@ -19,7 +20,7 @@ export default function AdminOversightManager() {
   const list = useMemo(
     () =>
       orders
-        .filter((o) => STATUSES.has(o.productionStatus))
+        .filter((o) => STATUSES.has(o.productionStatus) && departmentOfOrder(o) === "ldsp")
         .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)),
     [orders],
   );

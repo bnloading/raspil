@@ -35,7 +35,7 @@ export default function AdminAttendance() {
   const [busyUid, setBusyUid] = useState<string | null>(null);
 
   useEffect(() => {
-    getDocs(query(collection(db, "users"), where("role", "in", ["manager", "raspil", "pvh"])))
+    getDocs(query(collection(db, "users"), where("role", "in", ["manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"])))
       .then((snap) => setStaff(snap.docs.map((d) => ({ id: d.id, ...(d.data() as UserDoc) }))))
       .catch(() => setStaff([]));
   }, []);

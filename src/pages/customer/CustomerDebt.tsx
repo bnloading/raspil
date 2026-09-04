@@ -27,14 +27,19 @@ export default function CustomerDebt() {
   // payments query would be rejected outright for a customer.
   const { byOrder } = usePaymentsForOrders(useMemo(() => billable.map((o) => o.id), [billable]));
   const unpaid = useMemo(() => billable.filter((o) => o.debtTiyn > 0), [billable]);
+  const sumDebt = (list: typeof billable) => list.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0);
   const totals = useMemo(
     () => ({
       ordered: billable.reduce((s, o) => s + o.totalTiyn, 0),
       paid: billable.reduce((s, o) => s + o.paidTiyn, 0),
-      debt: billable.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0),
+      debt: sumDebt(billable),
     }),
     [billable],
   );
+  // Распил and МДФ debt shown separately per the shop's "распильде осынша, МДФ те осынша"
+  // requirement — the same split ManagerDebt.tsx renders for the manager side.
+  const cuttingDebt = useMemo(() => sumDebt(billable.filter((o) => (o.orderKind ?? "cutting") === "cutting")), [billable]);
+  const mdfDebt = useMemo(() => sumDebt(billable.filter((o) => o.orderKind === "mdf_wrap")), [billable]);
 
   const history = useMemo(() => {
     const rows = billable.flatMap((o) =>
@@ -56,6 +61,12 @@ export default function CustomerDebt() {
           {formatMoney(totals.debt)}
         </div>
         <div className="customer-debt-breakdown">
+          {cuttingDebt > 0 && mdfDebt > 0 && (
+            <>
+              <div><span>Распил қарызы</span><strong>{formatMoney(cuttingDebt)}</strong></div>
+              <div><span>МДФ қарызы</span><strong>{formatMoney(mdfDebt)}</strong></div>
+            </>
+          )}
           <div><span>Жалпы заказ сомасы</span><strong>{formatMoney(totals.ordered)}</strong></div>
           <div><span>Төленгені</span><strong>{formatMoney(totals.paid)}</strong></div>
           <div><span>Төленбеген заказ</span><strong>{unpaid.length}</strong></div>
@@ -75,7 +86,10 @@ export default function CustomerDebt() {
           unpaid.map((o) => (
             <Link key={o.id} to={`/order/${o.id}`} className="track-card">
               <div className="track-card-header">
-                <span className="track-card-num">{customerOrderCode(o.orderNumber)}</span>
+                <span className="track-card-num">
+                  {customerOrderCode(o.orderNumber)}
+                  {o.orderKind === "mdf_wrap" && <span className="jt-pill jt-tone-muted"> МДФ</span>}
+                </span>
                 <PaymentStatusBadge status={o.paymentStatus} />
               </div>
               <div className="track-card-meta-row">

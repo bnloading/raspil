@@ -21,6 +21,8 @@ const CUSTOMER_A_UID = "customer-a";
 const CUSTOMER_B_UID = "customer-b";
 const CUTTER_UID = "cutter-1";
 const PVC_UID = "pvc-1";
+const CNC_UID = "cnc-1";
+const SANDING_UID = "sanding-1";
 
 const ORDER_A_ID = "order-a"; // waiting_payment, unpaid — the pre-cutting-queue order under review
 
@@ -49,6 +51,8 @@ beforeEach(async () => {
     await setDoc(doc(db, "users", CUSTOMER_B_UID), { name: "B", role: "customer", blocked: false, phone: "" });
     await setDoc(doc(db, "users", CUTTER_UID), { name: "Cutter", role: "raspil", blocked: false, phone: "" });
     await setDoc(doc(db, "users", PVC_UID), { name: "PVC", role: "pvh", blocked: false, phone: "" });
+    await setDoc(doc(db, "users", CNC_UID), { name: "CNC", role: "cnc", blocked: false, phone: "" });
+    await setDoc(doc(db, "users", SANDING_UID), { name: "Sanding", role: "sanding", blocked: false, phone: "" });
 
     // An order still under manager review — unpaid, not yet priced.
     await setDoc(doc(db, "orders", ORDER_A_ID), {
@@ -115,6 +119,50 @@ beforeEach(async () => {
       orderId: "order-cutting-started",
       qty: 2,
       status: "active",
+    });
+
+    // МДФ line fixtures — unpaid (invisible to workers), at the CNC station, and at the sanding
+    // station (visible to CNC as "upcoming", but not editable by them).
+    await setDoc(doc(db, "orders", "order-mdf-unpaid"), {
+      customerId: CUSTOMER_A_UID,
+      customerName: "A",
+      customerPhone: "77771234567",
+      orderKind: "mdf_wrap",
+      productionStatus: "waiting_payment",
+      paymentStatus: "unpaid",
+      priority: 0,
+      totalTiyn: 50000,
+      paidTiyn: 0,
+      debtTiyn: 50000,
+      mdfAreaM2: 5,
+    });
+    await setDoc(doc(db, "orders", "order-mdf-cnc"), {
+      customerId: CUSTOMER_A_UID,
+      customerName: "A",
+      customerPhone: "77771234567",
+      orderKind: "mdf_wrap",
+      productionStatus: "mdf_production",
+      mdfStage: "cnc",
+      paymentStatus: "paid",
+      priority: 0,
+      totalTiyn: 50000,
+      paidTiyn: 50000,
+      debtTiyn: 0,
+      mdfAreaM2: 5,
+    });
+    await setDoc(doc(db, "orders", "order-mdf-sanding"), {
+      customerId: CUSTOMER_A_UID,
+      customerName: "A",
+      customerPhone: "77771234567",
+      orderKind: "mdf_wrap",
+      productionStatus: "mdf_production",
+      mdfStage: "sanding",
+      paymentStatus: "paid",
+      priority: 0,
+      totalTiyn: 50000,
+      paidTiyn: 50000,
+      debtTiyn: 0,
+      mdfAreaM2: 5,
     });
   });
 });
@@ -261,6 +309,43 @@ describe("PVC worker must never see unpaid orders", () => {
     const db = testEnv.authenticatedContext(PVC_UID).firestore();
     await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { productionStatus: "pvc_queue" }));
     await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { assignedPvcId: PVC_UID }));
+  });
+});
+
+describe("МДФ workers see the whole МДФ pipeline but edit only their own station", () => {
+  it("CNC worker cannot read an unpaid МДФ order", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertFails(getDoc(doc(db, "orders", "order-mdf-unpaid")));
+  });
+
+  it("CNC worker CAN read a paid order sitting at the CNC station", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "orders", "order-mdf-cnc")));
+  });
+
+  it("CNC worker CAN also read an order already ahead at the sanding station (planning visibility)", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "orders", "order-mdf-sanding")));
+  });
+
+  it("CNC worker CAN advance their own station's order", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertSucceeds(updateDoc(doc(db, "orders", "order-mdf-cnc"), { mdfStage: "sanding" }));
+  });
+
+  it("CNC worker CANNOT edit an order already at the sanding station", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertFails(updateDoc(doc(db, "orders", "order-mdf-sanding"), { mdfStage: "painting" }));
+  });
+
+  it("sanding worker cannot see or touch a распил-line order", async () => {
+    const db = testEnv.authenticatedContext(SANDING_UID).firestore();
+    await assertFails(getDoc(doc(db, "orders", "order-cutting-started")));
+  });
+
+  it("CNC worker cannot change an МДФ order's totalTiyn", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertFails(updateDoc(doc(db, "orders", "order-mdf-cnc"), { totalTiyn: 1 }));
   });
 });
 
@@ -665,6 +750,39 @@ describe("customers cannot forge admin/financial fields on their own order", () 
   it("customer cannot assign themselves as the cutter", async () => {
     const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
     await assertFails(updateDoc(doc(db, "orders", ORDER_A_ID), { assignedCutterId: CUSTOMER_A_UID }));
+  });
+});
+
+describe("customer can self-submit a МДФ order (MdfOrderBuilder.tsx), under the same limits as a ЛДСП one", () => {
+  const validMdfOrder = {
+    customerId: CUSTOMER_A_UID,
+    customerName: "A",
+    customerPhone: "77771234567",
+    orderKind: "mdf_wrap",
+    materialId: "",
+    mdfAreaM2: 8.4,
+    mdfFilmColor: "",
+    productionStatus: "submitted",
+    paymentStatus: "unpaid",
+    priority: 0,
+    totalTiyn: 0,
+    paidTiyn: 0,
+    debtTiyn: 0,
+  };
+
+  it("customer CAN create their own submitted МДФ order", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "orders", "mdf-new-1"), validMdfOrder));
+  });
+
+  it("customer cannot create it already paid", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(setDoc(doc(db, "orders", "mdf-new-2"), { ...validMdfOrder, paidTiyn: 5000 }));
+  });
+
+  it("customer cannot create it for someone else", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(setDoc(doc(db, "orders", "mdf-new-3"), { ...validMdfOrder, customerId: CUSTOMER_B_UID }));
   });
 });
 

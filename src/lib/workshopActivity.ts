@@ -31,6 +31,8 @@ export function boardStageFor(order: Pick<Order, "productionStatus" | "pvcMeters
     case "pvc_completed":
     case "ready":
       return "ready";
+    case "mdf_production":
+      return "mdf";
     // Everything before payment (and everything after handover/cancellation) stays off the board:
     // an order the shop hasn't started isn't "in the workshop", and a delivered one has left it.
     default:
@@ -55,13 +57,16 @@ export async function syncWorkshopBoard(db: Firestore, order: Order): Promise<vo
     return;
   }
 
+  const mdfJob = order.mdfStage ? order.mdfStageJobs?.[order.mdfStage] : undefined;
   const estimatedMinutes =
     stage === "cutting" ? order.cuttingEstimatedMinutes ?? 0
     : stage === "pvc" ? order.pvcEstimatedMinutes ?? 0
+    : stage === "mdf" ? mdfJob?.estimatedMinutes ?? 0
     : 0;
   const startedAt =
     stage === "cutting" ? order.cuttingStartedAt ?? null
     : stage === "pvc" ? order.pvcStartedAt ?? null
+    : stage === "mdf" ? mdfJob?.startedAt ?? null
     : null;
 
   await setDoc(ref, {
@@ -69,6 +74,7 @@ export async function syncWorkshopBoard(db: Firestore, order: Order): Promise<vo
     // Trimmed and defaulted rather than written as undefined: Firestore rejects undefined values,
     // and an order typed without a name must not fail the whole status transition.
     customerName: (order.customerName ?? "").trim(),
+    orderKind: order.orderKind ?? "cutting",
     stage,
     queuePosition: order.priority ?? 0,
     needsPvc: order.pvcMetersTotal > 0,

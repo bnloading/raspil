@@ -9,7 +9,22 @@ import type { WorkshopBoardStage, WorkshopActivityEntry } from "../types/domain"
  * customer can watch the shop's progress without learning anything about anyone else's money.
  * The board's first milestone is the queue instead.
  */
-export function boardProgress(stage: WorkshopBoardStage, needsPvc: boolean): ProgressStep[] {
+export function boardProgress(
+  stage: WorkshopBoardStage,
+  needsPvc: boolean,
+  orderKind?: "cutting" | "mdf_wrap",
+): ProgressStep[] {
+  // МДФ orders never pass through cutting/pvc at all — same 3-milestone collapse
+  // lib/orderProgress.ts's mdf branch uses for the order's own (non-public) progress strip.
+  if (orderKind === "mdf_wrap") {
+    const isReady = stage === "ready";
+    return [
+      { key: "payment", label: "Кезек", state: "done" },
+      { key: "mdf", label: "МДФ", state: isReady ? "done" : "active" },
+      { key: "ready", label: "Дайын", state: isReady ? "done" : "pending" },
+    ];
+  }
+
   const past = (...stages: WorkshopBoardStage[]) => stages.includes(stage);
 
   const queue: StepState = past("queue") ? "active" : "done";
@@ -77,6 +92,8 @@ export function boardSummary(stage: WorkshopBoardStage, queuePosition: number): 
       return "ПВХ кезегінде";
     case "pvc":
       return "ПВХ жасалып жатыр";
+    case "mdf":
+      return "МДФ өндірісінде";
     default:
       return "Дайын";
   }

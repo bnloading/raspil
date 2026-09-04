@@ -3,8 +3,21 @@
 
 import type { Timestamp } from "firebase/firestore";
 
-/** Role strings match existing Firestore user docs — 'raspil'/'pvh' are kept as-is (not renamed) so existing accounts keep working. 'manager' is new: processes/prices/queues orders but cannot manage users or delete audit history (see src/lib/rbac.ts). */
-export type UserRole = "admin" | "manager" | "raspil" | "pvh" | "customer";
+/** Role strings match existing Firestore user docs — 'raspil'/'pvh' are kept as-is (not renamed) so existing accounts keep working. 'manager' is new: processes/prices/queues orders but cannot manage users or delete audit history (see src/lib/rbac.ts). 'cnc'/'sanding'/'painting'/'vacuum' are the four sequential stages of the МДФ (wrapped-panel) production line — see MdfStage below. */
+export type UserRole =
+  | "admin"
+  | "manager"
+  | "raspil"
+  | "pvh"
+  | "cnc"
+  | "sanding"
+  | "painting"
+  | "vacuum"
+  | "customer";
+
+/** The two production lines that now run as separate businesses inside one app — see
+ *  lib/rbac.ts's departmentOf() for how a user's line is resolved from role + this field. */
+export type Department = "ldsp" | "mdf";
 
 export interface UserDoc {
   name: string;
@@ -12,6 +25,14 @@ export interface UserDoc {
   email?: string;
   authEmail: string; // the identifier actually used with Firebase Auth (real email for staff, synthesized for customers)
   role: UserRole;
+  /**
+   * Which line an "admin"/"manager" account belongs to — hides the other line's journal, queues
+   * and cashbox from their nav (see lib/rbac.ts departmentOf()). Absent means "ldsp": every
+   * admin/manager account created before the МДФ line got its own team stays on ЛДСП exactly as
+   * before. Worker roles (raspil/pvh vs cnc/sanding/painting/vacuum) already imply a department
+   * from their role and never set this field.
+   */
+  department?: Department;
   blocked: boolean;
   createdAt?: Timestamp;
 }
@@ -202,6 +223,12 @@ export interface PaymentMethodDef {
    * different account, cash handed over by a courier).
    */
   account?: CashAccount;
+  /**
+   * Which line's payment picker offers this method — a named personal-account method (like "Нұр"
+   * for ЛДСП or "Ахжол" for МДФ) only makes sense for the team whose person it names. Unset means
+   * shared (both journals show it, e.g. "Нал / Қолма-қол"). See lib/rbac.ts methodVisibleTo().
+   */
+  department?: Department;
 }
 
 /** Admin-managed monthly-income allocation config — e.g. "5% of revenue goes to equipment upkeep". */
@@ -230,6 +257,9 @@ export interface Expense {
    * were separated was paid out of the drawer, which is what "мусорға 15 000" is.
    */
   account?: CashAccount;
+  /** Which line's касса this was paid out of — see UserDoc.department. Unset means "ldsp": every
+   *  expense logged before the МДФ line got its own касса was a ЛДСП expense. */
+  department?: Department;
   createdByUid: string;
   createdByName: string;
   createdAt?: Timestamp;
@@ -255,6 +285,7 @@ export type ProductionStatus =
   | "pvc_queue" // ПВХ кезегінде
   | "pvc_started" // ПВХ басталды
   | "pvc_completed" // ПВХ аяқталды
+  | "mdf_production" // МДФ өндірісінде — which of the 4 stages is tracked separately, see Order.mdfStage
   | "ready" // Дайын
   | "delivered" // Клиентке берілді
   | "cancelled"; // Бас тартылды
@@ -262,12 +293,74 @@ export type ProductionStatus =
 /** Always derived from paidTiyn vs totalTiyn (src/lib/statuses.ts computePaymentStatus) — never set by hand. */
 export type PaymentStatus = "unpaid" | "partial" | "paid" | "overpaid" | "refunded";
 
+/**
+ * The four sequential stations a МДФ (wrapped-panel) order passes through — CNC-routed, sanded,
+ * painted, then vacuum-film-wrapped. Kept OUT of the exhaustively-switched ProductionStatus union
+ * (which only gains the one "mdf_production" value above) so adding/reordering a station never
+ * touches the dozen existing Record<ProductionStatus, …> tables built for the распил/ПВХ line.
+ */
+export type MdfStage = "cnc" | "sanding" | "painting" | "vacuum";
+export const MDF_STAGES: MdfStage[] = ["cnc", "sanding", "painting", "vacuum"];
+export const MDF_STAGE_LABELS: Record<MdfStage, string> = {
+  cnc: "ЧПУ",
+  sanding: "Шкурка",
+  painting: "Краска",
+  vacuum: "Вакуум",
+};
+
+/** One station's timing/assignment on one МДФ order — see Order.mdfStageJobs. Unlike OrderLineJob,
+ *  this is not index-aligned to material lines: production tracking is always one job per order,
+ *  never several — the CNC/sanding/painting/vacuum stations work the whole order at once, even
+ *  though its area may be built up from several panels (see MdfPanel below). */
+export interface MdfStageJob {
+  startedAt?: Timestamp;
+  estimatedMinutes?: number;
+  expectedCompletionAt?: Timestamp;
+  completedAt?: Timestamp;
+  actualMinutes?: number;
+  byUid?: string;
+  byName?: string;
+}
+
+/** The routed face pattern milled into a МДФ panel before wrapping — a design choice independent
+ *  of the wrap film colour (Order.mdfFilmColor). Fixed set, not an admin-managed catalogue like
+ *  pvcTypes — the shop only ever offers these four. */
+export type MdfPattern = "vyborka" | "riflenka" | "modern" | "kvadro";
+export const MDF_PATTERNS: MdfPattern[] = ["vyborka", "riflenka", "modern", "kvadro"];
+export const MDF_PATTERN_LABELS: Record<MdfPattern, string> = {
+  vyborka: "Выборка",
+  riflenka: "Рифленка",
+  modern: "Модерн",
+  kvadro: "Квадро",
+};
+
+/**
+ * One panel size/quantity/pattern line in a МДФ order's spec — how the customer (or Manager)
+ * actually measures the job, rather than typing a raw area. Order.mdfAreaM2 is always the sum of
+ * `(lengthMm/1000) × (widthMm/1000) × qty` across these — see lib/mdfJournal.ts's
+ * computeMdfPanelsAreaM2 — so the two never disagree. Purely a spec/pricing breakdown: unlike
+ * ЛДСП's CuttingPart, panels carry no per-piece production tracking of their own.
+ */
+export interface MdfPanel {
+  id: string;
+  lengthMm: number;
+  widthMm: number;
+  qty: number;
+  pattern: MdfPattern;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
   customerId?: string;
   customerName: string;
   customerPhone: string;
+  /** Which production line this order belongs to. Absent/undefined means "cutting" — every order
+   *  created before the МДФ line existed, and every ordinary распил/ПВХ order since, so nothing
+   *  downstream has to be migrated. Unrelated to MaterialCategory's "mdf" (a sheet material CUT on
+   *  the распил line, priced per sheet) — "mdf_wrap" is the separate wrapped-panel line (CNC →
+   *  sanding → painting → vacuum), tracked via mdfStage/mdfStageJobs below, not materialId at all. */
+  orderKind?: "cutting" | "mdf_wrap";
   /**
    * Where the sheet comes from. "shop" = bought from us (materialId points at our catalogue);
    * "customer" = the customer brings their own, so there is no catalogue entry and no material
@@ -409,11 +502,27 @@ export interface Order {
   lineJobs?: OrderLineJob[];
   cancelledAt?: Timestamp;
   cancelReason?: string;
+
+  // ─────────────────────────────── МДФ (orderKind === "mdf_wrap") ───────────────────────────────
+  /** Total wrapped area — always the sum of mdfPanels' (length × width × qty) when panels were
+   *  entered (customer/Manager panel form), or typed directly for an older/simpler row. */
+  mdfAreaM2?: number;
+  /** The measured breakdown behind mdfAreaM2 — see MdfPanel's doc comment. Absent on an order
+   *  priced from a raw area alone (no per-panel dimensions given). */
+  mdfPanels?: MdfPanel[];
+  /** Free-text wrap film colour/name, typed by whoever creates the order. */
+  mdfFilmColor?: string;
+  mdfPricePerM2Tiyn?: number;
+  /** Pointer to the current station once productionStatus is "mdf_production". Whether that station
+   *  is merely queued or actively being worked is derived from mdfStageJobs[mdfStage], not stored
+   *  as a separate status value — see MdfStage's doc comment. */
+  mdfStage?: MdfStage;
+  mdfStageJobs?: Partial<Record<MdfStage, MdfStageJob>>;
 }
 
 /** Where an order sits on the public workshop board. Deliberately coarser than ProductionStatus:
  *  the board is a shop-floor progress view, not the internal 16-state machine. */
-export type WorkshopBoardStage = "queue" | "cutting" | "pvc_wait" | "pvc" | "ready";
+export type WorkshopBoardStage = "queue" | "cutting" | "pvc_wait" | "pvc" | "mdf" | "ready";
 
 /**
  * A fully anonymized, publicly-readable snapshot of one order currently on the shop floor — the
@@ -437,6 +546,10 @@ export interface WorkshopActivityEntry {
    * re-syncs it.
    */
   customerName?: string;
+  /** Which line this order belongs to — lets the customer-facing board toggle between распил and
+   *  МДФ views without exposing anything else about the order. Absent on rows synced before this
+   *  existed; treated as "cutting" by every reader, same default as Order.orderKind itself. */
+  orderKind?: "cutting" | "mdf_wrap";
   stage: WorkshopBoardStage;
   queuePosition: number;
   needsPvc: boolean;
@@ -535,6 +648,7 @@ export type SalaryMode =
   | "FIXED_MONTHLY"
   | "PER_SHEET"
   | "PER_PVC_METER"
+  | "PER_MDF_M2"
   | "PER_ORDER"
   | "HOURLY"
   | "MIXED";
@@ -544,6 +658,7 @@ export const SALARY_MODE_LABELS: Record<SalaryMode, string> = {
   FIXED_MONTHLY: "Айлық бекітілген",
   PER_SHEET: "Лист үшін",
   PER_PVC_METER: "ПВХ метрі үшін",
+  PER_MDF_M2: "МДФ м² үшін",
   PER_ORDER: "Заказ үшін",
   HOURLY: "Сағаттық",
   MIXED: "Аралас",
@@ -565,6 +680,10 @@ export interface SalaryRule {
    *  rather than folding МДФ sheets into ldspSheets so a cutter's own material breakdown stays
    *  honest even though the two categories happen to share one rate today. */
   perMdfSheetTiyn?: number;
+  /** Piece rate for the separate МДФ *production line* (cnc/sanding/painting/vacuum roles), per m²
+   *  of wrapped panel — unrelated to perMdfSheetTiyn above, which pays a распил-line cutter for
+   *  cutting an МДФ-category sheet. Falls back to MANUAL (admin types the amount) when unset. */
+  perMdfM2Tiyn?: number;
   perPvcMeterTiyn?: number;
   perOrderTiyn?: number;
   hourlyTiyn?: number;
@@ -599,6 +718,8 @@ export interface SalaryEntry {
   hdfSheets?: number;
   countertopSheets?: number;
   mdfSheets?: number;
+  /** m² of МДФ wrap production credited this period (cnc/sanding/painting/vacuum roles only). */
+  mdfM2Processed?: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;

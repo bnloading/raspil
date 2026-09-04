@@ -40,9 +40,11 @@ export function WorkerSalaryTeaser({ uid, orders = [] }: { uid: string; orders?:
   const detail =
     rule?.mode === "FIXED_MONTHLY"
       ? "Тұрақты айлық"
-      : work.sheetsCut > 0
-        ? `${work.sheetsCut} лист кесілді`
-        : "Әзірге кесілген лист жоқ";
+      : work.mdfM2Processed > 0
+        ? `${work.mdfM2Processed} м² МДФ өңделді`
+        : work.sheetsCut > 0
+          ? `${work.sheetsCut} лист кесілді`
+          : "Әзірге жұмыс жоқ";
 
   return (
     <Link to="/salary" className="worker-stat-card worker-salary-teaser">

@@ -130,6 +130,9 @@ export interface CustomerDebt {
   customerKey: string;
   customerName: string;
   customerPhone: string;
+  /** Which production line this row's debt belongs to — распил and МДФ are reported separately for
+   *  the same customer, per the shop's "распильде осынша, МДФ те осынша" requirement. */
+  orderKind: "cutting" | "mdf_wrap";
   orderTotalTiyn: number;
   paidTiyn: number;
   debtTiyn: number;
@@ -163,16 +166,21 @@ export function customerDebtKey(order: Pick<Order, "customerId" | "customerName"
  * straight into the journal lands on the same customer card as that customer's online orders.
  */
 export function computeCustomerDebts(orders: Order[]): CustomerDebt[] {
-  const byCustomer = new Map<string, CustomerDebt>();
+  const byCustomerLine = new Map<string, CustomerDebt>();
 
   for (const order of orders) {
     if (NON_DEBT_STATUSES.includes(order.productionStatus)) continue;
     const customerKey = customerDebtKey(order);
-    const existing = byCustomer.get(customerKey);
+    const orderKind = order.orderKind ?? "cutting";
+    // распил and МДФ debt are reported separately for the same customer (see CustomerDebt.orderKind),
+    // so the grouping key is customer+line even though customerKey itself stays pure customer identity.
+    const groupKey = `${customerKey}::${orderKind}`;
+    const existing = byCustomerLine.get(groupKey);
     const entry: CustomerDebt = existing ?? {
       customerKey,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
+      orderKind,
       orderTotalTiyn: 0,
       paidTiyn: 0,
       debtTiyn: 0,
@@ -194,10 +202,10 @@ export function computeCustomerDebts(orders: Order[]): CustomerDebt[] {
       }
     }
 
-    if (!existing) byCustomer.set(customerKey, entry);
+    if (!existing) byCustomerLine.set(groupKey, entry);
   }
 
-  return [...byCustomer.values()].sort((a, b) => b.debtTiyn - a.debtTiyn);
+  return [...byCustomerLine.values()].sort((a, b) => b.debtTiyn - a.debtTiyn);
 }
 
 /** One compact material summary line for a journal row, e.g. "6 лист · 89 м ПВХ". */

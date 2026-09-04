@@ -21,8 +21,10 @@ export default function ManagerDebt() {
   const { orders, loading } = useAllOrders();
   const [search, setSearch] = useState("");
   const [onlyOwing, setOnlyOwing] = useState(true);
+  const [lineFilter, setLineFilter] = useState<"cutting" | "mdf_wrap">("cutting");
 
-  const debts = useMemo(() => computeCustomerDebts(orders), [orders]);
+  const allDebts = useMemo(() => computeCustomerDebts(orders), [orders]);
+  const debts = useMemo(() => allDebts.filter((d) => d.orderKind === lineFilter), [allDebts, lineFilter]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -85,6 +87,23 @@ export default function ManagerDebt() {
       </div>
 
       <div className="status-filter-row">
+        <button
+          className={`status-filter-btn${lineFilter === "cutting" ? " active" : ""}`}
+          onClick={() => setLineFilter("cutting")}
+        >
+          <span>Распил</span>
+          <b>{allDebts.filter((d) => d.orderKind === "cutting" && d.debtTiyn > 0).length}</b>
+        </button>
+        <button
+          className={`status-filter-btn${lineFilter === "mdf_wrap" ? " active" : ""}`}
+          onClick={() => setLineFilter("mdf_wrap")}
+        >
+          <span>МДФ</span>
+          <b>{allDebts.filter((d) => d.orderKind === "mdf_wrap" && d.debtTiyn > 0).length}</b>
+        </button>
+      </div>
+
+      <div className="status-filter-row">
         <button className={`status-filter-btn${onlyOwing ? " active" : ""}`} onClick={() => setOnlyOwing(true)}>
           <span>Қарызы барлар</span>
           <b>{debts.filter((d) => d.debtTiyn > 0).length}</b>
@@ -105,7 +124,7 @@ export default function ManagerDebt() {
           </div>
         ) : (
           filtered.map((d) => (
-            <div key={d.customerKey} className="track-card debt-card">
+            <div key={`${d.customerKey}:${d.orderKind}`} className="track-card debt-card">
               <div className="track-card-header">
                 <span className="track-card-num">{d.customerName}</span>
                 <strong className={d.debtTiyn > 0 ? "jt-debt" : "jt-muted"}>{formatMoney(d.debtTiyn)}</strong>
@@ -122,7 +141,11 @@ export default function ManagerDebt() {
               <div className="track-card-meta-row">
                 <button
                   className="btn btn-outline btn-sm"
-                  onClick={() => navigate(`/manager/journal?q=${encodeURIComponent(d.customerName)}`)}
+                  onClick={() =>
+                    navigate(
+                      `${d.orderKind === "mdf_wrap" ? "/manager/mdf-journal" : "/manager/journal"}?q=${encodeURIComponent(d.customerName)}`,
+                    )
+                  }
                 >
                   Заказдарын көру →
                 </button>

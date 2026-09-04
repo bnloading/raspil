@@ -11,6 +11,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
+import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_STATUS_ORDER } from "../../lib/statuses";
 import type { Order, ProductionStatus } from "../../types/domain";
 
@@ -18,7 +19,12 @@ const PAGE_SIZE = 20;
 
 export default function AdminOrders() {
   const { userData } = useAuth();
-  const { orders, loading } = useAllOrders();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
+  const { orders: allOrders, loading } = useAllOrders();
+  const orders = useMemo(
+    () => allOrders.filter((o) => departmentOfOrder(o) === myDepartment),
+    [allOrders, myDepartment],
+  );
   const { message, visible, showToast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ProductionStatus>("all");

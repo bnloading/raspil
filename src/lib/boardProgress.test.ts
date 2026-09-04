@@ -34,6 +34,20 @@ describe("boardProgress", () => {
     expect(at("cutting", false).ПВХ).toBe("skipped");
     expect(at("ready", false).ПВХ).toBe("skipped");
   });
+
+  describe("МДФ orders", () => {
+    it("collapses to three milestones instead of the распил/ПВХ four", () => {
+      expect(boardProgress("mdf", true, "mdf_wrap").map((s) => s.label)).toEqual(["Кезек", "МДФ", "Дайын"]);
+    });
+    it("МДФ step is active while in production, done once ready", () => {
+      const mdf = Object.fromEntries(boardProgress("mdf", true, "mdf_wrap").map((s) => [s.label, s.state]));
+      expect(mdf.МДФ).toBe("active");
+      expect(mdf.Дайын).toBe("pending");
+      const ready = Object.fromEntries(boardProgress("ready", true, "mdf_wrap").map((s) => [s.label, s.state]));
+      expect(ready.МДФ).toBe("done");
+      expect(ready.Дайын).toBe("done");
+    });
+  });
 });
 
 describe("boardSummary", () => {
@@ -47,6 +61,7 @@ describe("boardSummary", () => {
     expect(boardSummary("pvc_wait", 0)).toBe("ПВХ кезегінде");
     expect(boardSummary("pvc", 0)).toBe("ПВХ жасалып жатыр");
     expect(boardSummary("ready", 0)).toBe("Дайын");
+    expect(boardSummary("mdf", 0)).toBe("МДФ өндірісінде");
   });
 });
 

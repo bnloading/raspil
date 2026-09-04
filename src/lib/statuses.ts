@@ -14,6 +14,7 @@ export const PRODUCTION_STATUS_LABELS: Record<ProductionStatus, string> = {
   pvc_queue: "ПВХ кезегінде",
   pvc_started: "ПВХ басталды",
   pvc_completed: "ПВХ аяқталды",
+  mdf_production: "МДФ өндірісінде",
   ready: "Дайын",
   delivered: "Клиентке берілді",
   cancelled: "Бас тартылды",
@@ -33,6 +34,7 @@ export const PRODUCTION_STATUS_ORDER: ProductionStatus[] = [
   "pvc_queue",
   "pvc_started",
   "pvc_completed",
+  "mdf_production",
   "ready",
   "delivered",
   "cancelled",
@@ -52,6 +54,7 @@ export const PRODUCTION_STATUS_COLOR: Record<ProductionStatus, string> = {
   pvc_queue: "amber",
   pvc_started: "amber",
   pvc_completed: "amber",
+  mdf_production: "amber",
   ready: "green",
   delivered: "green",
   cancelled: "red",
@@ -113,6 +116,7 @@ export function canEnterCuttingQueue(paymentStatus: PaymentStatus): boolean {
 export function getNextProductionStatuses(
   current: ProductionStatus,
   needsPvc: boolean,
+  isMdf: boolean = false,
 ): ProductionStatus[] {
   switch (current) {
     case "draft":
@@ -128,7 +132,7 @@ export function getNextProductionStatuses(
     case "partially_paid":
       return ["paid"];
     case "paid":
-      return ["cutting_queue"];
+      return isMdf ? ["mdf_production"] : ["cutting_queue"];
     case "cutting_queue":
       return ["cutting_started"];
     case "cutting_started":
@@ -140,6 +144,8 @@ export function getNextProductionStatuses(
     case "pvc_started":
       return ["pvc_completed"];
     case "pvc_completed":
+      return ["ready"];
+    case "mdf_production":
       return ["ready"];
     case "ready":
       return ["delivered"];
