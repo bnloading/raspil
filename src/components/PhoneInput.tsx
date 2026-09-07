@@ -21,7 +21,15 @@ export function PhoneInput({
   className?: string;
 }) {
   const [touched, setTouched] = useState(false);
-  const digits = nationalDigits(value);
+  // `value` is either what this component itself last emitted ("+7" + up to 10 national digits —
+  // strip that known literal prefix before re-parsing) or a stored number with no "+" at all
+  // ("77011234567", straight from Firestore's `phone` field — nationalDigits' own country-code
+  // heuristic handles that case). Calling nationalDigits directly on "+7<digits>" is what used to
+  // go wrong: for any КZ number, the national part itself typically starts with "7" too (every
+  // 7xx mobile prefix), so re-deriving digits from the prefixed value re-added a phantom leading
+  // "7" on every keystroke — each one compounding into the next until real digits got pushed off
+  // the ten-digit cap and appeared to "disappear" while typing.
+  const digits = nationalDigits(value.startsWith("+7") ? value.slice(2) : value);
   const valid = digits.length === 0 || normalizePhone(value) !== null;
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {

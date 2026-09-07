@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useSalaryEntries, useSalaryRule, useAttendance } from "../hooks/useSalary";
 import { useMaterials } from "../hooks/useMaterials";
@@ -31,6 +32,9 @@ export function WorkerSalaryTeaser({
   const { rule } = useSalaryRule(uid);
   const { records } = useAttendance(uid);
   const { materials } = useMaterials(false);
+  // Off by default on every load — the home screen is the most likely to be glanced at by someone
+  // else in the workshop, so the actual figure only ever shows after a deliberate tap.
+  const [revealed, setRevealed] = useState(false);
 
   if (hideSalary) return null;
 
@@ -62,7 +66,21 @@ export function WorkerSalaryTeaser({
         <div className="worker-stat-cap">
           Осы айдағы айлық{isEstimate && <span className="worker-salary-est"> · болжам</span>}
         </div>
-        <div className="worker-salary-amount">{formatMoney(amountTiyn)}</div>
+        <div className="worker-salary-amount">
+          {revealed ? formatMoney(amountTiyn) : "•••••• ₸"}
+          <button
+            type="button"
+            className="worker-salary-reveal-btn"
+            style={{ background: "none", border: "none", cursor: "pointer", marginLeft: 8, fontSize: "0.8rem" }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setRevealed((r) => !r);
+            }}
+          >
+            {revealed ? "🙈" : "👁"}
+          </button>
+        </div>
         <div className="worker-salary-detail">{detail}</div>
         <span className="worker-salary-link">Толығырақ →</span>
       </div>

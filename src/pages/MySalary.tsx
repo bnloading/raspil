@@ -25,6 +25,9 @@ export default function MySalary() {
   const { entries, loading } = useSalaryEntries(user?.uid);
   const { adjustments } = useSalaryAdjustments(user?.uid);
   const [period, setPeriod] = useState<string>(monthKey(new Date()));
+  // Off by default on every visit — money is only ever plain-visible after a deliberate tap, not
+  // whoever happens to glance at the phone screen next to a worker in the workshop.
+  const [revealed, setRevealed] = useState(false);
 
   const periods = useMemo(() => {
     const keys = new Set<string>([monthKey(new Date()), ...entries.map((e) => e.periodKey)]);
@@ -57,6 +60,23 @@ export default function MySalary() {
         </select>
       </div>
 
+      {(advanceInfo.entries.length > 0 || entry) && !revealed && (
+        <div className="panel-card empty-state">
+          <div className="icon">🔒</div>
+          <p>Айлық сомасы жасырылған</p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ marginTop: 12 }}
+            onClick={() => setRevealed(true)}
+          >
+            👁 Айлықты көрсету
+          </button>
+        </div>
+      )}
+
+      {(revealed || (advanceInfo.entries.length === 0 && !entry)) && (
+        <>
       {/* Advances are shown whether or not the month has been calculated yet: they are handed over
           mid-month, so a worker asking "how much have I already taken?" must get an answer before
           payday, not only after the Admin runs the calculation. */}
@@ -202,6 +222,8 @@ export default function MySalary() {
               </div>
             </section>
           )}
+        </>
+      )}
         </>
       )}
     </AppShell>
