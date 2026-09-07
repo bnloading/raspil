@@ -50,12 +50,18 @@ function expense(overrides: Partial<Expense> = {}): Expense {
   };
 }
 
-const run = (args: { payments?: Payment[]; expenses?: Expense[]; period?: string | null }) =>
+const run = (args: {
+  payments?: Payment[];
+  expenses?: Expense[];
+  period?: string | null;
+  openingBalanceTiyn?: Partial<Record<"deposit" | "cash", number>>;
+}) =>
   computeCashbox({
     payments: args.payments ?? [],
     expenses: args.expenses ?? [],
     methods,
     period: args.period === undefined ? "2026-08" : args.period,
+    openingBalanceTiyn: args.openingBalanceTiyn,
   });
 
 const of = (s: ReturnType<typeof run>, account: "deposit" | "cash") =>
@@ -172,6 +178,25 @@ describe("computeCashbox — the two pots", () => {
       ],
     });
     expect(s.totalInTiyn).toBe(T(170000));
+  });
+
+  it("folds an opening balance into the deposit's all-time Қалдық", () => {
+    const s = run({
+      period: null,
+      payments: [payment({ methodId: "nur", amountTiyn: T(50000) })],
+      openingBalanceTiyn: { deposit: T(3421427) },
+    });
+    expect(of(s, "deposit").balanceTiyn).toBe(T(3471427));
+    expect(s.totalBalanceTiyn).toBe(T(3471427));
+  });
+
+  it("never applies the opening balance to a specific month's Қалдық", () => {
+    const s = run({
+      period: "2026-08",
+      payments: [payment({ methodId: "nur", amountTiyn: T(50000) })],
+      openingBalanceTiyn: { deposit: T(3421427) },
+    });
+    expect(of(s, "deposit").balanceTiyn).toBe(T(50000));
   });
 
   it("always reports both pots, even in a month nothing happened", () => {

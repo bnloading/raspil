@@ -2203,7 +2203,11 @@ function JournalDetailPanel({
       return {
         ...prev,
         lines,
-        ...(rates.cuttingPerSheetTiyn > 0 ? { cuttingCostTiyn: rates.cuttingPerSheetTiyn * sheets } : {}),
+        // Unconditional, like the new-row form below: switching a line FROM a customer's own
+        // board (кесу-priced) BACK to a shop sheet must zero the стale cutting fee, not leave it
+        // stacked on top of the shop sheet's own selling price — that was the bug (a shop
+        // material's price plus a leftover кесу charge quietly summed into "артық" total).
+        cuttingCostTiyn: rates.cuttingPerSheetTiyn * sheets,
       };
     });
   };

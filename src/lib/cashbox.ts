@@ -87,17 +87,23 @@ function emptyAccount(account: CashAccount): AccountSummary {
  * A payment is dated by `paymentDate` (when the money actually arrived), not by the order it
  * settles — an order billed in March and paid in April is April's cash, and the drawer knows it.
  * Reversed payments never count: the money went back.
+ *
+ * `openingBalanceTiyn` is what was already in a pot before this app started tracking money —
+ * folded into that account's Қалдық only when `period` is null (a specific month reports flow
+ * *during* that month, which an opening balance from before the app existed has no part in).
  */
 export function computeCashbox({
   payments,
   expenses,
   methods,
   period,
+  openingBalanceTiyn = {},
 }: {
   payments: Payment[];
   expenses: Expense[];
   methods: PaymentMethodDef[];
   period: string | null;
+  openingBalanceTiyn?: Partial<Record<CashAccount, number>>;
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
   const summaries = new Map<CashAccount, AccountSummary>(
@@ -138,9 +144,10 @@ export function computeCashbox({
 
   const accounts = CASH_ACCOUNTS.map((account) => {
     const summary = summaries.get(account)!;
+    const opening = period === null ? openingBalanceTiyn[account] ?? 0 : 0;
     return {
       ...summary,
-      balanceTiyn: summary.inTiyn - summary.outTiyn,
+      balanceTiyn: summary.inTiyn - summary.outTiyn + opening,
       byMethod: [...byMethod.get(account)!.values()].sort((a, b) => b.amountTiyn - a.amountTiyn),
     };
   });

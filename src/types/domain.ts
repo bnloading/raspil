@@ -902,6 +902,14 @@ export interface ApplicationSettings {
   cuttingPricePerSheetTiyn: number;
   pvcThicknessOptionsMm: number[];
   companyName: string;
+  /**
+   * Balance already sitting in each line's pot before this app started tracking money — added to
+   * that line's "Барлық уақыт" (all-time) Қалдық on Касса, since the computed in/out flow only
+   * ever covers what moved through the app, never what was there before it existed. Keyed by
+   * department first because ЛДСП and МДФ now run separate cash accounts (see lib/rbac.ts
+   * departmentOf()); a department or account absent from the map means 0. Admin-editable on Касса.
+   */
+  cashOpeningBalanceTiyn?: Partial<Record<Department, Partial<Record<CashAccount, number>>>>;
 }
 
 /** The columns the cutting-program CSV export can include, in the spec's default order. */

@@ -7,6 +7,7 @@ const DEFAULTS: ApplicationSettings = {
   cuttingPricePerSheetTiyn: 5_000_000, // documented default: 50 000 ₸ per sheet, admin-editable
   pvcThicknessOptionsMm: [0.4, 1, 2],
   companyName: "Цех Трекер",
+  cashOpeningBalanceTiyn: {},
 };
 
 export function useAppSettings() {

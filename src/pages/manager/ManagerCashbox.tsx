@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
+import { MoneyInput } from "../../components/MoneyInput";
 import { NumberField } from "../../components/NumberField";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
+import { useAppSettings } from "../../hooks/useAppSettings";
 import { useExpenses } from "../../hooks/useExpenses";
 import { addExpense, deleteExpense } from "../../lib/expenses";
 import {
@@ -62,6 +64,9 @@ export default function ManagerCashbox() {
   );
   const deptOrders = useMemo(() => orders.filter((o) => departmentOfOrder(o) === myDepartment), [orders, myDepartment]);
 
+  const { settings } = useAppSettings();
+  const openingBalanceTiyn = settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {};
+
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   useEffect(() => {
     getDocs(collection(db, "paymentMethods"))
@@ -82,8 +87,8 @@ export default function ManagerCashbox() {
   const effectivePeriod = period === "" ? null : period;
 
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod }),
-    [payments, expenses, methods, effectivePeriod],
+    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn }),
+    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn],
   );
   const rows = useMemo(() => expensesInPeriod(expenses, effectivePeriod), [expenses, effectivePeriod]);
   const groups = useMemo(() => groupExpensesByName(rows), [rows]);
@@ -147,6 +152,12 @@ export default function ManagerCashbox() {
                 <div className="cashbox-balance">
                   <span className="cashbox-balance-label">Қалдық</span>
                   <strong className={acc.balanceTiyn < 0 ? "is-negative" : ""}>{formatMoney(acc.balanceTiyn)}</strong>
+                  {effectivePeriod === null && (openingBalanceTiyn[acc.account] ?? 0) > 0 && (
+                    <span className="cashbox-count">
+                      {" "}
+                      (оның ішінде бастапқы {formatMoney(openingBalanceTiyn[acc.account]!)})
+                    </span>
+                  )}
                 </div>
                 <dl className="cashbox-flow">
                   <div>
@@ -263,6 +274,14 @@ export default function ManagerCashbox() {
 
           {isAdmin && (
             <MethodAccounts methods={methods} setMethods={setMethods} department={myDepartment} onError={showToast} />
+          )}
+
+          {isAdmin && (
+            <OpeningBalanceEditor
+              department={myDepartment}
+              openingBalanceTiyn={openingBalanceTiyn}
+              onError={showToast}
+            />
           )}
         </>
       )}
@@ -418,6 +437,63 @@ function MethodAccounts({
               aria-label={`${m.name} — кассасы`}>
               {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
             </select>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The balance already sitting in each pot before this app started tracking money — Admin only,
+ * one number per pot, applied only to "Барлық уақыт" (see lib/cashbox.ts computeCashbox). Written
+ * straight to applicationSettings/global, scoped under the admin's own department: ЛДСП and МДФ
+ * now run separate cash accounts, so a starting balance belongs to one line, not both.
+ */
+function OpeningBalanceEditor({
+  department,
+  openingBalanceTiyn,
+  onError,
+}: {
+  department: Department;
+  openingBalanceTiyn: Partial<Record<CashAccount, number>>;
+  onError: (message: string) => void;
+}) {
+  const [saving, setSaving] = useState<CashAccount | null>(null);
+
+  const change = async (account: CashAccount, valueTiyn: number) => {
+    setSaving(account);
+    try {
+      await setDoc(
+        doc(db, "applicationSettings", "global"),
+        { cashOpeningBalanceTiyn: { [department]: { [account]: valueTiyn } } },
+        { merge: true },
+      );
+    } catch (err: unknown) {
+      onError("Қате: " + (err as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <section className="panel-card">
+      <div className="panel-head">
+        <h3>Бастапқы сумма — {DEPARTMENT_LABELS[department]}</h3>
+      </div>
+      <p className="form-hint">
+        Бұл қосымшаны қолдана бастаудан бұрын кассада тұрған сома. Тек "Барлық уақыт" қалдығына қосылады.
+      </p>
+      <ul className="cashbox-mapping">
+        {CASH_ACCOUNTS.map((a) => (
+          <li key={a}>
+            <span>{CASH_ACCOUNT_LABELS[a]}</span>
+            <MoneyInput
+              valueTiyn={openingBalanceTiyn[a] ?? 0}
+              onChange={(tiyn) => change(a, tiyn)}
+              placeholder="0"
+            />
+            {saving === a && <span className="cashbox-count"> сақталуда…</span>}
           </li>
         ))}
       </ul>
