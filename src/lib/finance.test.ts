@@ -231,6 +231,101 @@ describe("computeFinanceSummary — monthly money", () => {
   });
 });
 
+describe("computeFinanceSummary — есеп басталатын күн (accounting restart)", () => {
+  const expense = (date: string, amountTiyn: number) => ({
+    id: date, name: "Шығын", amountTiyn, date,
+    createdByUid: "u1", createdByName: "Manager",
+  });
+
+  it("leaves out everything that moved before the start date", () => {
+    const s = run({
+      period: null,
+      startDate: "2026-08-15",
+      orders: [
+        order({ id: "old", totalTiyn: T(400000), createdAt: at("2026-08-10") }),
+        order({ id: "new", totalTiyn: T(120000), createdAt: at("2026-08-20") }),
+      ],
+      payments: [
+        payment({ id: "old", amountTiyn: T(400000), paymentDate: at("2026-08-10") }),
+        payment({ id: "new", amountTiyn: T(90000), paymentDate: at("2026-08-20") }),
+      ],
+      expenses: [expense("2026-08-01", T(300000)), expense("2026-08-20", T(15000))],
+    });
+    expect(s.billedTiyn).toBe(T(120000));
+    expect(s.receivedTiyn).toBe(T(90000));
+    expect(s.fixedExpensesTiyn).toBe(T(15000));
+    expect(s.orderCount).toBe(1);
+  });
+
+  it("counts the start date itself — the restart day is in, not out", () => {
+    const s = run({
+      period: null,
+      startDate: "2026-08-15",
+      orders: [order({ id: "a", totalTiyn: T(70000), createdAt: at("2026-08-15") })],
+      expenses: [expense("2026-08-15", T(5000))],
+    });
+    expect(s.billedTiyn).toBe(T(70000));
+    expect(s.fixedExpensesTiyn).toBe(T(5000));
+  });
+
+  it("moves revenue and expenses together — never one without the other", () => {
+    // Dropping the old expenses while keeping the old orders would report a month's revenue
+    // against no costs at all, which reads as profit the shop never made.
+    const args = {
+      period: null,
+      orders: [order({ id: "old", totalTiyn: T(400000), createdAt: at("2026-08-10") })],
+      expenses: [expense("2026-08-10", T(300000))],
+    };
+    const before = run(args);
+    const after = run({ ...args, startDate: "2026-08-15" });
+    expect(before.billedTiyn).toBe(T(400000));
+    expect(before.fixedExpensesTiyn).toBe(T(300000));
+    expect(after.billedTiyn).toBe(0);
+    expect(after.fixedExpensesTiyn).toBe(0);
+  });
+
+  it("counts everything when no start date is set, exactly as before", () => {
+    const s = run({
+      period: null,
+      orders: [order({ id: "old", totalTiyn: T(400000), createdAt: at("2026-08-10") })],
+      expenses: [expense("2026-08-01", T(300000))],
+    });
+    expect(s.billedTiyn).toBe(T(400000));
+    expect(s.fixedExpensesTiyn).toBe(T(300000));
+  });
+});
+
+describe("computeFinanceSummary — uncosted sheets", () => {
+  it("counts sheets whose material has no purchase price, so the page can say the profit is high", () => {
+    const s = run({
+      orders: [
+        order({ id: "a", materialId: "priced", estimatedSheets: 4, confirmedSheets: 4, totalTiyn: T(100000) }),
+        order({ id: "b", materialId: "unpriced", estimatedSheets: 6, confirmedSheets: 6, totalTiyn: T(90000) }),
+      ],
+      purchaseByMaterialId: new Map([["priced", T(1500)]]),
+    });
+    expect(s.uncostedSheets).toBe(6);
+    // Only the priced sheets contribute a cost; the rest inflate the margin, which is the point.
+    expect(s.costTiyn).toBe(T(6000));
+  });
+
+  it("is zero once every material on the period's orders has a price", () => {
+    const s = run({
+      orders: [order({ id: "a", materialId: "priced", estimatedSheets: 4, confirmedSheets: 4 })],
+      purchaseByMaterialId: new Map([["priced", T(1500)]]),
+    });
+    expect(s.uncostedSheets).toBe(0);
+  });
+
+  it("treats a recorded price of zero as no price — a free sheet is not a real cost", () => {
+    const s = run({
+      orders: [order({ id: "a", materialId: "zero", estimatedSheets: 3, confirmedSheets: 3 })],
+      purchaseByMaterialId: new Map([["zero", 0]]),
+    });
+    expect(s.uncostedSheets).toBe(3);
+  });
+});
+
 describe("availableMonths", () => {
   it("lists only months with billable orders, newest first", () => {
     const months = availableMonths([

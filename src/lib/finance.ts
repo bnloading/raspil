@@ -1,4 +1,4 @@
-import { monthKey } from "./dates";
+import { dayKey, monthKey } from "./dates";
 import { monthlyExpensesTotal } from "./expenses";
 import { linesOf } from "./orderMerge";
 import type { Expense, ExpenseCategory, Order, Payment } from "../types/domain";
@@ -38,6 +38,14 @@ export interface FinanceSummary {
   /** Gross profit less every allocation above, and less fixedExpensesTiyn. */
   netProfitTiyn: number;
   orderCount: number;
+  /**
+   * Sheets billed in the period whose material has no purchase price recorded.
+   *
+   * Those sheets cost 0 in `costTiyn` (see orderCostTiyn — it will not invent a price), so every
+   * profit figure above is overstated by whatever they actually cost. The number is carried out
+   * of here so the page can say so plainly instead of presenting a margin nobody earned.
+   */
+  uncostedSheets: number;
 }
 
 /** Orders that represent real money: a draft was never submitted and a cancellation was undone. */
@@ -80,6 +88,7 @@ export function computeFinanceSummary({
   categories,
   expenses = [],
   period,
+  startDate = null,
 }: {
   orders: Order[];
   payments: Payment[];
@@ -90,10 +99,19 @@ export function computeFinanceSummary({
   expenses?: Expense[];
   /** YYYY-MM in Asia/Almaty, or null for all time. */
   period: string | null;
+  /**
+   * "YYYY-MM-DD" the shop's accounting restarts on (ApplicationSettings.cashStartDate) — orders
+   * billed, money received and expenses paid before it are left out of every figure here, exactly
+   * as they are on Касса. Both sides move together on purpose: dropping the old expenses while
+   * keeping the old orders would report a month's revenue against no costs at all, which is worse
+   * than either counting everything or counting nothing. Unset means count everything, as before.
+   */
+  startDate?: string | null;
 }): FinanceSummary {
   const inPeriod = (ts: { seconds: number } | undefined): boolean => {
+    if (!ts) return period === null && !startDate;
+    if (startDate && dayKey(ts) < startDate) return false;
     if (period === null) return true;
-    if (!ts) return false;
     return monthKey(ts) === period;
   };
 
@@ -102,6 +120,15 @@ export function computeFinanceSummary({
   const billedTiyn = billedOrders.reduce((s, o) => s + o.totalTiyn, 0);
   const debtTiyn = billedOrders.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0);
   const costTiyn = billedOrders.reduce((s, o) => s + orderCostTiyn(o, purchaseByMaterialId), 0);
+  // Counted the same way the cost is, line by line, so the two can never disagree about which
+  // sheets were actually priced.
+  const uncostedSheets = billedOrders.reduce(
+    (s, o) => s + linesOf(o).reduce(
+      (n, line) => n + ((purchaseByMaterialId.get(line.materialId) ?? 0) > 0 ? 0 : line.sheetQty),
+      0,
+    ),
+    0,
+  );
 
   const receivedTiyn = payments
     .filter((p) => !p.reversed && inPeriod(p.paymentDate))
@@ -123,7 +150,7 @@ export function computeFinanceSummary({
     amountTiyn: Math.round((grossProfitTiyn * c.percentage) / 100),
   }));
 
-  const fixedExpensesTiyn = monthlyExpensesTotal(expenses, period);
+  const fixedExpensesTiyn = monthlyExpensesTotal(expenses, period, startDate);
 
   return {
     monthKey: period,
@@ -136,6 +163,7 @@ export function computeFinanceSummary({
     fixedExpensesTiyn,
     netProfitTiyn: grossProfitTiyn - allocations.reduce((s, a) => s + a.amountTiyn, 0) - fixedExpensesTiyn,
     orderCount: billedOrders.length,
+    uncostedSheets,
   };
 }
 

@@ -6,10 +6,12 @@ import {
   computeKpis,
   computeLowStock,
   computeMethodBreakdown,
+  computePaymentSummary,
   computeProductionBreakdown,
   computeQueueOrders,
   computeSheetsCutByPeriod,
 } from "./dashboardStats";
+import { computeCustomerDebts } from "./journal";
 
 function ts(date: Date): Timestamp {
   return { seconds: Math.floor(date.getTime() / 1000), nanoseconds: 0 } as unknown as Timestamp;
@@ -239,6 +241,28 @@ describe("computeKpis: totalDebtTiyn matches computeCustomerDebts' notion of rea
     ];
     const kpis = computeKpis({ orders, payments: [], movements: [], materials: [] });
     expect(kpis.totalDebtTiyn).toBe(6000);
+  });
+});
+
+describe("computePaymentSummary: the Admin home's debt figure", () => {
+  // computeKpis has floored this since it was written; this sibling did not, so the same page
+  // reported two different debts depending on which card you read.
+  it("does not let an overpaid order's negative balance offset another order's real debt", () => {
+    const orders = [
+      makeOrder({ productionStatus: "cutting_queue", totalTiyn: 10000, paidTiyn: 4000, debtTiyn: 6000 }),
+      makeOrder({ productionStatus: "delivered", totalTiyn: 5000, paidTiyn: 8000, debtTiyn: -3000 }),
+    ];
+    expect(computePaymentSummary(orders).debtTiyn).toBe(6000);
+  });
+
+  it("agrees with the Қарыз ledger on the same orders", () => {
+    const orders = [
+      makeOrder({ productionStatus: "cutting_queue", totalTiyn: 10000, paidTiyn: 4000, debtTiyn: 6000 }),
+      makeOrder({ productionStatus: "ready", totalTiyn: 5000, paidTiyn: 8000, debtTiyn: -3000 }),
+      makeOrder({ productionStatus: "pvc_queue", totalTiyn: 2000, paidTiyn: 0, debtTiyn: 2000 }),
+    ];
+    const ledger = computeCustomerDebts(orders).reduce((s, d) => s + d.debtTiyn, 0);
+    expect(computePaymentSummary(orders).debtTiyn).toBe(ledger);
   });
 });
 

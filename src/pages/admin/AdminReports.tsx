@@ -10,6 +10,7 @@ import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useExpenseCategories } from "../../hooks/useExpenseCategories";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
+import { useAppSettings } from "../../hooks/useAppSettings";
 import { useToast } from "../../hooks";
 import { BarChart } from "../../components/BarChart";
 import { formatMoney } from "../../lib/money";
@@ -567,14 +568,18 @@ function FinanceTab({
   const months = useMemo(() => availableMonths(orders), [orders]);
   const [period, setPeriod] = useState<string | null>(() => months[0] ?? null);
   const { costs: purchaseByMaterialId, available: costsVisible } = useMaterialCosts();
+  // The same accounting restart Касса runs on: money that moved before it is history, and a
+  // profit figure that counted the old expenses against the new revenue would be neither.
+  const { settings } = useAppSettings();
+  const startDate = settings.cashStartDate ?? null;
 
   const s = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period }),
-    [orders, payments, purchaseByMaterialId, categories, expenses, period],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period, startDate }),
+    [orders, payments, purchaseByMaterialId, categories, expenses, period, startDate],
   );
   const allTime = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null }),
-    [orders, payments, purchaseByMaterialId, categories, expenses],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null, startDate }),
+    [orders, payments, purchaseByMaterialId, categories, expenses, startDate],
   );
 
   const periodName = period ? monthName(period) : "Барлық уақыт";
@@ -664,6 +669,17 @@ function FinanceTab({
             <span>Таза пайда</span>
             <strong>{formatMoney(s.netProfitTiyn)}</strong>
           </div>
+
+          {/* Without this the page presents a margin nobody earned: a material with no purchase
+              price costs 0, so its whole selling price lands in "profit". Saying which sheets are
+              uncosted turns a wrong number into a number with a known gap. */}
+          {s.uncostedSheets > 0 && (
+            <p className="finance-note is-warn">
+              ⚠️ {s.uncostedSheets} листтің материалына сатып алу бағасы енгізілмеген — олар өзіндік
+              құнға 0 ₸ болып кіріп тұр, сондықтан жоғарыдағы пайда шын мәнінен жоғары. Бағаларды
+              «Материалдар» бетінен енгізсеңіз, есеп дәл болады.
+            </p>
+          )}
 
           <p className="finance-note">
             ℹ️ Жалпы айлық пайданың {machineWastePct(categories)}% — станокқа, мусорға және цехтың

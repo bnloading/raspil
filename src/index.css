@@ -7062,6 +7062,13 @@ body {
   color: var(--primary);
   font-weight: 700;
 }
+/* A caveat about the figure directly above it, so it has to read as a caveat and not as another
+   helpful aside in the same blue as the rest. */
+.finance-profit .finance-note.is-warn {
+  background: var(--warning-light);
+  border-left-color: var(--warning);
+  color: #8a5300;
+}
 
 /* ══════════════════════════════════════════════════════════════
    Orders page — KPI strip, ledger table, production progress

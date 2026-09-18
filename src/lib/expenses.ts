@@ -57,8 +57,14 @@ export async function deleteExpense(db: Firestore, actor: Actor, expense: Expens
 }
 
 /** Sum of logged expenses in one month (YYYY-MM), or every expense ever logged when period is null. */
-export function monthlyExpensesTotal(expenses: Expense[], period: string | null): number {
+export function monthlyExpensesTotal(
+  expenses: Expense[],
+  period: string | null,
+  /** Accounting restart day — anything spent before it is history, not part of this ledger.
+   *  See ApplicationSettings.cashStartDate and lib/cashbox.ts, which filters the same way. */
+  startDate: string | null = null,
+): number {
   return expenses
-    .filter((e) => period === null || e.date.startsWith(period))
+    .filter((e) => (period === null || e.date.startsWith(period)) && (!startDate || e.date >= startDate))
     .reduce((s, e) => s + e.amountTiyn, 0);
 }

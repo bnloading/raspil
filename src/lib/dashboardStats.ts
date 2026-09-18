@@ -203,7 +203,12 @@ export function computePaymentSummary(orders: Order[]): {
   const paidCount = nonDraft.filter((o) => o.paymentStatus === "paid" || o.paymentStatus === "overpaid").length;
   const partialCount = nonDraft.filter((o) => o.paymentStatus === "partial").length;
   const unpaidCount = nonDraft.filter((o) => o.paymentStatus === "unpaid").length;
-  const debtTiyn = nonDraft.reduce((s, o) => s + o.debtTiyn, 0);
+  // Floored per order, never summed raw: an overpaid order carries a NEGATIVE debtTiyn, and
+  // adding that to the total silently pays off somebody else's genuine balance. Three overpaid
+  // orders were quietly cancelling 45 680 ₸ of real debt here, so this page and the Қарыз ledger
+  // — which has always floored per order (lib/journal.ts computeCustomerDebts) — disagreed.
+  // Change money (what is owed) belongs on the overpaid order, not against the shop's debt.
+  const debtTiyn = nonDraft.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0);
   const avgOrderTiyn = totalOrders > 0 ? Math.round(totalValueTiyn / totalOrders) : 0;
   const discountsTiyn = nonDraft.reduce((s, o) => s + o.discountTiyn, 0);
 

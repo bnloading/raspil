@@ -314,10 +314,6 @@ export default function ManagerJournal() {
 
   /** Order whose payment dialog is open. */
   const [payFor, setPayFor] = useState<Order | null>(null);
-  /** Method the Статус toggle reuses, so settling an order is one tap after the first time. */
-  const [defaultMethodId, setDefaultMethodId] = useState(
-    () => localStorage.getItem("journalDefaultMethod") ?? "",
-  );
 
   /**
    * Rows opened up to show their material lines at their own prices.
@@ -683,10 +679,10 @@ export default function ManagerJournal() {
           if (!confirm(
             `Артық төленген: ${formatMoney(-remaining)}. Тіркелген төлемдер қайтарылып, орнына дәл ${formatMoney(order.totalTiyn)} жазылады. Жалғастырасыз ба?`,
           )) return;
-          // Keep the money where it came in by: the correction is about the amount, not the method.
+          // Keep the money where it came in by: the correction is about the amount, not the
+          // method — and this order's own last payment is the only honest source for that.
           const live = livePaymentsFor(order.id);
-          const methodId = live[live.length - 1]?.methodId ?? defaultMethodId;
-          const method = methods.find((m) => m.id === methodId);
+          const method = methods.find((m) => m.id === live[live.length - 1]?.methodId);
           await reverseLivePayments(order, "Артық төлем түзетілді");
           if (order.totalTiyn > 0 && method) {
             await recordPayment(db, actor, {
@@ -702,12 +698,12 @@ export default function ManagerJournal() {
         }
 
         if (remaining <= 0) return; // already settled to the tenge
-        const remembered = methods.find((m) => m.id === defaultMethodId);
-        if (!remembered) {
-          setPayFor(order); // first use — let the method be chosen, then remember it
-          return;
-        }
-        await handleAddPayment(order, [{ methodId: remembered.id, amountTiyn: remaining }]);
+        // Always ask which method the money came in by. This used to reuse whatever was picked
+        // last, anywhere, which is a guess: an order sent to the saw on credit is settled days
+        // later, by which time the remembered method is whoever paid in between. Guessing wrong
+        // does not just mislabel a row — Касса splits deposit from cash by exactly this field, so
+        // the drawer and the account both end up reporting money that is not in them.
+        setPayFor(order);
         return;
       }
 
@@ -737,12 +733,11 @@ export default function ManagerJournal() {
     const paid = netPaidTiyn(live);
     if (targetTiyn === paid) return;
 
-    const method =
-      methods.find((m) => m.id === live[live.length - 1]?.methodId) ??
-      methods.find((m) => m.id === defaultMethodId);
+    // Only this order's own last payment — never a method remembered from some other row.
+    const method = methods.find((m) => m.id === live[live.length - 1]?.methodId);
     if (!method) {
-      // Nothing has ever been taken on this order and no method is remembered — the dialog is
-      // where that gets chosen, and it opens with the typed amount already in it.
+      // Nothing has ever been taken on this order, so there is nothing to infer from: the dialog
+      // is where the method gets chosen, and it opens with the typed amount already in it.
       setPayFor(order);
       return;
     }
@@ -941,11 +936,7 @@ export default function ManagerJournal() {
           ...(groupId ? { groupId } : {}),
         });
       }
-      // Remembered so the Статус toggle can settle the next order without asking again — the last
-      // leg's method wins for a mixed payment, same as any other "what did we just pick" memory.
       const lastMethod = resolved[resolved.length - 1].method!;
-      setDefaultMethodId(lastMethod.id);
-      localStorage.setItem("journalDefaultMethod", lastMethod.id);
       const label = resolved.length > 1 ? "Аралас" : lastMethod.name;
       showToast(`✅ Төлем тіркелді — ${label}. Өндіріске беру үшін «Распилға жіберу» басыңыз`);
       setPayFor(null);
