@@ -8,6 +8,7 @@ import {
   jobsOf,
   orderNeedsPvc,
   patchJob,
+  syncLineJobs,
   totalConfirmedSheets,
 } from "./orderLines";
 import type { Order, OrderLineJob } from "../types/domain";
@@ -137,5 +138,52 @@ describe("jobSummary", () => {
     expect(jobSummary(job({ pvcMeters: 0 }))).toBe("10 лист");
     expect(jobSummary(job({ sheetQty: 10, confirmedSheets: 9, pvcMeters: 0 }))).toBe("9 лист");
     expect(jobSummary(job({ sheetQty: 0, pvcMeters: 0 }))).toBe("—");
+  });
+});
+
+describe("syncLineJobs — the shop floor's copy follows the ledger", () => {
+  const work = (over: Partial<{ materialId: string; materialName: string; sheetQty: number; pvcMeters: number }> = {}) => ({
+    materialId: "ldsp-ak",
+    materialName: "ЛДСП Ақ",
+    sheetQty: 10,
+    pvcMeters: 176,
+    ...over,
+  });
+
+  it("fills in a line that reached the saw before its material was typed", () => {
+    // Exactly ORD-2026-000142: queued with a blank row, the material entered afterwards, and the
+    // cutter left holding a job for nothing at all.
+    const started = [job({ materialId: "", materialName: "", sheetQty: 0, pvcMeters: 0, cuttingStartedAt: ts(), cuttingByName: "Олжас" })];
+    const [synced] = syncLineJobs(started, [work({ materialName: "Столешница", sheetQty: 1, pvcMeters: 0 })]);
+    expect(synced).toMatchObject({ materialId: "ldsp-ak", materialName: "Столешница", sheetQty: 1 });
+    // The record of what the person did survives the correction.
+    expect(synced.cuttingStartedAt).toBe(started[0].cuttingStartedAt);
+    expect(synced.cuttingByName).toBe("Олжас");
+  });
+
+  it("never rewrites a line that has already been cut", () => {
+    const done = [job({ sheetQty: 10, cuttingCompletedAt: ts(), confirmedSheets: 9, cuttingByName: "Олжас" })];
+    const [synced] = syncLineJobs(done, [work({ sheetQty: 40, materialName: "Басқа материал" })]);
+    // Not one field of it moves: the sheets were counted, charged and paid for as they stand.
+    expect(synced).toEqual(done[0]);
+  });
+
+  it("keeps a finished job even when its line is deleted from the bill", () => {
+    const jobs = [job({ index: 0, sheetQty: 4 }), job({ index: 1, sheetQty: 6, cuttingCompletedAt: ts(), confirmedSheets: 6 })];
+    const synced = syncLineJobs(jobs, [work({ sheetQty: 4 })]);
+    expect(synced).toHaveLength(2);
+    expect(synced[1].confirmedSheets).toBe(6);
+    expect(synced.map((j) => j.index)).toEqual([0, 1]);
+  });
+
+  it("drops a line that was removed before anyone cut it", () => {
+    const jobs = [job({ index: 0, sheetQty: 4 }), job({ index: 1, sheetQty: 6 })];
+    expect(syncLineJobs(jobs, [work({ sheetQty: 4 })])).toHaveLength(1);
+  });
+
+  it("adds a job for a line typed in after the order was queued", () => {
+    const synced = syncLineJobs([job({ sheetQty: 4 })], [work({ sheetQty: 4 }), work({ materialId: "hdf", materialName: "ХДФ", sheetQty: 3, pvcMeters: 0 })]);
+    expect(synced).toHaveLength(2);
+    expect(synced[1]).toMatchObject({ index: 1, materialId: "hdf", sheetQty: 3 });
   });
 });

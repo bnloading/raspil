@@ -74,6 +74,53 @@ export function jobsOf(order: Order): OrderLineJob[] {
   return order.lineJobs && order.lineJobs.length > 0 ? order.lineJobs : buildLineJobs(order);
 }
 
+/** The part of a priced line the shop floor needs — what the work is, as opposed to its price. */
+export interface LineWork {
+  materialId: string;
+  materialName: string;
+  sheetQty: number;
+  pvcMeters: number;
+  pvcJointed?: boolean;
+}
+
+/**
+ * Re-aligns an order's stored line jobs with its priced lines after the journal row is edited.
+ *
+ * `lineJobs` is a snapshot taken once, when the order enters the cutting queue. Editing the
+ * materials afterwards used to leave that snapshot alone, so the shop floor kept working from
+ * whatever the row said at queue time: an order sent to the saw before its material was typed
+ * reached the cutter as a blank line, and the sheet it actually cut counted for nothing — not on
+ * the warehouse, not on the cutter's salary.
+ *
+ * The split is deliberate. Progress stays with the job — who started it, when, what they
+ * confirmed — because that is the record of what a person did. What the work *is* comes from the
+ * line, because the journal is where that is decided. And a line whose cutting is already
+ * finished is never touched at all: those sheets have been counted, charged to the warehouse and
+ * paid for, so rewriting them would be rewriting history rather than correcting a plan.
+ */
+export function syncLineJobs(existing: OrderLineJob[], lines: LineWork[]): OrderLineJob[] {
+  const synced = lines.map((line, index) => {
+    const job = existing[index];
+    if (job && isCuttingDone(job)) return job;
+    return {
+      ...job,
+      index,
+      materialId: line.materialId,
+      materialName: line.materialName,
+      sheetQty: line.sheetQty,
+      pvcMeters: line.pvcMeters,
+      ...(line.pvcJointed ? { pvcJointed: true } : {}),
+    };
+  });
+
+  // Deleting a line must never delete a cut. If the row now has fewer lines than it has finished
+  // jobs, the extra ones are kept: the sheets came off the saw, the warehouse was charged and the
+  // cutter was paid for them, and none of that stops being true because the line was removed from
+  // the bill. Re-indexed so the array stays addressable by position, as every reader assumes.
+  const kept = existing.slice(lines.length).filter(isCuttingDone);
+  return [...synced, ...kept].map((job, index) => ({ ...job, index }));
+}
+
 export function isCuttingDone(job: OrderLineJob): boolean {
   return !!job.cuttingCompletedAt;
 }

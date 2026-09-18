@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { computeJournalRowTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
+import { syncLineJobs } from "./orderLines";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
 import type { Material, Order, OrderMaterialLine, PvcType, PvcUsage, UserDoc } from "../types/domain";
@@ -342,6 +343,21 @@ export async function saveJournalRow(
   const alreadyCut =
     !!order.cuttingCompletedAt || (order.lineJobs ?? []).some((job) => job.confirmedSheets !== undefined);
 
+  /**
+   * Keep the shop floor's copy of the lines in step with the ledger's.
+   *
+   * `lineJobs` is written once, when the order enters the cutting queue, and nothing used to
+   * update it afterwards — so an order sent to the saw before its material row was typed reached
+   * the cutter as a blank line, and the sheet he cut was recorded against no material and counted
+   * for nothing. Only rewritten when the order actually has a stored snapshot: an order still
+   * upstream of the saw derives its jobs from `items` anyway (see jobsOf), and writing the field
+   * early would freeze a plan that is still being typed.
+   */
+  const lineJobs =
+    order.lineJobs && order.lineJobs.length > 0
+      ? syncLineJobs(order.lineJobs, itemsFromDraft(draft, catalog.materials))
+      : null;
+
   // Re-checked on every save, not just at creation: the phone is often typed a moment after the
   // name, and a customer may open their account long after the order was written down. Only ever
   // fills a gap — an order already attached to somebody is never moved by an edit here.
@@ -352,6 +368,7 @@ export async function saveJournalRow(
     customerPhone: draft.customerPhone.trim(),
     ...(linkedId ? { customerId: linkedId } : {}),
     ...aggregatesFor(draft, catalog),
+    ...(lineJobs ? { lineJobs } : {}),
     ...(alreadyCut ? {} : { confirmedSheets: draft.lines.reduce((s, l) => s + l.sheetQty, 0) }),
     materialCostTiyn: totals.materialCostTiyn,
     pvcCostTiyn: totals.pvcCostTiyn,
