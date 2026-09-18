@@ -4200,6 +4200,13 @@ body {
     line-clamp: 2;
     -webkit-box-orient: vertical;
   }
+  /* Without a floor the titles column collapses to nothing once the admin's ЛДСП/МДФ switcher,
+     the bell and the avatar have taken their room, and a two-word title renders as "Ж… / келу"
+     — two lines spent saying less than one. The actions shrink instead; they are icons and a
+     two-item toggle, all of which survive being narrower far better than a word does. */
+  .topbar-titles {
+    min-width: 104px;
+  }
 }
 .topbar-search {
   flex: 1;
@@ -6158,83 +6165,223 @@ body {
   .invoice-doc { border: none; padding: 0; }
 }
 
-/* Attendance register & salary */
-.attendance-row {
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.attendance-times {
+/* Attendance register ("Жұмысқа келу")
+   Phone-first throughout: this page is used standing at the shop door with one thumb, so every
+   target is a real button rather than a pill, and the desktop view is the same layout given more
+   room — not a separate one. */
+.att-daybar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
-.attendance-times input {
-  width: 108px;
-  height: 32px;
-}
-.attendance-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.attendance-btn {
-  padding: 6px 11px;
+.att-day-arrow {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  background: var(--card);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.att-day-arrow:disabled { opacity: 0.35; cursor: default; }
+.att-day-mid {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+.att-day-label {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+.att-day-label:disabled { cursor: default; }
+.att-day-input {
+  width: 42px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+/* Only the calendar icon shows: the text beside it would duplicate the label already in the bar. */
+.att-day-input::-webkit-datetime-edit { display: none; }
+.att-day-input::-webkit-calendar-picker-indicator { margin: 0 auto; opacity: 0.55; cursor: pointer; }
+
+.att-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.att-tally-item {
+  flex: 1 1 auto;
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  background: #f1f3f7;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.att-tally-item b { display: block; font-size: 1.15rem; color: var(--text); }
+.att-tally-item.is-green { background: var(--success-light); color: var(--success); }
+.att-tally-item.is-green b { color: var(--success); }
+.att-tally-item.is-amber { background: var(--warning-light); color: #b45309; }
+.att-tally-item.is-amber b { color: #b45309; }
+.att-tally-item.is-red { background: var(--danger-light); color: var(--danger); }
+.att-tally-item.is-red b { color: var(--danger); }
+
+/* The morning's shortcut, sized to be pressed without aiming. */
+.att-bulk {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--success-light);
+  color: var(--success);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.att-bulk:disabled { opacity: 0.6; cursor: default; }
+
+.att-list { display: grid; gap: 10px; }
+.att-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  padding: 12px;
+}
+/* The left edge carries the answer, so a column of cards can be read at a glance without
+   parsing any text — which is the whole point of a register. */
+.att-card.is-green { border-left-color: var(--success); }
+.att-card.is-amber { border-left-color: var(--warning); }
+.att-card.is-red { border-left-color: var(--danger); }
+.att-card.is-blue { border-left-color: var(--info); }
+.att-card.is-muted { border-left-color: var(--border-strong); }
+.att-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.att-who { min-width: 0; }
+.att-who strong { display: block; font-size: 0.95rem; }
+.att-who span { font-size: 0.75rem; color: var(--text-light); }
+.att-state {
+  flex: none;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.att-state em { font-style: normal; font-weight: 600; color: var(--text-light); }
+.att-state.tone-green { color: var(--success); }
+.att-state.tone-amber { color: #b45309; }
+.att-state.tone-red { color: var(--danger); }
+.att-state.tone-blue { color: var(--info); }
+.att-state.tone-muted { color: var(--text-secondary); }
+
+.att-actions { display: flex; gap: 8px; }
+.att-btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
 }
-.attendance-btn:hover { border-color: var(--primary); color: var(--primary); }
-.attendance-btn.is-active.tone-green { background: var(--success-light); border-color: var(--success); color: var(--success); }
-.attendance-btn.is-active.tone-amber { background: var(--warning-light); border-color: var(--warning); color: #b45309; }
-.attendance-btn.is-active.tone-red { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
-.attendance-btn.is-active.tone-blue { background: var(--info-light); border-color: var(--info); color: var(--info); }
-.attendance-btn.is-active.tone-muted { background: #f1f3f7; border-color: var(--border-strong); color: var(--text); }
+.att-btn:disabled { opacity: 0.5; cursor: default; }
+.att-more { flex: 0 0 76px; }
+.att-btn.is-active.tone-green { background: var(--success-light); border-color: var(--success); color: var(--success); }
+.att-btn.is-active.tone-amber { background: var(--warning-light); border-color: var(--warning); color: #b45309; }
+.att-btn.is-active.tone-red { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+.att-btn.is-active.tone-blue { background: var(--info-light); border-color: var(--info); color: var(--info); }
+.att-btn.is-active.tone-muted { background: #f1f3f7; border-color: var(--border-strong); color: var(--text); }
+.att-more.is-active { background: #f1f3f7; border-color: var(--border-strong); color: var(--text); }
 
-/* On a phone the row stops being a row: name, then the two times, then the status buttons as a
-   grid of full-width targets. Five pills squeezed onto one line are all but untappable, and this
-   page is used standing at the shop door marking people in. */
-@media (max-width: 767px) {
-  .attendance-row {
-    display: block;
-    padding: 14px;
-  }
-  .attendance-row .data-row-main {
-    margin-bottom: 10px;
-  }
-  .attendance-times {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-  .attendance-times input {
-    width: 100%;
-    height: 44px;
-    font-size: 0.95rem;
-  }
-  /* The hours readout is a third child of a two-column grid — let it take its own full-width row. */
-  .attendance-times > span {
-    grid-column: 1 / -1;
-    text-align: right;
-  }
-  .attendance-buttons {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-  .attendance-btn {
-    padding: 12px 8px;
-    font-size: 0.85rem;
-    border-radius: var(--radius-sm);
-  }
-  /* An odd number of statuses leaves a gap; the last one spans it rather than sitting half-width. */
-  .attendance-btn:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
+.att-drawer {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  display: grid;
+  gap: 10px;
+}
+.att-times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.att-times label { display: grid; gap: 4px; }
+.att-times span { font-size: 0.72rem; color: var(--text-light); font-weight: 600; }
+.att-times input { height: 44px; font-size: 0.95rem; }
+
+.att-summary {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.att-summary > summary {
+  padding: 14px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.att-summary > summary::-webkit-details-marker { display: none; }
+.att-summary > summary::after { content: " ▾"; color: var(--text-light); }
+.att-summary[open] > summary::after { content: " ▴"; }
+.att-summary[open] > summary { border-bottom: 1px solid var(--border); }
+.att-summary .data-table-wrap { padding: 4px 14px 14px; }
+
+/* The same register, folded into a home-screen card. */
+.att-today { margin-bottom: 16px; }
+.att-today .att-bulk { margin-bottom: 0; }
+.att-today-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.att-today-done {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--success-light);
+  color: var(--success);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+.att-today-error { margin: 8px 0 0; font-size: 0.8rem; color: var(--danger); }
+
+/* On a narrow phone the status line stops fitting beside the name — it drops under it rather than
+   squeezing the two buttons, which are what the thumb is actually aiming for. */
+@media (max-width: 420px) {
+  .att-card-head { display: block; }
+  .att-state { display: block; margin-top: 4px; }
+  .att-btn { font-size: 0.8rem; }
+  .att-more { flex: 0 0 64px; }
 }
 
 .salary-month-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 2px; }

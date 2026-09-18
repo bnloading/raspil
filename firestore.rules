@@ -556,11 +556,16 @@ service cloud.firestore {
 
     // ------------------------------------------------- attendance & salary
     match /attendance/{id} {
-      // A worker may read only their own attendance; Admin marks it and sees everyone's. Reading
-      // is per-document, so a worker's list query must filter where('userId','==',uid) for the
-      // whole query to be provable (see the header note on list queries).
-      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());
-      allow write: if isAdmin();
+      // A worker may read only their own attendance; Admin and Manager mark it and see everyone's.
+      // Reading is per-document, so a worker's list query must filter where('userId','==',uid) for
+      // the whole query to be provable (see the header note on list queries).
+      //
+      // Manager writes too: the register is filled in at the door first thing in the morning, and
+      // the owner is not the one standing there. It is a smaller power than the ones Manager
+      // already holds (recording payments, handing out advances), and marking a day present is
+      // reversible by re-marking it — unlike money, which is only ever corrected by a new record.
+      allow get, list: if isAdminOrManager() || (isSignedIn() && resource.data.userId == uid());
+      allow write: if isAdminOrManager();
     }
 
     match /salaryRules/{userId} {

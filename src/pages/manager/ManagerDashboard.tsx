@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
 import { Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
+import { AttendanceTodayCard } from "../../components/AttendanceTodayCard";
 import { DonutChart } from "../../components/charts/DonutChart";
 import { ProductionStatusBadge } from "../../components/StatusBadge";
 import { IconOrders, IconReports, IconWarehouse, IconCut, IconPvc } from "../../components/layout/icons";
@@ -188,6 +189,10 @@ export default function ManagerDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Above the quick actions on purpose: the register is the first thing done in the
+                morning, and the orders below it are the rest of the day. */}
+            <AttendanceTodayCard />
 
             <div className="panel-card">
               <div className="panel-head">

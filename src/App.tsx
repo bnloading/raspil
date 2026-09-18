@@ -228,10 +228,12 @@ export default function App() {
                 </RouteGuard>
               }
             />
+            {/* Not under /admin: the register is filled in at the door every morning and Manager
+                is usually the one standing there (firestore.rules lets both write it). */}
             <Route
-              path="/admin/attendance"
+              path="/attendance"
               element={
-                <RouteGuard roles={["admin"]}>
+                <RouteGuard roles={["admin", "manager"]}>
                   <AdminAttendance />
                 </RouteGuard>
               }

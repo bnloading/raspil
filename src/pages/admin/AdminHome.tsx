@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
 import { Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
+import { AttendanceTodayCard } from "../../components/AttendanceTodayCard";
 import { DonutChart } from "../../components/charts/DonutChart";
 import { LineChart } from "../../components/charts/LineChart";
 import { ProductionStatusBadge } from "../../components/StatusBadge";
@@ -133,6 +134,10 @@ export default function AdminHome() {
               </div>
             )}
           </div>
+
+          {/* Ahead of the charts: the register is a thing to do this morning, the charts are
+              things to read whenever. */}
+          <AttendanceTodayCard />
 
           <div className="dashboard-grid">
             <div className="panel-card span-2">

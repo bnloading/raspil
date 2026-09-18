@@ -1134,6 +1134,29 @@ describe("attendance is visible only to the worker it belongs to, and to Admin",
     );
     await assertSucceeds(getDocs(collection(db, "attendance")));
   });
+
+  // The register is filled in at the door in the morning, and the owner is not the one standing
+  // there — so Manager marks it too, and needs the whole day's list to do that.
+  it("manager CAN mark attendance and read everyone's", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "attendance", `${CUTTER_UID}_2026-03-05`), {
+        userId: CUTTER_UID, userName: "Cutter", date: "2026-03-05", status: "present",
+        recordedByUid: MANAGER_UID, recordedByName: "Manager",
+      }),
+    );
+    await assertSucceeds(getDocs(collection(db, "attendance")));
+  });
+
+  it("a PVC worker still CANNOT mark anybody, their own day included", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertFails(
+      setDoc(doc(db, "attendance", `${PVC_UID}_2026-03-06`), {
+        userId: PVC_UID, userName: "PVC", date: "2026-03-06", status: "present",
+        recordedByUid: PVC_UID, recordedByName: "PVC",
+      }),
+    );
+  });
 });
 
 describe("a worker sees only their own salary", () => {
