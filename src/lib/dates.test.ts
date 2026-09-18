@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatDateDMY,
+  formatDayMonth,
   formatRelativeDateTime,
   monthKey,
   bucketByPeriod,
@@ -14,6 +15,27 @@ describe("formatDateDMY", () => {
     // 2026-03-05T12:00:00Z is still 2026-03-05 in Asia/Almaty (UTC+5)
     const d = new Date(Date.UTC(2026, 2, 5, 12, 0, 0));
     expect(formatDateDMY(d)).toBe("05.03.2026");
+  });
+});
+
+describe("formatDayMonth — the customer order list's date", () => {
+  it("reads day first, then month — 18 September is 18/09, never 09/18", () => {
+    expect(formatDayMonth(new Date(Date.UTC(2026, 8, 18, 7, 0, 0)))).toBe("18/09");
+  });
+
+  it("pads both halves, so a column of dates stays the same width", () => {
+    expect(formatDayMonth(new Date(Date.UTC(2026, 0, 5, 7, 0, 0)))).toBe("05/01");
+  });
+
+  it("dates by the Almaty day, not the machine's", () => {
+    // 21:00 UTC on the 18th is already 02:00 on the 19th in Almaty (UTC+5), and the shop's
+    // calendar is the one the customer is reading.
+    expect(formatDayMonth(new Date(Date.UTC(2026, 8, 18, 21, 0, 0)))).toBe("19/09");
+  });
+
+  it("takes a Firestore timestamp as readily as a Date", () => {
+    const seconds = Math.floor(Date.UTC(2026, 8, 18, 7, 0, 0) / 1000);
+    expect(formatDayMonth({ seconds })).toBe("18/09");
   });
 });
 

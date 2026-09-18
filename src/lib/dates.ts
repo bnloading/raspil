@@ -20,6 +20,24 @@ export function formatDateDMY(input: Date | number | { seconds: number }): strin
   }).format(d);
 }
 
+/**
+ * "18/09" — the day and month only, for a list where the year is never in question.
+ *
+ * Deliberately not the full DD.MM.YYYY: on the customer's own order list every row is recent and
+ * the year only costs width on a phone. Anywhere an old record can turn up (debts, reports) keeps
+ * formatDateDMY instead, where reading "18/09" as this year would be a real mistake.
+ */
+export function formatDayMonth(input: Date | number | { seconds: number }): string {
+  const d = toDate(input);
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: ALMATY_TZ,
+    day: "2-digit",
+    month: "2-digit",
+  }).formatToParts(d);
+  const pick = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${pick("day")}/${pick("month")}`;
+}
+
 export function formatDateTimeDMY(input: Date | number | { seconds: number }): string {
   const d = toDate(input);
   const date = formatDateDMY(d);

@@ -15,7 +15,7 @@ import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
 import { formatMdfArea } from "../../lib/mdfJournal";
 import { customerOrderCode } from "../../lib/orderCode";
-import { formatRelativeDateTime } from "../../lib/dates";
+import { formatDayMonth } from "../../lib/dates";
 import { orderTiles } from "../../lib/orderTiles";
 import { isCancellable } from "../../lib/statuses";
 import type { Order } from "../../types/domain";
@@ -215,6 +215,12 @@ export default function CustomerOrders() {
                       {customerOrderCode(o.orderNumber)}
                       {o.orderKind === "mdf_wrap" && <span className="jt-pill jt-tone-muted"> МДФ</span>}
                     </span>
+                    {/* Day and month right beside the code: scanning a list of orders, "which one
+                        is this" and "when" are the same question, and a relative "2 сағат бұрын"
+                        down in the footer never answered the second one. */}
+                    {(o.updatedAt ?? o.createdAt) && (
+                      <span className="corder-date">{formatDayMonth((o.updatedAt ?? o.createdAt)!)}</span>
+                    )}
                     <span className="corder-name">{o.customerName}</span>
                     <span className={`corder-stage is-${getCustomerStageTone(o.productionStatus)}`}>
                       {stageLine(o)}
@@ -254,11 +260,8 @@ export default function CustomerOrders() {
                   <CustomerProductionProgress order={o} />
 
                   <div className="corder-foot">
-                    {(o.updatedAt ?? o.createdAt) && (
-                      <span className="corder-updated">
-                        🕐 Жаңартылды: {formatRelativeDateTime((o.updatedAt ?? o.createdAt)!)}
-                      </span>
-                    )}
+                    {/* The same timestamp now reads as a date up in the header, so repeating it
+                        here as "2 сағат бұрын" would only say it twice. */}
                     <span className="corder-money">
                       {formatMoney(o.totalTiyn)}
                       <PaymentStatusBadge status={o.paymentStatus} />

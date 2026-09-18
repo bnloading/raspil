@@ -8681,6 +8681,16 @@ body {
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
+/* "18/09" next to the code. Tabular figures so a column of dates lines up digit under digit,
+   and `flex: none` so it is the name that gets ellipsised on a narrow phone, never the date. */
+.corder-date {
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .corder-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -8770,6 +8780,9 @@ body {
   color: var(--text-light);
 }
 .corder-money {
+  /* Holds the right edge on its own: the date moved up to the header, so the price is now the
+     only thing in this row and space-between alone would have pulled it back to the left. */
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
