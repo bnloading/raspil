@@ -1,8 +1,8 @@
-import { monthKey } from "./dates";
-import type { SalaryAdvance } from "../types/domain";
+import { currentPeriodKey, salaryPeriodKind } from "./salaryPeriod";
+import type { SalaryAdvance, UserRole } from "../types/domain";
 
 /**
- * Advances against a month's pay.
+ * Advances against a pay period.
  *
  * The rule the shop actually runs on: an advance is money already handed over, so it reduces what
  * is still owed on payday — never what was earned. Keeping those two numbers apart matters,
@@ -69,7 +69,14 @@ export function summariseAdvances({
   };
 }
 
-/** The period an advance recorded now belongs to. */
-export function currentPeriodKey(now: Date = new Date()): string {
-  return monthKey(now);
+/**
+ * The period an advance recorded now belongs to — always the same period as the pay it will be
+ * deducted from, which is a week for распил and a month for every other station.
+ *
+ * Keying it any other way is not a cosmetic difference: an advance filed against September while
+ * the cutter is paid for the week of the 14th is an advance his payslip never looks at, and the
+ * week would then be handed over in full on top of cash he has already taken.
+ */
+export function advancePeriodKey(role: UserRole | undefined, now: Date = new Date()): string {
+  return currentPeriodKey(salaryPeriodKind(role), now);
 }

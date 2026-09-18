@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../AuthContext";
 import { Spinner } from "../components";
 import { AppShell } from "../components/layout/AppShell";
@@ -8,7 +8,8 @@ import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
 import { summariseAdvances } from "../lib/advances";
 import { measureWork, computeSalaryBase } from "../lib/salary";
-import { formatDateDMY, formatDateTimeDMY, monthKey, monthLabel } from "../lib/dates";
+import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
+import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 import { SALARY_STATUS_LABELS, type SalaryStatus } from "../types/domain";
 
@@ -18,13 +19,6 @@ const STATUS_TONE: Record<SalaryStatus, string> = {
   confirmed: "amber",
   paid: "green",
 };
-
-/** "2026-08" shifted by whole months, still "YYYY-MM" — pure calendar arithmetic, no timezone. */
-function shiftMonth(key: string, delta: number): string {
-  const [y, m] = key.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
 
 /**
  * "Менің айлығым" — every worker's own payslip, in the same shape regardless of how their rule
@@ -56,7 +50,13 @@ export default function MySalary() {
     return [];
   }, [role, cutterOrders, pvcOrders, mdfOrders]);
 
-  const [period, setPeriod] = useState<string>(monthKey(new Date()));
+  // A распилшик is paid weekly and everyone else monthly, so the navigator below steps whichever
+  // one this worker is actually settled on (see lib/salaryPeriod.ts).
+  const periodKind = salaryPeriodKind(role);
+  const [period, setPeriod] = useState<string>(() => currentPeriodKey(periodKind));
+  // `role` arrives a beat after the first render, so the period has to follow it once: without
+  // this a раздспилшік would open on a month key and see his week's pay read as a whole month's.
+  useEffect(() => setPeriod(currentPeriodKey(periodKind)), [periodKind]);
   // Off by default on every visit — money is only ever plain-visible after a deliberate tap, not
   // whoever happens to glance at the phone screen next to a worker in the workshop.
   const [revealed, setRevealed] = useState(false);
@@ -73,7 +73,7 @@ export default function MySalary() {
     () => measureWork(orders, attendance, user?.uid ?? "", period, categoryByMaterialId),
     [orders, attendance, user?.uid, period, categoryByMaterialId],
   );
-  const live = computeSalaryBase(rule, work);
+  const live = computeSalaryBase(rule, work, periodKind);
   const liveFinalTiyn = Math.max(0, live.baseTiyn - live.deductionTiyn);
   const finalTiyn = entry?.finalTiyn ?? liveFinalTiyn;
   const isEstimate = !entry;
@@ -112,7 +112,9 @@ export default function MySalary() {
   }, [advanceInfo, entry]);
 
   const hasAnythingToShow = advanceInfo.entries.length > 0 || !!entry || finalTiyn > 0;
-  const canGoNext = period < monthKey(new Date());
+  const canGoNext = period < currentPeriodKey(periodKind);
+  const backLabel = periodKind === "week" ? "Алдыңғы апта" : "Алдыңғы ай";
+  const nextLabel = periodKind === "week" ? "Келесі апта" : "Келесі ай";
 
   if (!user || !userData) return <Spinner />;
   if (loading) return <Spinner />;
@@ -120,11 +122,11 @@ export default function MySalary() {
   return (
     <AppShell title="Менің айлығым" subtitle={userData.name}>
       <div className="salary-month-nav">
-        <button type="button" className="salary-month-arrow" onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Алдыңғы ай">‹</button>
-        <button type="button" className="salary-month-label" onClick={() => setPeriod(monthKey(new Date()))}>
-          {monthLabel(period)} <span aria-hidden="true">📅</span>
+        <button type="button" className="salary-month-arrow" onClick={() => setPeriod(shiftPeriod(period, -1))} aria-label={backLabel}>‹</button>
+        <button type="button" className="salary-month-label" onClick={() => setPeriod(currentPeriodKey(periodKind))}>
+          {periodLabel(period)} <span aria-hidden="true">📅</span>
         </button>
-        <button type="button" className="salary-month-arrow" disabled={!canGoNext} onClick={() => setPeriod(shiftMonth(period, 1))} aria-label="Келесі ай">›</button>
+        <button type="button" className="salary-month-arrow" disabled={!canGoNext} onClick={() => setPeriod(shiftPeriod(period, 1))} aria-label={nextLabel}>›</button>
       </div>
       <p className="salary-asof">{formatDateDMY(new Date())} күнгі есеп</p>
 
@@ -202,7 +204,7 @@ export default function MySalary() {
                 {pastEntries.map((e) => (
                   <button key={e.id} type="button" className="data-row salary-past-row" onClick={() => setPeriod(e.periodKey)}>
                     <div className="data-row-main">
-                      <strong>{monthLabel(e.periodKey)}</strong>
+                      <strong>{periodLabel(e.periodKey)}</strong>
                       <span>{formatMoney(e.finalTiyn)}</span>
                     </div>
                     <span className={`jt-pill jt-tone-${STATUS_TONE[e.status]}`}>{SALARY_STATUS_LABELS[e.status]}</span>

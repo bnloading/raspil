@@ -7,7 +7,8 @@ import type {
   SalaryRule,
 } from "../types/domain";
 import { MDF_STAGES } from "../types/domain";
-import { monthKey, dayKey } from "./dates";
+import { monthKey, weekKey, dayKey } from "./dates";
+import { periodContains, periodContainsDay, periodKindOf, type SalaryPeriodKind } from "./salaryPeriod";
 import { jobsOf } from "./orderLines";
 
 /**
@@ -57,12 +58,15 @@ export const EMPTY_WORK_TOTALS: SalaryWorkTotals = {
 };
 
 /**
- * Measures one worker's output for one month from the orders they actually completed.
+ * Measures one worker's output for one pay period from the orders they actually completed.
  *
  * Cutting work is credited on `cuttingCompletedAt` and PVC work on `pvcCompletedAt` — the date the
  * work happened, never the order's creation or payment date, so a January order finished in
- * February counts in February. New months therefore appear on their own, with no month list to
+ * February counts in February. New periods therefore appear on their own, with no list to
  * maintain anywhere.
+ *
+ * `periodKey` is a month ("2026-09") or a week ("2026-09-14", the Monday) — распил is settled
+ * weekly and everyone else monthly, and this reads whichever it was handed (see lib/salaryPeriod.ts).
  */
 export function measureWork(
   orders: Order[],
@@ -93,7 +97,7 @@ export function measureWork(
       if (
         job.cuttingByUid === userId &&
         job.cuttingCompletedAt &&
-        monthKey(job.cuttingCompletedAt.toDate()) === periodKey
+        periodContains(periodKey, job.cuttingCompletedAt.toDate())
       ) {
         const sheets = job.confirmedSheets ?? job.sheetQty ?? 0;
         sheetsCut += sheets;
@@ -107,7 +111,7 @@ export function measureWork(
       if (
         job.pvcByUid === userId &&
         job.pvcCompletedAt &&
-        monthKey(job.pvcCompletedAt.toDate()) === periodKey
+        periodContains(periodKey, job.pvcCompletedAt.toDate())
       ) {
         pvcMeters += job.pvcMeters ?? 0;
         touchedThisOrder = true;
@@ -118,7 +122,7 @@ export function measureWork(
     if (order.orderKind === "mdf_wrap" && order.mdfStageJobs) {
       for (const stage of MDF_STAGES) {
         const job = order.mdfStageJobs[stage];
-        if (job?.byUid === userId && job.completedAt && monthKey(job.completedAt.toDate()) === periodKey) {
+        if (job?.byUid === userId && job.completedAt && periodContains(periodKey, job.completedAt.toDate())) {
           mdfM2Processed += order.mdfAreaM2 ?? 0;
           if (stage === "vacuum" && order.mdfPackaging) packagingOrdersCount += 1;
           touchedThisOrder = true;
@@ -133,7 +137,7 @@ export function measureWork(
   let absentDays = 0;
   let workedHours = 0;
   for (const record of attendance) {
-    if (record.userId !== userId || !record.date.startsWith(periodKey)) continue;
+    if (record.userId !== userId || !periodContainsDay(periodKey, record.date)) continue;
     if (record.status === "present" || record.status === "late") {
       presentDays += 1;
       workedHours += record.workedHours ?? 0;
@@ -183,9 +187,25 @@ function pieceRateTotal(rule: SalaryRule | undefined, work: SalaryWorkTotals): n
  * the deliberate "no formula invented" default, where the final figure comes from an Admin
  * adjustment instead.
  */
-export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWorkTotals): SalaryComputation {
+export function computeSalaryBase(
+  rule: SalaryRule | undefined,
+  work: SalaryWorkTotals,
+  /** Weekly periods pro-rate the one component that is quoted per month — see `monthlyShare`. */
+  periodKind: SalaryPeriodKind = "month",
+): SalaryComputation {
   const mode: SalaryMode = rule?.mode ?? "MANUAL";
   const round = (n: number) => Math.round(n);
+
+  /**
+   * A salary quoted per month, for however long this period is.
+   *
+   * Every other component is measured from the work itself and so is already the right size for
+   * whatever period it was measured over; a fixed monthly figure is the one that is not, and
+   * paying it whole against a week would hand over a month's wage four or five times over. The
+   * divisor is 52/12 — the average weeks in a month — so each week of the year pays the same,
+   * rather than a five-week month quietly paying 25% more than a four-week one.
+   */
+  const monthlyShare = (tiyn: number) => (periodKind === "week" ? tiyn / (52 / 12) : tiyn);
 
   let baseTiyn = 0;
   switch (mode) {
@@ -193,7 +213,7 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
       baseTiyn = 0;
       break;
     case "FIXED_MONTHLY":
-      baseTiyn = rule?.fixedMonthlyTiyn ?? 0;
+      baseTiyn = round(monthlyShare(rule?.fixedMonthlyTiyn ?? 0));
       break;
     case "PER_SHEET":
       baseTiyn = round(pieceRateTotal(rule, work));
@@ -213,7 +233,7 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
     case "MIXED":
       // Every configured component adds up; unset components contribute nothing.
       baseTiyn =
-        (rule?.fixedMonthlyTiyn ?? 0) +
+        round(monthlyShare(rule?.fixedMonthlyTiyn ?? 0)) +
         round(pieceRateTotal(rule, work)) +
         round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0)) +
         round(work.mdfM2Processed * (rule?.perMdfM2Tiyn ?? 0)) +
@@ -267,7 +287,13 @@ export function buildSalaryEntry(params: {
     params.periodKey,
     params.categoryByMaterialId,
   );
-  const { mode, baseTiyn, deductionTiyn } = computeSalaryBase(params.rule, work);
+  // The key's own shape says whether this is a week or a month, so nothing upstream has to carry
+  // a second field saying which (see lib/salaryPeriod.ts).
+  const { mode, baseTiyn, deductionTiyn } = computeSalaryBase(
+    params.rule,
+    work,
+    periodKindOf(params.periodKey),
+  );
   const bonusTiyn = params.bonusTiyn ?? 0;
   const adjustmentTiyn = params.adjustmentTiyn ?? 0;
 
@@ -286,23 +312,36 @@ export function buildSalaryEntry(params: {
 }
 
 /**
- * Every month that has any activity, newest first — derived from the data itself so a new month
- * appears automatically. Always includes the current month so a fresh period is selectable before
- * any work has been recorded in it.
+ * Every period that has any activity, newest first — derived from the data itself so a new one
+ * appears automatically. Always includes the period containing `now`, so a fresh week or month is
+ * selectable before any work has been recorded in it.
+ *
+ * `kind` picks weeks or months (see lib/salaryPeriod.ts): распил is settled every week, every
+ * other station monthly, and the same orders produce both lists depending on who is being paid.
  */
-export function availablePeriods(orders: Order[], attendance: AttendanceRecord[], now: Date = new Date()): string[] {
-  const keys = new Set<string>([monthKey(now)]);
+export function availablePeriods(
+  orders: Order[],
+  attendance: AttendanceRecord[],
+  now: Date = new Date(),
+  kind: SalaryPeriodKind = "month",
+): string[] {
+  const key = (d: Date) => (kind === "week" ? weekKey(d) : monthKey(d));
+  const keys = new Set<string>([key(now)]);
   for (const o of orders) {
-    if (o.cuttingCompletedAt) keys.add(monthKey(o.cuttingCompletedAt.toDate()));
-    if (o.pvcCompletedAt) keys.add(monthKey(o.pvcCompletedAt.toDate()));
+    if (o.cuttingCompletedAt) keys.add(key(o.cuttingCompletedAt.toDate()));
+    if (o.pvcCompletedAt) keys.add(key(o.pvcCompletedAt.toDate()));
     if (o.orderKind === "mdf_wrap" && o.mdfStageJobs) {
       for (const stage of MDF_STAGES) {
         const completedAt = o.mdfStageJobs[stage]?.completedAt;
-        if (completedAt) keys.add(monthKey(completedAt.toDate()));
+        if (completedAt) keys.add(key(completedAt.toDate()));
       }
     }
   }
-  for (const a of attendance) keys.add(a.date.slice(0, 7));
+  // Attendance dates are already Almaty day keys, so a month is a prefix of one and a week is
+  // whichever Monday opens it.
+  for (const a of attendance) {
+    keys.add(kind === "week" ? weekKey(new Date(`${a.date}T12:00:00+05:00`)) : a.date.slice(0, 7));
+  }
   return [...keys].sort().reverse();
 }
 

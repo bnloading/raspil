@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../AuthContext";
 import { useSalaryEntries, useSalaryRule, useAttendance } from "../hooks/useSalary";
 import { useMaterials } from "../hooks/useMaterials";
-import { monthKey } from "../lib/dates";
 import { formatMoney } from "../lib/money";
 import { computeSalaryBase, measureWork } from "../lib/salary";
+import { currentPeriodKey, salaryPeriodKind } from "../lib/salaryPeriod";
 import type { Order } from "../types/domain";
 
 /**
@@ -28,6 +29,7 @@ export function WorkerSalaryTeaser({
   orders?: Order[];
   hideSalary?: boolean;
 }) {
+  const { user, userData } = useAuth();
   const { entries } = useSalaryEntries(uid);
   const { rule } = useSalaryRule(uid);
   const { records } = useAttendance(uid);
@@ -38,12 +40,16 @@ export function WorkerSalaryTeaser({
 
   if (hideSalary) return null;
 
-  const period = monthKey(new Date());
+  // The card only ever shows the signed-in worker their own pay — firestore.rules allows no other
+  // — so their own role is what says whether that pay is counted by the week or by the month.
+  const periodKind = salaryPeriodKind(uid === user?.uid ? userData?.role : undefined);
+  const periodWord = periodKind === "week" ? "аптадағы" : "айдағы";
+  const period = currentPeriodKey(periodKind);
   const entry = entries.find((e) => e.periodKey === period);
 
   const categoryByMaterialId = new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const));
   const work = measureWork(orders, records, uid, period, categoryByMaterialId);
-  const live = computeSalaryBase(rule, work);
+  const live = computeSalaryBase(rule, work, periodKind);
 
   // Confirmed figure if there is one; otherwise the live estimate, which is only worth showing
   // once a rule exists — a MANUAL worker has no formula, so there is nothing honest to display.
@@ -61,10 +67,10 @@ export function WorkerSalaryTeaser({
           : "Әзірге жұмыс жоқ";
 
   return (
-    <section className="worker-stat-card worker-salary-teaser" aria-label="Осы айдағы айлық">
+    <section className="worker-stat-card worker-salary-teaser" aria-label={`Осы ${periodWord} айлық`}>
       <div>
         <div className="worker-stat-cap">
-          Осы айдағы айлық{isEstimate && <span className="worker-salary-est"> · болжам</span>}
+          Осы {periodWord} айлық{isEstimate && <span className="worker-salary-est"> · болжам</span>}
         </div>
         <div className="worker-salary-amount">
           {revealed ? formatMoney(amountTiyn) : "•••••• ₸"}

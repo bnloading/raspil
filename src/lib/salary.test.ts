@@ -75,6 +75,31 @@ describe("measureWork", () => {
     expect(measureWork(orders, [], CUTTER, "2026-04").sheetsCut).toBe(4);
   });
 
+  it("measures a распил week as readily as a month — same engine, different period key", () => {
+    // Mon 14 Sep opens the week; Sun 20 Sep closes it, and Mon 21 Sep is already the next one.
+    const inWeek = Timestamp.fromDate(new Date("2026-09-17T12:00:00+05:00"));
+    const nextWeek = Timestamp.fromDate(new Date("2026-09-21T12:00:00+05:00"));
+    const orders = [
+      order({ id: "a", assignedCutterId: CUTTER, confirmedSheets: 30, cuttingCompletedAt: inWeek }),
+      order({ id: "b", assignedCutterId: CUTTER, confirmedSheets: 12, cuttingCompletedAt: nextWeek }),
+    ];
+    expect(measureWork(orders, [], CUTTER, "2026-09-14").sheetsCut).toBe(30);
+    expect(measureWork(orders, [], CUTTER, "2026-09-21").sheetsCut).toBe(12);
+    // The month still sees both — weekly pay splits the same work, it never loses any of it.
+    expect(measureWork(orders, [], CUTTER, "2026-09").sheetsCut).toBe(42);
+  });
+
+  it("keeps a week whole across a month boundary", () => {
+    // Mon 28 Sep – Sun 4 Oct: the cutter's week does not end because September does.
+    const sep = Timestamp.fromDate(new Date("2026-09-30T12:00:00+05:00"));
+    const oct = Timestamp.fromDate(new Date("2026-10-02T12:00:00+05:00"));
+    const orders = [
+      order({ id: "a", assignedCutterId: CUTTER, confirmedSheets: 5, cuttingCompletedAt: sep }),
+      order({ id: "b", assignedCutterId: CUTTER, confirmedSheets: 7, cuttingCompletedAt: oct }),
+    ];
+    expect(measureWork(orders, [], CUTTER, "2026-09-28").sheetsCut).toBe(12);
+  });
+
   it("ignores work assigned to a different worker", () => {
     const work = measureWork(
       [order({ assignedCutterId: "someone-else", confirmedSheets: 9, cuttingCompletedAt: MARCH })],
@@ -220,6 +245,20 @@ describe("computeSalaryBase — MANUAL is the default and invents nothing", () =
   it("FIXED_MONTHLY pays the configured amount", () => {
     const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "FIXED_MONTHLY", fixedMonthlyTiyn: T(250000) };
     expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(250000));
+  });
+
+  it("pro-rates FIXED_MONTHLY over a week instead of paying a whole month four times", () => {
+    const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "FIXED_MONTHLY", fixedMonthlyTiyn: T(250000) };
+    // 250 000 ₸ a month ÷ (52/12) weeks — the same every week, so a five-week month never pays more.
+    expect(computeSalaryBase(rule, work, "week").baseTiyn).toBe(Math.round(T(250000) / (52 / 12)));
+    expect(computeSalaryBase(rule, work, "month").baseTiyn).toBe(T(250000));
+  });
+
+  it("leaves every measured component alone on a week — it is already the right size", () => {
+    // Piece rates count what was actually done in the period, so a week needs no scaling at all.
+    const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "PER_SHEET", perSheetTiyn: T(1500) };
+    expect(computeSalaryBase(rule, work, "week").baseTiyn).toBe(T(15000));
+    expect(computeSalaryBase(rule, work, "month").baseTiyn).toBe(T(15000));
   });
 
   it("PER_SHEET multiplies sheets by the per-sheet rate", () => {

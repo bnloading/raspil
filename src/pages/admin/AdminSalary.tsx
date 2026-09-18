@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
@@ -10,16 +10,22 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
-import { availablePeriods } from "../../lib/salary";
+import { availablePeriods, buildSalaryEntry } from "../../lib/salary";
+import {
+  currentPeriodKey,
+  periodLabel,
+  salaryPeriodKind,
+  type SalaryPeriodKind,
+} from "../../lib/salaryPeriod";
 import { effectiveSalaryRule } from "../../lib/salaryPolicy";
 import { formatMoney } from "../../lib/money";
-import { monthKey, monthLabel } from "../../lib/dates";
 import { ROLE_LABELS } from "../../lib/rbac";
 import { useAdvances } from "../../hooks/useAdvances";
 import { summariseAdvances } from "../../lib/advances";
 import {
   SALARY_MODE_LABELS,
   SALARY_STATUS_LABELS,
+  type SalaryEntry,
   type SalaryMode,
   type SalaryRule,
   type UserDoc,
@@ -27,6 +33,18 @@ import {
 
 interface StaffUser extends UserDoc {
   id: string;
+}
+
+/**
+ * Whether a stored entry already says exactly what a fresh calculation would say.
+ *
+ * This is what keeps the automatic recalculation below from writing on every render: it only
+ * touches Firestore when a figure has actually moved, so an untouched week costs nothing.
+ */
+function sameFigures(entry: SalaryEntry, built: Omit<SalaryEntry, "id" | "status">): boolean {
+  const stored = entry as unknown as Record<string, unknown>;
+  const fresh = built as unknown as Record<string, unknown>;
+  return Object.keys(fresh).every((key) => stored[key] === fresh[key]);
 }
 
 const MODES: SalaryMode[] = ["MANUAL", "FIXED_MONTHLY", "PER_SHEET", "PER_PVC_METER", "PER_MDF_M2", "PER_ORDER", "HOURLY", "MIXED"];
@@ -56,7 +74,11 @@ export default function AdminSalary() {
   const { message, visible, showToast } = useToast();
 
   const [staff, setStaff] = useState<StaffUser[]>([]);
-  const [period, setPeriod] = useState(monthKey(new Date()));
+  // Распил is settled weekly and every other station monthly, so this page is really two payrolls
+  // (see lib/salaryPeriod.ts). It opens on the weekly one: that is the list with a deadline — it
+  // closes every Monday — while the monthly one only needs looking at once a month.
+  const [kind, setKind] = useState<SalaryPeriodKind>("week");
+  const [period, setPeriod] = useState(currentPeriodKey("week"));
   const [busy, setBusy] = useState(false);
   const [editRuleFor, setEditRuleFor] = useState<string | null>(null);
 
@@ -66,7 +88,16 @@ export default function AdminSalary() {
       .catch(() => setStaff([]));
   }, []);
 
-  const periods = useMemo(() => availablePeriods(orders, attendance), [orders, attendance]);
+  const periods = useMemo(
+    () => availablePeriods(orders, attendance, new Date(), kind),
+    [orders, attendance, kind],
+  );
+  // Only the people actually paid on the selected rhythm — mixing a week and a month in one
+  // "Жалпы есептелген" would add up two different things.
+  const visibleStaff = useMemo(
+    () => staff.filter((m) => salaryPeriodKind(m.role) === kind),
+    [staff, kind],
+  );
   // Piece rates differ per category, so recalculation needs to know what each sheet was.
   const categoryByMaterialId = useMemo(
     () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
@@ -105,6 +136,71 @@ export default function AdminSalary() {
     };
     // `advances` belongs here: the payout total changes the moment one is recorded or reversed.
   }, [entries, period, advances]);
+
+  /**
+   * Keeps the open period's figures in step with the work, with nobody pressing anything.
+   *
+   * The шоп pays распил every week, so a week that is only recalculated when someone remembers to
+   * is a week that gets paid wrong. This recomputes each visible worker's entry from the same
+   * engine "Қайта есептеу" uses and writes it only when the number has actually moved
+   * (`sameFigures`), so an untouched period costs no writes and there is no loop.
+   *
+   * Two things it will never touch: an entry already `confirmed` or `paid` — that figure is a
+   * decision a person made, and correcting it is what Түзету exists for — and anything at all
+   * unless the viewer is an Admin, since salaryEntries is admin-write in firestore.rules.
+   */
+  const autoCalculated = useRef(new Set<string>());
+  useEffect(() => {
+    if (!user || !userData || userData.role !== "admin") return;
+    const actor = { user, userData };
+    for (const member of visibleStaff) {
+      const entry = entries.find((e) => e.userId === member.id && e.periodKey === period);
+      if (entry && entry.status !== "calculated") continue;
+
+      const adjustmentTiyn = adjustments
+        .filter((a) => a.userId === member.id && a.periodKey === period)
+        .reduce((s, a) => s + a.amountTiyn, 0);
+      const built = buildSalaryEntry({
+        userId: member.id,
+        userName: member.name,
+        periodKey: period,
+        rule: rulesByUid.get(member.id),
+        orders,
+        attendance,
+        categoryByMaterialId,
+        adjustmentTiyn,
+        bonusTiyn: entry?.bonusTiyn,
+      });
+      if (entry && sameFigures(entry, built)) continue;
+      // Nothing worked and no formula to pay it by: creating a 0 ₸ row would only add noise to a
+      // page the Admin reads to find what still has to be paid. The manual button still works.
+      if (!entry && built.finalTiyn === 0 && built.ordersCompleted === 0) continue;
+
+      // Keyed on the figure itself, so a real change fires again while a slow snapshot does not.
+      const token = `${member.id}_${period}_${built.finalTiyn}`;
+      if (autoCalculated.current.has(token)) continue;
+      autoCalculated.current.add(token);
+      void recalculateSalary(db, actor, {
+        userId: member.id,
+        userName: member.name,
+        periodKey: period,
+        rule: rulesByUid.get(member.id),
+        orders,
+        attendance,
+        categoryByMaterialId,
+        adjustmentTiyn,
+        bonusTiyn: entry?.bonusTiyn,
+        existing: entry,
+      }).catch(() => {
+        // A failed automatic pass must not shout at the Admin mid-task — the manual "Қайта есептеу"
+        // button is still there and will surface the real error.
+        autoCalculated.current.delete(token);
+      });
+    }
+  }, [
+    user, userData, visibleStaff, entries, adjustments, period,
+    rulesByUid, orders, attendance, categoryByMaterialId,
+  ]);
 
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
@@ -178,17 +274,43 @@ export default function AdminSalary() {
   };
 
   return (
-    <AppShell title="Айлық" subtitle={monthLabel(period)}>
+    <AppShell title="Айлық" subtitle={periodLabel(period)}>
+      {/* Two payrolls on one page: распил closes every Monday, the rest once a month. Switching
+          also switches the period list, so a week key can never be shown against a month's staff. */}
+      <div className="topbar-actions" style={{ marginBottom: 12 }}>
+        {(["week", "month"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            className="btn btn-outline btn-sm"
+            aria-pressed={kind === k}
+            onClick={() => {
+              setKind(k);
+              setPeriod(currentPeriodKey(k));
+            }}
+          >
+            {k === "week" ? "Апталық · Распил" : "Айлық · Қалғаны"}
+          </button>
+        ))}
+      </div>
+
       <div className="form-group" style={{ maxWidth: 260 }}>
-        <label>Есептік кезең</label>
+        <label>{kind === "week" ? "Есептік апта" : "Есептік ай"}</label>
         <select className="form-input" value={period} onChange={(e) => setPeriod(e.target.value)}>
           {periods.map((p) => (
             <option key={p} value={p}>
-              {monthLabel(p)}
+              {periodLabel(p)}
             </option>
           ))}
         </select>
       </div>
+
+      {kind === "week" && (
+        <p className="jt-muted" style={{ margin: "0 0 12px" }}>
+          🧮 Апталық есеп өзі жаңарып отырады — «Қайта есептеу» басудың қажеті жоқ. Расталған
+          немесе төленген апта қозғалмайды.
+        </p>
+      )}
 
       <div className="stats-bar">
         <div className="stat-card">
@@ -209,13 +331,13 @@ export default function AdminSalary() {
         </div>
       </div>
 
-      {staff.length === 0 ? (
+      {visibleStaff.length === 0 ? (
         <div className="empty-state">
           <div className="icon">👥</div>
           <p>Қызметкер жоқ</p>
         </div>
       ) : (
-        staff.map((member) => {
+        visibleStaff.map((member) => {
           const rule = rulesByUid.get(member.id);
           const entry = entryFor(member.id);
           const adj = adjustmentTotal(member.id);
@@ -268,7 +390,7 @@ export default function AdminSalary() {
                 </div>
               ) : (
                 <p className="jt-muted" style={{ margin: "0 0 12px" }}>
-                  Бұл айға әлі есептелмеген
+                  {kind === "week" ? "Бұл аптада жұмыс жоқ" : "Бұл айға әлі есептелмеген"}
                   {adj !== 0 ? ` · түзету: ${formatMoney(adj)}` : ""}
                   {/* Money already handed over is worth seeing before the month is worked out,
                       not after — it is the reason the final figure will look small. */}

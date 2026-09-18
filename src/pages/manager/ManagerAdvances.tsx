@@ -8,10 +8,11 @@ import { useToast } from "../../hooks";
 import { useStaff } from "../../hooks/useStaff";
 import { useAdvances } from "../../hooks/useAdvances";
 import { recordAdvance, reverseAdvance } from "../../lib/advancesWrite";
-import { advancesFor, currentPeriodKey, totalAdvancesTiyn } from "../../lib/advances";
+import { advancePeriodKey, advancesFor, totalAdvancesTiyn } from "../../lib/advances";
 import { formatMoney } from "../../lib/money";
-import { formatDateDMY } from "../../lib/dates";
+import { formatDateDMY, monthKey } from "../../lib/dates";
 import { ROLE_LABELS } from "../../lib/rbac";
+import type { UserRole } from "../../types/domain";
 
 const MONTHS_KK = [
   "Қаңтар", "Ақпан", "Наурыз", "Сәуір", "Мамыр", "Маусым",
@@ -36,7 +37,9 @@ export default function ManagerAdvances() {
   const { advances, loading } = useAdvances();
   const { message, visible, showToast } = useToast();
 
-  const period = currentPeriodKey();
+  // Each worker's advance is filed against their own pay period — a week for распил, a month for
+  // everyone else — because that is the payslip it has to come off (see lib/advances.ts).
+  const periodFor = (role: UserRole | undefined) => advancePeriodKey(role);
   const [userId, setUserId] = useState("");
   const [amountTenge, setAmountTenge] = useState(0);
   const [note, setNote] = useState("");
@@ -45,18 +48,25 @@ export default function ManagerAdvances() {
   /** Only people who draw a salary — a customer never takes an advance. */
   const payable = useMemo(() => staff.filter((s) => s.role !== "customer" && !s.blocked), [staff]);
 
+  // Counted by when the cash actually left the till, not by which period it was filed against:
+  // now that a week and a month are both valid period keys, "бұл айда берілген" has to mean the
+  // calendar month or a cutter's weekly advances would vanish from the month's total.
+  const month = monthKey(new Date());
   const thisMonth = useMemo(
-    () => advances.filter((a) => a.periodKey === period && !a.reversed),
-    [advances, period],
+    () => advances.filter((a) => !a.reversed && a.paidAt && monthKey(a.paidAt) === month),
+    [advances, month],
   );
   const totalThisMonth = totalAdvancesTiyn(thisMonth);
 
   const perWorker = useMemo(
     () =>
       payable
-        .map((w) => ({ worker: w, taken: totalAdvancesTiyn(advancesFor(advances, w.id, period)) }))
+        .map((w) => ({
+          worker: w,
+          taken: totalAdvancesTiyn(advancesFor(advances, w.id, periodFor(w.role))),
+        }))
         .sort((a, b) => b.taken - a.taken),
-    [payable, advances, period],
+    [payable, advances],
   );
 
   const history = useMemo(
@@ -85,7 +95,7 @@ export default function ManagerAdvances() {
       await recordAdvance(db, actor, {
         userId: worker.id,
         userName: worker.name,
-        periodKey: period,
+        periodKey: periodFor(worker.role),
         amountTiyn,
         note,
       });
@@ -110,7 +120,7 @@ export default function ManagerAdvances() {
   };
 
   return (
-    <AppShell title="Аванс" subtitle={`${monthName(period)} — қызметкерлерге берілген ақша`} back="/manager">
+    <AppShell title="Аванс" subtitle={`${monthName(month)} — қызметкерлерге берілген ақша`} back="/manager">
       <div className="kpi-row">
         <div className="kpi-card">
           <div className="kpi-text">
@@ -161,7 +171,7 @@ export default function ManagerAdvances() {
 
       <section className="panel-card">
         <div className="panel-head">
-          <h3>{monthName(period)} бойынша</h3>
+          <h3>Ағымдағы кезең бойынша</h3>
         </div>
         {staffLoading || loading ? (
           <Spinner />
