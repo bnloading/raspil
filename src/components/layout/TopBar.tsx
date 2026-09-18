@@ -4,6 +4,8 @@ import { useAuth } from "../../AuthContext";
 import { NotificationBell } from "../NotificationBell";
 import { AccountMenu } from "./AccountMenu";
 import { IconArrowLeft, IconSearch } from "./icons";
+import { DEPARTMENT_LABELS } from "../../lib/rbac";
+import { DEPARTMENTS } from "../../types/domain";
 
 interface TopBarProps {
   title: string;
@@ -15,7 +17,7 @@ interface TopBarProps {
 
 export function TopBar({ title, subtitle, back, search, actions }: TopBarProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, department, canSwitchDepartment, setDepartment } = useAuth();
 
   return (
     <header className="app-topbar">
@@ -50,6 +52,22 @@ export function TopBar({ title, subtitle, back, search, actions }: TopBarProps) 
         </div>
       )}
       <div className="topbar-actions">
+        {/* Admin-only: the two lines are separate businesses, so everyone else stays pinned to
+            theirs. See AuthContext's setDepartment — a view preference, not a permission. */}
+        {canSwitchDepartment && (
+          <div className="topbar-department" role="group" aria-label="Бағыт">
+            {DEPARTMENTS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={department === d}
+                onClick={() => setDepartment(d)}
+              >
+                {DEPARTMENT_LABELS[d]}
+              </button>
+            ))}
+          </div>
+        )}
         {user && <NotificationBell />}
         {actions}
         <AccountMenu />

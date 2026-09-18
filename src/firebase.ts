@@ -1,8 +1,6 @@
 import { initializeApp, getApps, deleteApp } from "firebase/app";
 import {
   getAuth,
-  setPersistence,
-  browserLocalPersistence,
   createUserWithEmailAndPassword,
   initializeAuth,
   inMemoryPersistence,
@@ -30,8 +28,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Сессияны сақтау — қайта кірмес үшін
-setPersistence(auth, browserLocalPersistence);
+// Login owns the selected local/session persistence; do not override it on every reload.
 
 /**
  * Admin's "create staff/customer account" action must not sign the admin out. The Firebase client

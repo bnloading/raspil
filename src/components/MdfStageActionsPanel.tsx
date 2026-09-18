@@ -44,6 +44,7 @@ export function MdfStageActionsPanel({
             {label} · {formatMdfArea(order.mdfAreaM2)}
           </span>
           <DurationPicker
+            quickMinutes={stage === "cnc" ? [15, 30, 45] : stage === "sanding" ? [10, 20, 30] : stage === "painting" ? [60, 120, 180] : [30, 45, 60]}
             confirmLabel="Бастау"
             busy={busy}
             onCancel={() => setMode("idle")}
@@ -68,7 +69,7 @@ export function MdfStageActionsPanel({
           {label} · {order.mdfAreaM2 ?? 0} м²
         </span>
         <button className="btn btn-primary btn-sm" onClick={() => setMode("start")}>
-          🧩 Бастау
+          Жұмысты бастау
         </button>
       </div>
     );
@@ -93,9 +94,14 @@ export function MdfStageActionsPanel({
         <span className="cutting-line-material">{label}</span>
         {job.expectedCompletionAt && <span className="otable-sub">Мерзімі: {formatDateTimeDMY(job.expectedCompletionAt)}</span>}
       </div>
+      {job.estimatedMinutes && <div className="station-estimate" aria-label="Жоспарланған уақыт">
+        <span>Жоспарланған уақыт</span>
+        <div>{(stage === "cnc" ? [15, 30, 45] : stage === "sanding" ? [10, 20, 30] : stage === "painting" ? [60, 120, 180] : [30, 45, 60]).map((minutes) => <span key={minutes} className={minutes === job.estimatedMinutes ? "selected" : ""}>{minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} сағ` : `${minutes} мин`}</span>)}</div>
+        {![...(stage === "cnc" ? [15, 30, 45] : stage === "sanding" ? [10, 20, 30] : stage === "painting" ? [60, 120, 180] : [30, 45, 60])].includes(job.estimatedMinutes) && <span>{job.estimatedMinutes} мин</span>}
+      </div>}
       <div className="wizard-actions">
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={handleComplete}>
-          ✅ Дайын
+          {busy ? "Сақталуда…" : `${label} дайын`}
         </button>
       </div>
     </div>

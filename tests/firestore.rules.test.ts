@@ -493,11 +493,50 @@ describe("payment method can be corrected without reversing the payment", () => 
     );
   });
 
-  it("manager still cannot touch the money itself", async () => {
+  it("manager still cannot touch the money itself outside a proper correction", async () => {
     const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
     await assertFails(updateDoc(doc(db, "payments", "payment-1"), { amountTiyn: 1 }));
     await assertFails(
       updateDoc(doc(db, "payments", "payment-1"), { methodName: "Kaspi", amountTiyn: 1 }),
+    );
+  });
+
+  it("manager CAN correct a mistyped amount (lib/payments.ts correctPaymentAmount's exact shape)", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        amountTiyn: 18000,
+        correctedByUid: MANAGER_UID,
+        correctedByName: "Manager",
+        correctedAt: new Date(),
+      }),
+    );
+  });
+
+  it("manager cannot claim a correction under someone else's name", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        amountTiyn: 18000,
+        correctedByUid: ADMIN_UID,
+        correctedByName: "Admin",
+        correctedAt: new Date(),
+      }),
+    );
+  });
+
+  it("manager cannot correct an already-reversed payment's amount", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), "payments", "payment-1"), { reversed: true });
+    });
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(
+      updateDoc(doc(db, "payments", "payment-1"), {
+        amountTiyn: 18000,
+        correctedByUid: MANAGER_UID,
+        correctedByName: "Manager",
+        correctedAt: new Date(),
+      }),
     );
   });
 
@@ -1381,5 +1420,23 @@ describe("admin has full access", () => {
     });
     const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
     await assertFails(getDoc(doc(db, "orders", ORDER_A_ID)));
+  });
+});
+
+describe("personal history for all workers on a merged order", () => {
+  it("allows a recorded participant to query delivered orders, but denies an unrelated worker", async () => {
+    await testEnv.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), "orders", "history-multi"), { productionStatus: "delivered", cuttingWorkerIds: [CUTTER_UID], pvcWorkerIds: [PVC_UID] });
+      await setDoc(doc(ctx.firestore(), "users", "other-cutter"), { role: "raspil", blocked: false });
+    });
+    await assertSucceeds(getDocs(query(collection(testEnv.authenticatedContext(CUTTER_UID).firestore(), "orders"), where("cuttingWorkerIds", "array-contains", CUTTER_UID))));
+    await assertSucceeds(getDocs(query(collection(testEnv.authenticatedContext(PVC_UID).firestore(), "orders"), where("pvcWorkerIds", "array-contains", PVC_UID))));
+    await assertFails(getDoc(doc(testEnv.authenticatedContext("other-cutter").firestore(), "orders", "history-multi")));
+  });
+  it("only permits appending oneself, never granting a different account access", async () => {
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertSucceeds(updateDoc(doc(db, "orders", "order-cutting-queue"), { cuttingWorkerIds: [CUTTER_UID] }));
+    await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { cuttingWorkerIds: [CUTTER_UID, CUSTOMER_B_UID] }));
+    await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { pvcWorkerIds: [PVC_UID] }));
   });
 });

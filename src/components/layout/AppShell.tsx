@@ -23,6 +23,7 @@ interface AppShellProps {
    *  the manual toggle keeps working exactly as before, on this page or any other, and a page that
    *  doesn't ask for this never touches the setting. */
   autoCollapse?: boolean;
+  variant?: "default" | "station" | "reports";
   children: ReactNode;
 }
 
@@ -38,6 +39,7 @@ export function AppShell({
   back,
   contentWidth = "wide",
   autoCollapse = false,
+  variant = "default",
   children,
 }: AppShellProps) {
   const { userData } = useAuth();
@@ -70,7 +72,7 @@ export function AppShell({
   const activeKey = navKey ?? matchNavKey(location.pathname, location.search, items);
 
   return (
-    <div className={`app-shell${collapsed ? " collapsed" : ""}`}>
+    <div className={`app-shell ${variant}-shell${collapsed ? " collapsed" : ""}`} data-worker-role={userData?.role}>
       <Sidebar
         items={items}
         activeKey={activeKey}

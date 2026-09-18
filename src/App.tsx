@@ -120,7 +120,7 @@ export default function App() {
             <Route
               path="/profile"
               element={
-                <RouteGuard roles={["customer"]}>
+                <RouteGuard roles={["customer", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"]}>
                   <Profile />
                 </RouteGuard>
               }

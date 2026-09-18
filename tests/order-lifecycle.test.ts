@@ -17,6 +17,7 @@ import {
 } from "../src/lib/orderStatus";
 import { jobsOf, allCuttingDone, allPvcDone } from "../src/lib/orderLines";
 import { canEnterCuttingQueue } from "../src/lib/statuses";
+import { returnLinesToWarehouse } from "../src/lib/warehouse";
 import { computeCashbox } from "../src/lib/cashbox";
 import { computePvcUsage } from "../src/lib/pvcUsage";
 import type { Material, Order, Payment, PaymentMethodDef, PvcType, UserDoc } from "../src/types/domain";
@@ -429,6 +430,49 @@ describe("журнал → төлем → распил → ПВХ → дайын
     order = await readOrder(asManager(), orderId);
     expect(order.productionStatus).toBe("pvc_queue");
     expect(await readMaterialQty()).toBe(-2);
+  });
+
+  it("queues once, is visible to both stations and its customer, and rejects stale requeue after starting", async () => {
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", "queue-customer"), { role: "customer", name: "Клиент", blocked: false });
+      await setDoc(doc(ctx.firestore(), "orders", orderId), { customerId: "queue-customer" }, { merge: true });
+    });
+    await recordPayment(asManager(), manager, { orderId, amountTiyn: EXPECTED_TOTAL, methodId: "cash", methodName: "Нал" });
+    const paid = await readOrder(asManager(), orderId);
+    const options = { isAdmin: false, queuePosition: 1 };
+    await enterCuttingQueue(asManager(), manager, paid, options);
+    await enterCuttingQueue(asManager(), manager, paid, options);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - SHEETS);
+    expect((await cutterQueue()).some((o) => o.id === orderId)).toBe(true);
+    expect((await pvcQueue()).some((o) => o.id === orderId)).toBe(true);
+    const customerDb = testEnv.authenticatedContext("queue-customer").firestore() as unknown as Firestore;
+    expect((await readOrder(customerDb, orderId)).productionStatus).toBe("cutting_queue");
+    const history = await getDocs(query(collection(asManager(), "orders", orderId, "statusHistory"), where("newStatus", "==", "cutting_queue")));
+    expect(history.size).toBe(1);
+    const queued = await readOrder(asCutter(), orderId);
+    await startCuttingLine(asCutter(), cutter, queued, 0, 20);
+    await expect(enterCuttingQueue(asManager(), manager, paid, options)).rejects.toThrow("күйі өзгерді");
+    expect((await readOrder(asManager(), orderId)).productionStatus).toBe("cutting_started");
+  });
+
+  it("returns queued sheets with all transaction reads preceding writes", async () => {
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    const order = await readOrder(asManager(), orderId);
+    await enterCuttingQueue(asManager(), manager, order, { isAdmin: true, overrideReason: "Журналдан қарызға", queuePosition: 1 });
+    const queued = await readOrder(asManager(), orderId);
+    await returnLinesToWarehouse(asManager(), manager, { orderId, jobs: jobsOf(queued), comment: "Тест қайтару" });
+    await returnLinesToWarehouse(asManager(), manager, { orderId, jobs: jobsOf(queued), comment: "Қайталап басу" });
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND);
+    expect(jobsOf(await readOrder(asManager(), orderId))[0].consumedQty).toBe(0);
+  });
+
+  it("checks current payment before consuming stock, even when the caller has an old paid snapshot", async () => {
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    const order = await readOrder(asManager(), orderId);
+    await expect(enterCuttingQueue(asManager(), manager, { ...order, paymentStatus: "paid" }, { isAdmin: false, queuePosition: 1 })).rejects.toThrow("толық төленген");
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND);
+    expect((await readOrder(asManager(), orderId)).productionStatus).toBe("waiting_payment");
   });
 
   it("goes straight to Дайын when the order has no edge banding", async () => {

@@ -8,7 +8,6 @@ import {
   pvcDefaultsFor,
   PVC_PRICE_WHITE_TIYN,
   PVC_PRICE_OTHER_TIYN,
-  EXTERNAL_CUT_PER_SHEET_TIYN,
   EXTERNAL_PVC_PER_METER_TIYN,
   countertopLengthM,
   externalCountertopPriceTiyn,
@@ -29,11 +28,13 @@ describe("journalDefaultsFor", () => {
     expect(PVC_PRICE_OTHER_TIYN).toBe(22000);
   });
 
-  it("charges labour on a customer's own sheet: 1600 to cut, 160 for ПВХ", () => {
+  it("adds no order-level cutting extra for a customer's own sheet — its own price already covers the labour, 160 for ПВХ", () => {
+    // Each "Сырттан келетін…" catalogue entry (a generic sheet, a "…Эггер" one, ...) carries its
+    // own agreed cutting price on sellingPriceTiyn, copied straight into the line's sheetPriceTiyn
+    // by pickMaterial — adding a second, flat charge here on top double-billed every such order.
     const d = journalDefaultsFor(m("Сырттан келетін лист"));
-    expect(d.cuttingPerSheetTiyn).toBe(EXTERNAL_CUT_PER_SHEET_TIYN);
+    expect(d.cuttingPerSheetTiyn).toBe(0);
     expect(d.pvcPricePerMeterTiyn).toBe(EXTERNAL_PVC_PER_METER_TIYN);
-    expect(d.cuttingPerSheetTiyn).toBe(160000);
     expect(d.pvcPricePerMeterTiyn).toBe(16000);
   });
 
@@ -42,11 +43,11 @@ describe("journalDefaultsFor", () => {
     expect(journalDefaultsFor(m("ЛДСП Кашемир")).cuttingPerSheetTiyn).toBe(0);
   });
 
-  it("treats a customer's own WHITE board as labour, not as our 200 ₸ white", () => {
+  it("treats a customer's own WHITE board as external ПВХ pricing, not as our 200 ₸ white", () => {
     // The external rule has to win, or a white outside board would be priced as if we sold it.
     const d = journalDefaultsFor(m("Сырттан келетін лист Ақ", "Ақ"));
     expect(d.pvcPricePerMeterTiyn).toBe(EXTERNAL_PVC_PER_METER_TIYN);
-    expect(d.cuttingPerSheetTiyn).toBe(EXTERNAL_CUT_PER_SHEET_TIYN);
+    expect(d.cuttingPerSheetTiyn).toBe(0);
   });
 
   it("falls back to the ordinary rate when no material is chosen yet", () => {
@@ -251,9 +252,8 @@ describe("journalDefaultsFor — customer's own countertop", () => {
     expect(journalDefaultsFor(top("Сырттан келетін столешница 4м")).cuttingPerSheetTiyn).toBe(300000);
   });
 
-  it("falls back to the per-sheet rate for a customer's own board", () => {
-    expect(journalDefaultsFor(top("Сырттан келетін лист")).cuttingPerSheetTiyn)
-      .toBe(EXTERNAL_CUT_PER_SHEET_TIYN);
+  it("adds nothing extra for a customer's own sheet — that one is priced through its own catalogue entry, not a flat rate", () => {
+    expect(journalDefaultsFor(top("Сырттан келетін лист")).cuttingPerSheetTiyn).toBe(0);
   });
 
   it("still prices the ПВХ at the external rate either way", () => {

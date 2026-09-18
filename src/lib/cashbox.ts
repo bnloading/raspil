@@ -1,5 +1,10 @@
-import { monthKey } from "./dates";
-import type { CashAccount, Expense, Payment, PaymentMethodDef } from "../types/domain";
+import { dayKey, monthKey } from "./dates";
+import type {
+  CashAccount,
+  Expense,
+  Payment,
+  PaymentMethodDef,
+} from "../types/domain";
 
 /**
  * The shop's two money pots — "Касса".
@@ -13,7 +18,8 @@ import type { CashAccount, Expense, Payment, PaymentMethodDef } from "../types/d
  * the logged expenses. No balance is ever typed in and stored, which is the same rule the debt
  * ledger follows — a stored total is a total that can silently go wrong.
  */
-
+// can nfdsn fsn kh fs
+// ls = offers if (offers>journal.length){console.log("it's just been a test offers never been more than joutnal length")} else {console.log("it's done just trolling lol xxaxaaxaxax")}
 export const CASH_ACCOUNTS: CashAccount[] = ["deposit", "cash"];
 
 export const CASH_ACCOUNT_LABELS: Record<CashAccount, string> = {
@@ -35,7 +41,9 @@ export const CASH_ACCOUNT_HINTS: Record<CashAccount, string> = {
 const CASH_METHOD_ID = "cash";
 
 /** Which pot a method's money lands in. */
-export function accountForMethod(method: Pick<PaymentMethodDef, "id" | "account"> | undefined): CashAccount {
+export function accountForMethod(
+  method: Pick<PaymentMethodDef, "id" | "account"> | undefined,
+): CashAccount {
   if (method?.account) return method.account;
   if (method?.id === CASH_METHOD_ID) return "cash";
   // An unknown method (deleted from the catalogue, or a payment recorded before it existed) is
@@ -45,7 +53,9 @@ export function accountForMethod(method: Pick<PaymentMethodDef, "id" | "account"
 }
 
 /** An expense with no account recorded predates the split and was paid out of the drawer. */
-export function accountForExpense(expense: Pick<Expense, "account">): CashAccount {
+export function accountForExpense(
+  expense: Pick<Expense, "account">,
+): CashAccount {
   return expense.account ?? "cash";
 }
 
@@ -78,7 +88,14 @@ export interface CashboxSummary {
 }
 
 function emptyAccount(account: CashAccount): AccountSummary {
-  return { account, inTiyn: 0, outTiyn: 0, balanceTiyn: 0, byMethod: [], expenseCount: 0 };
+  return {
+    account,
+    inTiyn: 0,
+    outTiyn: 0,
+    balanceTiyn: 0,
+    byMethod: [],
+    expenseCount: 0,
+  };
 }
 
 /**
@@ -98,12 +115,19 @@ export function computeCashbox({
   methods,
   period,
   openingBalanceTiyn = {},
+  startDate = null,
 }: {
   payments: Payment[];
   expenses: Expense[];
   methods: PaymentMethodDef[];
   period: string | null;
   openingBalanceTiyn?: Partial<Record<CashAccount, number>>;
+  /**
+   * "YYYY-MM-DD" the accounting restarts on — money that moved before it is not counted here at
+   * all, in any period (see ApplicationSettings.cashStartDate). This is what lets the shop start
+   * its cash figures over mid-month without deleting payments the orders still depend on.
+   */
+  startDate?: string | null;
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
   const summaries = new Map<CashAccount, AccountSummary>(
@@ -117,9 +141,20 @@ export function computeCashbox({
 
   for (const payment of payments) {
     if (payment.reversed) continue;
-    if (period !== null && (!payment.paymentDate || monthKey(payment.paymentDate) !== period)) continue;
+    if (
+      startDate &&
+      (!payment.paymentDate || dayKey(payment.paymentDate) < startDate)
+    )
+      continue;
+    if (
+      period !== null &&
+      (!payment.paymentDate || monthKey(payment.paymentDate) !== period)
+    )
+      continue;
 
-    const account = accountForMethod(methodById.get(payment.methodId) ?? { id: payment.methodId });
+    const account = accountForMethod(
+      methodById.get(payment.methodId) ?? { id: payment.methodId },
+    );
     const summary = summaries.get(account)!;
     summary.inTiyn += payment.amountTiyn;
 
@@ -129,13 +164,17 @@ export function computeCashbox({
     else {
       bucket.set(payment.methodId, {
         methodId: payment.methodId,
-        methodName: methodById.get(payment.methodId)?.name ?? payment.methodName ?? payment.methodId,
+        methodName:
+          methodById.get(payment.methodId)?.name ??
+          payment.methodName ??
+          payment.methodId,
         amountTiyn: payment.amountTiyn,
       });
     }
   }
 
   for (const expense of expenses) {
+    if (startDate && expense.date < startDate) continue;
     if (period !== null && !expense.date.startsWith(period)) continue;
     const summary = summaries.get(accountForExpense(expense))!;
     summary.outTiyn += expense.amountTiyn;
@@ -144,11 +183,13 @@ export function computeCashbox({
 
   const accounts = CASH_ACCOUNTS.map((account) => {
     const summary = summaries.get(account)!;
-    const opening = period === null ? openingBalanceTiyn[account] ?? 0 : 0;
+    const opening = period === null ? (openingBalanceTiyn[account] ?? 0) : 0;
     return {
       ...summary,
       balanceTiyn: summary.inTiyn - summary.outTiyn + opening,
-      byMethod: [...byMethod.get(account)!.values()].sort((a, b) => b.amountTiyn - a.amountTiyn),
+      byMethod: [...byMethod.get(account)!.values()].sort(
+        (a, b) => b.amountTiyn - a.amountTiyn,
+      ),
     };
   });
 
@@ -166,11 +207,26 @@ export function computeCashbox({
  *
  * Ties break on the entry's own id so a day with three expenses holds a stable order instead of
  * reshuffling on every snapshot, the same reason the journal sorts on the order number.
+ *
+ * `startDate` is applied here too, so the list can never show a row the totals above it are not
+ * counting — an expense from before the accounting restart is history, not part of this ledger.
  */
-export function expensesInPeriod(expenses: Expense[], period: string | null): Expense[] {
+export function expensesInPeriod(
+  expenses: Expense[],
+  period: string | null,
+  startDate: string | null = null,
+): Expense[] {
   return expenses
-    .filter((e) => period === null || e.date.startsWith(period))
-    .sort((a, b) => (a.date === b.date ? a.id.localeCompare(b.id) : b.date.localeCompare(a.date)));
+    .filter(
+      (e) =>
+        (period === null || e.date.startsWith(period)) &&
+        (!startDate || e.date >= startDate),
+    )
+    .sort((a, b) =>
+      a.date === b.date
+        ? a.id.localeCompare(b.id)
+        : b.date.localeCompare(a.date),
+    );
 }
 
 /** Expenses grouped by name, biggest first — "Лист алуға 240 000 ₸ (12 рет)". */
@@ -189,7 +245,11 @@ export function groupExpensesByName(expenses: Expense[]): ExpenseGroup[] {
       existing.amountTiyn += expense.amountTiyn;
       existing.count += 1;
     } else {
-      byName.set(key, { name: expense.name.trim(), amountTiyn: expense.amountTiyn, count: 1 });
+      byName.set(key, {
+        name: expense.name.trim(),
+        amountTiyn: expense.amountTiyn,
+        count: 1,
+      });
     }
   }
   return [...byName.values()].sort((a, b) => b.amountTiyn - a.amountTiyn);

@@ -336,6 +336,16 @@ function NewMdfOrderForm({
           onChange={(e) => setDraft({ ...draft, pricePerM2Tiyn: Math.round((Number(e.target.value) || 0) * 100) })}
         />
       </div>
+      {/* Клиент бағасын өзгертпейді — тек вакуумшының айлығына бонус қосады (lib/salary.ts). */}
+      <label className="remember-me">
+        <input
+          type="checkbox"
+          checked={draft.packaging}
+          onChange={(e) => setDraft({ ...draft, packaging: e.target.checked })}
+        />
+        <span className="remember-check">{draft.packaging ? "✓" : ""}</span>
+        <span>Упаковка</span>
+      </label>
       <div className="track-card-meta-row">
         <span>Жалпы сома</span>
         <strong>{formatMoney(preview.totalTiyn)}</strong>
@@ -362,6 +372,7 @@ function MdfPriceDialog({
   const [areaM2, setAreaM2] = useState(String(order.mdfAreaM2 ?? ""));
   const [filmColor, setFilmColor] = useState(order.mdfFilmColor ?? "");
   const [priceTenge, setPriceTenge] = useState(order.mdfPricePerM2Tiyn ? order.mdfPricePerM2Tiyn / 100 : 0);
+  const [packaging, setPackaging] = useState(order.mdfPackaging ?? false);
   const [busy, setBusy] = useState(false);
 
   const area = parseFloat(areaM2.replace(",", ".")) || 0;
@@ -382,6 +393,7 @@ function MdfPriceDialog({
         areaM2: area,
         pricePerM2Tiyn: Math.round(priceTenge * 100),
         filmColor,
+        packaging,
       });
       onToast(`✅ ${order.orderNumber} бағаланды`);
       onClose();
@@ -417,6 +429,12 @@ function MdfPriceDialog({
             onChange={(e) => setPriceTenge(Number(e.target.value) || 0)}
           />
         </div>
+        {/* Клиент бағасын өзгертпейді — тек вакуумшының айлығына бонус қосады (lib/salary.ts). */}
+        <label className="remember-me">
+          <input type="checkbox" checked={packaging} onChange={(e) => setPackaging(e.target.checked)} />
+          <span className="remember-check">{packaging ? "✓" : ""}</span>
+          <span>Упаковка</span>
+        </label>
         <div className="track-card-meta-row">
           <span>Жалпы сома</span>
           <strong>{formatMoney(preview.totalTiyn)}</strong>

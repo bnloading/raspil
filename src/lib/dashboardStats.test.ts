@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Timestamp } from "firebase/firestore";
-import type { ExpenseCategory, Material, Order, Payment, ProductionStatus } from "../types/domain";
+import type { ExpenseCategory, InventoryMovement, Material, Order, Payment, ProductionStatus } from "../types/domain";
 import {
   computeIncomeAllocation,
   computeKpis,
@@ -8,6 +8,7 @@ import {
   computeMethodBreakdown,
   computeProductionBreakdown,
   computeQueueOrders,
+  computeSheetsCutByPeriod,
 } from "./dashboardStats";
 
 function ts(date: Date): Timestamp {
@@ -49,6 +50,21 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     debtTiyn: 0,
     isDraft: false,
     pricePublished: false,
+    ...overrides,
+  };
+}
+
+function makeMovement(overrides: Partial<InventoryMovement> = {}): InventoryMovement {
+  return {
+    id: "mv-1",
+    materialId: "mat-1",
+    type: "cutting_consumption",
+    qty: -1,
+    userId: "uid-1",
+    userName: "Cutter",
+    balanceBefore: 10,
+    balanceAfter: 9,
+    createdAt: ts(new Date()),
     ...overrides,
   };
 }
@@ -223,6 +239,50 @@ describe("computeKpis: totalDebtTiyn matches computeCustomerDebts' notion of rea
     ];
     const kpis = computeKpis({ orders, payments: [], movements: [], materials: [] });
     expect(kpis.totalDebtTiyn).toBe(6000);
+  });
+});
+
+describe("computeSheetsCutByPeriod: real cuts shown on Касса/Қойма", () => {
+  // Mid-month Thursday so the week (Mon–Sun) never crosses the month boundary, keeping "this
+  // week" strictly inside "this month" for these fixtures.
+  const now = new Date("2026-09-10T12:00:00+05:00");
+
+  it("counts a cutting_consumption movement from this week in both totals", () => {
+    const movements = [makeMovement({ qty: -3, createdAt: ts(new Date("2026-09-08T09:00:00+05:00")) })];
+    const { week, month } = computeSheetsCutByPeriod(movements, now);
+    expect(week).toBe(3);
+    expect(month).toBe(3);
+  });
+
+  it("counts an earlier-this-month movement in the month total but not the week total", () => {
+    const movements = [makeMovement({ qty: -5, createdAt: ts(new Date("2026-09-03T09:00:00+05:00")) })];
+    const { week, month } = computeSheetsCutByPeriod(movements, now);
+    expect(week).toBe(0);
+    expect(month).toBe(5);
+  });
+
+  it("excludes a movement from before this month entirely", () => {
+    const movements = [makeMovement({ qty: -2, createdAt: ts(new Date("2026-08-20T09:00:00+05:00")) })];
+    const { week, month } = computeSheetsCutByPeriod(movements, now);
+    expect(week).toBe(0);
+    expect(month).toBe(0);
+  });
+
+  it("ignores non-cutting movement types, like a warehouse receipt", () => {
+    const movements = [makeMovement({ type: "receipt", qty: 10, createdAt: ts(new Date("2026-09-09T09:00:00+05:00")) })];
+    const { week, month } = computeSheetsCutByPeriod(movements, now);
+    expect(week).toBe(0);
+    expect(month).toBe(0);
+  });
+
+  it("scopes to one department's materials when a materialIds set is given (ManagerCashbox's per-line stat)", () => {
+    const movements = [
+      makeMovement({ materialId: "ldsp-dub-votan", qty: -4, createdAt: ts(new Date("2026-09-08T09:00:00+05:00")) }),
+      makeMovement({ materialId: "mdf-white", qty: -6, createdAt: ts(new Date("2026-09-08T09:00:00+05:00")) }),
+    ];
+    const ldspOnly = computeSheetsCutByPeriod(movements, now, new Set(["ldsp-dub-votan"]));
+    expect(ldspOnly.week).toBe(4);
+    expect(ldspOnly.month).toBe(4);
   });
 });
 

@@ -10,12 +10,19 @@ import { computePaymentStatus } from "./statuses";
  * never display one total and save another. See src/lib/journal.test.ts.
  */
 
+/** Прифуговка (edge-jointing) surcharge, added per metre on top of pvcPricePerMeterTiyn — the rate
+ *  field itself stays exactly what was typed/matched from the catalogue, so toggling the checkbox
+ *  never has to remember to add or subtract from it. */
+export const PVC_JOINTING_SURCHARGE_TIYN = 2000; // 20 ₸/м
+
 /** One material line of a journal row: sheets at a price, plus its own edge banding. */
 export interface JournalLineInput {
   sheetQty: number;
   sheetPriceTiyn: number;
   pvcMeters: number;
   pvcPricePerMeterTiyn: number;
+  /** Needs edge-jointing — see PVC_JOINTING_SURCHARGE_TIYN. */
+  pvcJointed?: boolean;
 }
 
 /**
@@ -56,7 +63,8 @@ export interface JournalRowTotals {
 /** Sheets × price and metres × rate for a single line, rounded to whole tiyn. */
 export function computeLineTotals(line: JournalLineInput): JournalLineTotals {
   const materialCostTiyn = Math.round(line.sheetQty * line.sheetPriceTiyn);
-  const pvcCostTiyn = Math.round(line.pvcMeters * line.pvcPricePerMeterTiyn);
+  const pvcRateTiyn = line.pvcPricePerMeterTiyn + (line.pvcJointed ? PVC_JOINTING_SURCHARGE_TIYN : 0);
+  const pvcCostTiyn = Math.round(line.pvcMeters * pvcRateTiyn);
   return { materialCostTiyn, pvcCostTiyn, lineTotalTiyn: materialCostTiyn + pvcCostTiyn };
 }
 

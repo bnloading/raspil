@@ -8,7 +8,8 @@ import {
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { InventoryMovementType, Order, OrderLineJob, UserDoc } from "../types/domain";
-import { allCuttingDone, jobAt, jobsOf, patchJob, totalConfirmedSheets, orderNeedsPvc } from "./orderLines";
+import { allCuttingDone, buildLineJobs, jobAt, jobsOf, patchJob, totalConfirmedSheets, orderNeedsPvc } from "./orderLines";
+import { canEnterCuttingQueue } from "./statuses";
 
 type Actor = { user: User; userData: UserDoc };
 
@@ -96,23 +97,47 @@ function isStockTracked(material: { stockTracked?: boolean }): boolean {
 export async function consumeStockOnQueue(
   db: Firestore,
   actor: Actor,
-  params: { orderId: string; orderNumber: string; jobs: OrderLineJob[] },
-): Promise<{ jobs: OrderLineJob[]; consumed: number }> {
+  params: {
+    orderId: string; orderNumber: string; jobs: OrderLineJob[];
+    queue?: { isAdmin: boolean; overrideReason?: string; queuePosition: number };
+  },
+): Promise<{ jobs: OrderLineJob[]; consumed: number; alreadyQueued?: boolean }> {
   const orderRef = doc(db, "orders", params.orderId);
 
   return runTransaction(db, async (tx) => {
     const orderSnap = await tx.get(orderRef);
     if (!orderSnap.exists()) throw new Error("Заказ табылмады");
-    const existing = orderSnap.data() as { cuttingConsumedAt?: unknown; lineJobs?: OrderLineJob[] };
+    const existing = orderSnap.data() as Order;
+    let queueUpdate = {};
+    if (params.queue) {
+      if (existing.productionStatus === "cutting_queue") {
+        return { jobs: existing.lineJobs ?? params.jobs, consumed: 0, alreadyQueued: true };
+      }
+      if (!["waiting_payment", "partially_paid", "paid"].includes(existing.productionStatus)) {
+        throw new Error("Заказ күйі өзгерді. Бетті жаңартып, қайта тексеріңіз");
+      }
+      const gateOk = canEnterCuttingQueue(existing.paymentStatus);
+      if (!gateOk && (!params.queue.isAdmin || !params.queue.overrideReason?.trim())) {
+        throw new Error("Тек толық төленген заказды кезекке қоюға болады");
+      }
+      queueUpdate = {
+        productionStatus: "cutting_queue",
+        priority: params.queue.queuePosition,
+        cuttingQueuedAt: serverTimestamp(),
+        ...(!gateOk ? { paymentGateOverride: true, paymentGateOverrideReason: params.queue.overrideReason } : {}),
+      };
+    }
     if (existing.cuttingConsumedAt) {
+      if (params.queue) tx.update(orderRef, queueUpdate);
       return { jobs: existing.lineJobs ?? params.jobs, consumed: 0 }; // already taken — never twice
     }
 
     // Two lines can share a material (the same colour typed on two rows), so the balance is
     // moved once per material, not once per line. A line with no material picked yet has no
     // balance to move and is simply skipped — it must not keep the order off the saw.
+    const inputJobs = params.queue ? buildLineJobs(existing) : params.jobs;
     const wanted = new Map<string, number>();
-    for (const job of params.jobs) {
+    for (const job of inputJobs) {
       if (job.sheetQty > 0 && job.materialId) {
         wanted.set(job.materialId, (wanted.get(job.materialId) ?? 0) + job.sheetQty);
       }
@@ -173,12 +198,13 @@ export async function consumeStockOnQueue(
       consumed += qty;
     }
 
-    const jobs = params.jobs.map((job) => ({
+    const jobs = inputJobs.map((job) => ({
       ...job,
       consumedQty: materials.get(job.materialId)?.tracked ? job.sheetQty : 0,
     }));
 
     tx.update(orderRef, {
+      ...queueUpdate,
       lineJobs: jobs,
       cuttingConsumedAt: serverTimestamp(),
       cuttingConsumedQty: consumed,
@@ -200,16 +226,22 @@ export async function returnLinesToWarehouse(
   actor: Actor,
   params: { orderId: string; jobs: OrderLineJob[]; comment: string },
 ): Promise<void> {
-  const owed = new Map<string, number>();
-  for (const job of params.jobs) {
-    const qty = job.consumedQty ?? 0;
-    if (qty > 0) owed.set(job.materialId, (owed.get(job.materialId) ?? 0) + qty);
-  }
-  if (owed.size === 0) return;
-
   const orderRef = doc(db, "orders", params.orderId);
 
   await runTransaction(db, async (tx) => {
+    // Firestore requires every read before the first write.
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists()) return;
+    const jobs = jobsOf(orderSnap.data() as Order);
+    const returned = new Set(params.jobs.map((j) => j.index));
+    const owed = new Map<string, number>();
+    for (const job of jobs) {
+      const qty = job.consumedQty ?? 0;
+      if (returned.has(job.index) && qty > 0) {
+        owed.set(job.materialId, (owed.get(job.materialId) ?? 0) + qty);
+      }
+    }
+    if (owed.size === 0) return;
     const materials = new Map<string, { qtyOnHand: number; tracked: boolean }>();
     for (const materialId of owed.keys()) {
       const snap = await tx.get(doc(db, "materials", materialId));
@@ -240,13 +272,11 @@ export async function returnLinesToWarehouse(
 
     // Every returned line's own hold on the warehouse is cleared, not just the order-level total —
     // a cancelled order must never look like it still owes stock for sheets it gave back.
-    const orderSnap = await tx.get(orderRef);
-    if (orderSnap.exists()) {
-      const jobs = jobsOf(orderSnap.data() as Order);
-      const returned = new Set(params.jobs.map((j) => j.index));
-      const nextJobs = jobs.map((j) => (returned.has(j.index) ? { ...j, consumedQty: 0 } : j));
-      tx.update(orderRef, { lineJobs: nextJobs, cuttingConsumedQty: 0 });
-    }
+    const nextJobs = jobs.map((j) => (returned.has(j.index) ? { ...j, consumedQty: 0 } : j));
+    tx.update(orderRef, {
+      lineJobs: nextJobs,
+      cuttingConsumedQty: nextJobs.reduce((sum, job) => sum + (job.consumedQty ?? 0), 0),
+    });
   });
 }
 

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { Timestamp } from "firebase/firestore";
 import {
   computeJournalRowTotals,
+  computeLineTotals,
+  PVC_JOINTING_SURCHARGE_TIYN,
   netPaidTiyn,
   paidByMethod,
   groupPaymentsByOrder,
@@ -168,6 +170,30 @@ describe("computeJournalRowTotals — journal row arithmetic", () => {
     expect(computeJournalRowTotals(row({ sheetQty: 1, sheetPriceTiyn: T(100000), paidTiyn: T(120000) })).debtTiyn).toBe(
       T(-20000),
     );
+  });
+});
+
+describe("computeLineTotals — Прифуговка surcharge", () => {
+  it("adds 20 ₸/м on top of the price when pvcJointed is set", () => {
+    const jointed = computeLineTotals({ sheetQty: 0, sheetPriceTiyn: 0, pvcMeters: 10, pvcPricePerMeterTiyn: T(200), pvcJointed: true });
+    expect(jointed.pvcCostTiyn).toBe(T(2200)); // 10 × (200 + 20)
+  });
+
+  it("leaves the price untouched when pvcJointed is unset or false", () => {
+    const plain = computeLineTotals({ sheetQty: 0, sheetPriceTiyn: 0, pvcMeters: 10, pvcPricePerMeterTiyn: T(200) });
+    expect(plain.pvcCostTiyn).toBe(T(2000));
+    const explicitFalse = computeLineTotals({ sheetQty: 0, sheetPriceTiyn: 0, pvcMeters: 10, pvcPricePerMeterTiyn: T(200), pvcJointed: false });
+    expect(explicitFalse.pvcCostTiyn).toBe(T(2000));
+  });
+
+  it("never mutates pvcPricePerMeterTiyn itself — the surcharge is a separate term", () => {
+    const line = { sheetQty: 0, sheetPriceTiyn: 0, pvcMeters: 5, pvcPricePerMeterTiyn: T(220), pvcJointed: true };
+    computeLineTotals(line);
+    expect(line.pvcPricePerMeterTiyn).toBe(T(220));
+  });
+
+  it("PVC_JOINTING_SURCHARGE_TIYN is 20 ₸ in tiyn", () => {
+    expect(PVC_JOINTING_SURCHARGE_TIYN).toBe(T(20));
   });
 });
 

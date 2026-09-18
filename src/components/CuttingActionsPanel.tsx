@@ -13,13 +13,11 @@ type Actor = { user: User; userData: UserDoc };
 type Mode = "idle" | "start" | "reestimate";
 
 /**
- * Cutter's "Распилді бастау" / "Распил дайын" action block — one row per material line, each with
- * its own start/finish. A merged order ("10 лист ЛДСП Ақ + 3 лист ХДФ") is two jobs on the shop
- * floor, and the cutter starts and confirms whichever one is on the saw first — the two lines do
- * not have to be worked in order, or finished together.
- *
- * Renders nothing once the order has moved past cutting entirely (every line already confirmed —
- * see lib/orderLines.allCuttingDone, which is what advances the order past cutting_started).
+ * The full "Распилді бастау" / "Распил дайын" list for the order-detail page — one row per
+ * material line, each labelled with what it is since nothing else on that page already lists
+ * the materials. The dashboard cards get the same per-line control straight from
+ * CuttingLineActions instead (threaded into WorkerMaterialSummary's `action` slot, unlabelled,
+ * since the material card it sits in already says what it is).
  */
 export function CuttingActionsPanel({
   order,
@@ -32,37 +30,58 @@ export function CuttingActionsPanel({
 }) {
   if (order.productionStatus !== "cutting_queue" && order.productionStatus !== "cutting_started") return null;
 
-  const jobs = jobsOf(order);
   return (
     <div className="cutting-actions-panel">
-      {jobs.map((job) => (
-        <CuttingLineRow key={job.index} order={order} job={job} actor={actor} onToast={onToast} />
+      {jobsOf(order).map((job) => (
+        <CuttingLineActions key={job.index} order={order} job={job} actor={actor} onToast={onToast} showLabel />
       ))}
     </div>
   );
 }
 
-function CuttingLineRow({
+/**
+ * One material line's "Бастау" / "Дайын" control — a merged order ("10 лист ЛДСП Ақ + 3 лист
+ * ХДФ") is two jobs on the shop floor, and the cutter starts and confirms whichever one is on
+ * the saw first — the two lines do not have to be worked in order, or finished together.
+ *
+ * Renders nothing once the order has moved past cutting entirely, or (without `showLabel`, i.e.
+ * on the dashboard cards) once this particular line is done — the material card's own status
+ * line already says so there.
+ */
+export function CuttingLineActions({
   order,
   job,
   actor,
   onToast,
+  showLabel = false,
 }: {
   order: Order;
   job: OrderLineJob;
   actor: Actor;
   onToast: (msg: string) => void;
+  /** Include the material name/quantities (and a "done" pill) — for a context, like the
+   *  order-detail page, where nothing else already lists the materials. */
+  showLabel?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
   const [confirmedSheets, setConfirmedSheets] = useState(String(job.confirmedSheets ?? job.sheetQty));
 
+  if (order.productionStatus !== "cutting_queue" && order.productionStatus !== "cutting_started") return null;
+
   const meta = `${job.sheetQty} лист${jobNeedsPvc(job) ? ` · ${job.pvcMeters} м ПВХ` : ""}`;
+  const label = showLabel ? (
+    <span className="cutting-line-material">
+      {job.materialName}
+      {job.cuttingCompletedAt ? "" : ` · ${meta}`}
+    </span>
+  ) : null;
 
   if (job.cuttingCompletedAt) {
+    if (!showLabel) return null;
     return (
       <div className="cutting-line-row is-done">
-        <span className="cutting-line-material">{job.materialName}</span>
+        {label}
         <span className="jt-pill jt-tone-green">✓ Кесілді — {job.confirmedSheets} лист</span>
       </div>
     );
@@ -72,7 +91,7 @@ function CuttingLineRow({
     if (mode === "start") {
       return (
         <div className="cutting-line-row">
-          <span className="cutting-line-material">{job.materialName} · {meta}</span>
+          {label}
           <DurationPicker
             confirmLabel="Бастау"
             busy={busy}
@@ -94,7 +113,7 @@ function CuttingLineRow({
     }
     return (
       <div className="cutting-line-row">
-        <span className="cutting-line-material">{job.materialName} · {meta}</span>
+        {label}
         <button className="btn btn-primary btn-sm" onClick={() => setMode("start")}>
           🔪 Бастау
         </button>
@@ -105,7 +124,7 @@ function CuttingLineRow({
   if (mode === "reestimate") {
     return (
       <div className="cutting-line-row">
-        <span className="cutting-line-material">{job.materialName}</span>
+        {label}
         <DurationPicker
           confirmLabel="Сақтау"
           busy={busy}
@@ -147,12 +166,12 @@ function CuttingLineRow({
 
   return (
     <div className="cutting-line-row is-active">
-      <div className="cutting-line-head">
-        <span className="cutting-line-material">{job.materialName}</span>
-        {job.cuttingExpectedCompletionAt && (
+      {label}
+      {job.cuttingExpectedCompletionAt && (
+        <div className="cutting-line-head">
           <span className="otable-sub">Мерзімі: {formatDateTimeDMY(job.cuttingExpectedCompletionAt)}</span>
-        )}
-      </div>
+        </div>
+      )}
       {job.cuttingStartedAt && (
         <CuttingTimer
           startedAtMs={job.cuttingStartedAt.toMillis()}

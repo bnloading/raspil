@@ -1,3 +1,5 @@
+import { CustomerOrderMetrics } from "./CustomerOrderMetrics";
+import { formatRelativeDateTime } from "../lib/dates";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorkshopActivity } from "../hooks/useWorkshopActivity";
@@ -104,8 +106,8 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
 
                 {/* Named for everyone. A row synced before the name was added has none — it keeps
                     its code above and simply says nothing here, rather than showing a blank. */}
-                {!own && e.customerName && (
-                  <span className="workshop-row-name">{e.customerName}</span>
+                {(own?.customerName || e.customerName) && (
+                  <span className="workshop-row-name">{own?.customerName || e.customerName}</span>
                 )}
 
                 <span className="workshop-row-stage">
@@ -154,11 +156,15 @@ export function WorkshopActivityBoard({ myOrders = [] }: { myOrders?: Order[] })
 
                 {/* The same four steps as before, as a slim bar: a whole labelled strip per row is
                     what made the list unreadable on a phone. The stage is written out above it. */}
-                <span className="workshop-row-bar" aria-hidden="true">
-                  {steps.map((step) => (
-                    <i key={step.key} className={`is-${step.state}`} />
-                  ))}
+                {own && <CustomerOrderMetrics order={own} />}
+                <span className="customer-production-progress">
+                  {steps.map(step => <span key={step.key} className={`production-step is-${step.state}`} aria-current={step.state === "active" ? "step" : undefined}>
+                    <span className="production-step-dot" aria-hidden="true">{step.state === "done" ? "✓" : step.state === "skipped" ? "−" : ""}</span>
+                    <span>{step.label}{step.state === "skipped" ? " жоқ" : ""}</span>
+                  </span>)}
                 </span>
+                {e.updatedAt && <span className="corder-updated">Жаңартылды: {formatRelativeDateTime(e.updatedAt)}</span>}
+
               </>
             );
 

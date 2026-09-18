@@ -25,6 +25,8 @@ export interface JournalDraftLine {
   /** Which edge-banding colour these metres came off, so the roll can be counted down by colour. */
   pvcTypeId: string;
   pvcColorName: string;
+  /** Прифуговка — see lib/journal.ts's PVC_JOINTING_SURCHARGE_TIYN. */
+  pvcJointed: boolean;
   /**
    * The journal row this line was originally typed on (see OrderMaterialLine.sourceOrderNumber).
    *
@@ -71,6 +73,7 @@ export function emptyJournalLine(): JournalDraftLine {
     pvcPricePerMeterTiyn: 0,
     pvcTypeId: "",
     pvcColorName: "",
+    pvcJointed: false,
     sourceOrderNumber: "",
   };
 }
@@ -145,6 +148,7 @@ export function draftFromOrder(order: Order): JournalDraft {
       (index === 0 && order.pvcMetersTotal > 0 ? Math.round(order.pvcCostTiyn / order.pvcMetersTotal) : 0),
     pvcTypeId: line.pvcTypeId ?? "",
     pvcColorName: line.pvcColorName ?? "",
+    pvcJointed: line.pvcJointed ?? false,
     sourceOrderNumber: line.sourceOrderNumber ?? "",
   }));
 
@@ -172,6 +176,7 @@ export function itemsFromDraft(draft: JournalDraft, materials: Map<string, Mater
     pvcPricePerMeterTiyn: line.pvcPricePerMeterTiyn,
     pvcTypeId: line.pvcTypeId,
     pvcColorName: line.pvcColorName,
+    ...(line.pvcJointed ? { pvcJointed: true } : {}),
     // Defaulted, never passed through: Firestore rejects an undefined value outright, so a draft
     // line built without this field would fail the whole save rather than just missing an
     // attribution. TypeScript requires it, but the field is newer than some of the code that

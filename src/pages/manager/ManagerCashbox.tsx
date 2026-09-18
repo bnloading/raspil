@@ -11,6 +11,8 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { useExpenses } from "../../hooks/useExpenses";
+import { useMaterials } from "../../hooks/useMaterials";
+import { useAllInventoryMovements } from "../../hooks/useReports";
 import { addExpense, deleteExpense } from "../../lib/expenses";
 import {
   accountForExpense,
@@ -22,6 +24,7 @@ import {
   CASH_ACCOUNT_LABELS,
   accountForMethod,
 } from "../../lib/cashbox";
+import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
 import { availableMonths } from "../../lib/finance";
 import { formatMoney } from "../../lib/money";
 import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
@@ -64,8 +67,25 @@ export default function ManagerCashbox() {
   );
   const deptOrders = useMemo(() => orders.filter((o) => departmentOfOrder(o) === myDepartment), [orders, myDepartment]);
 
+  // "Нақты кесілген" — actual cutting_consumption movements against this line's own materials, not
+  // orders merely sitting in a queue. Category "mdf" is the МДФ line; every other category (or an
+  // absent one, from before categories existed) is ЛДСП — same default lib/salary.ts already uses.
+  const { materials: allMaterials } = useMaterials(false);
+  const { movements } = useAllInventoryMovements();
+  const deptMaterialIds = useMemo(
+    () => new Set(allMaterials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),
+    [allMaterials, myDepartment],
+  );
+  const sheetsCut = useMemo(
+    () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds),
+    [movements, deptMaterialIds],
+  );
+
   const { settings } = useAppSettings();
-  const openingBalanceTiyn = settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {};
+  const openingBalanceTiyn = useMemo(
+    () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
+    [settings.cashOpeningBalanceTiyn, myDepartment],
+  );
 
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   useEffect(() => {
@@ -86,11 +106,18 @@ export default function ManagerCashbox() {
   const [period, setPeriod] = useState<string>(() => dayKey(new Date()).slice(0, 7));
   const effectivePeriod = period === "" ? null : period;
 
+  // The day this line's money accounting starts over — everything before it stays in the order
+  // history but is left out of every figure here (see ApplicationSettings.cashStartDate).
+  const cashStartDate = settings.cashStartDate ?? null;
+
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn }),
-    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn],
+    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate }),
+    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate],
   );
-  const rows = useMemo(() => expensesInPeriod(expenses, effectivePeriod), [expenses, effectivePeriod]);
+  const rows = useMemo(
+    () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
+    [expenses, effectivePeriod, cashStartDate],
+  );
   const groups = useMemo(() => groupExpensesByName(rows), [rows]);
 
   const loading = paymentsLoading || expensesLoading;
@@ -142,6 +169,23 @@ export default function ManagerCashbox() {
         <Spinner />
       ) : (
         <>
+          <div className="kpi-row">
+            <div className="kpi-card">
+              <div className="kpi-text">
+                <div className="kpi-label">Осы аптада нақты кесілген</div>
+                <div className="kpi-value">{sheetsCut.week} лист</div>
+              </div>
+              <span className="kpi-icon is-indigo">🪚</span>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-text">
+                <div className="kpi-label">Осы айда нақты кесілген</div>
+                <div className="kpi-value">{sheetsCut.month} лист</div>
+              </div>
+              <span className="kpi-icon is-green">🪚</span>
+            </div>
+          </div>
+
           <div className="cashbox-accounts">
             {cashbox.accounts.map((acc) => (
               <section key={acc.account} className={`cashbox-card is-${acc.account}`}>
@@ -280,6 +324,7 @@ export default function ManagerCashbox() {
             <OpeningBalanceEditor
               department={myDepartment}
               openingBalanceTiyn={openingBalanceTiyn}
+              cashStartDate={cashStartDate}
               onError={showToast}
             />
           )}
@@ -453,13 +498,16 @@ function MethodAccounts({
 function OpeningBalanceEditor({
   department,
   openingBalanceTiyn,
+  cashStartDate,
   onError,
 }: {
   department: Department;
   openingBalanceTiyn: Partial<Record<CashAccount, number>>;
+  cashStartDate: string | null;
   onError: (message: string) => void;
 }) {
   const [saving, setSaving] = useState<CashAccount | null>(null);
+  const [savingDate, setSavingDate] = useState(false);
 
   const change = async (account: CashAccount, valueTiyn: number) => {
     setSaving(account);
@@ -476,14 +524,39 @@ function OpeningBalanceEditor({
     }
   };
 
+  // Shop-wide, not per line: "we start counting from this day" is one decision for the business.
+  const changeStartDate = async (value: string) => {
+    setSavingDate(true);
+    try {
+      await setDoc(doc(db, "applicationSettings", "global"), { cashStartDate: value }, { merge: true });
+    } catch (err: unknown) {
+      onError("Қате: " + (err as Error).message);
+    } finally {
+      setSavingDate(false);
+    }
+  };
+
   return (
     <section className="panel-card">
       <div className="panel-head">
         <h3>Бастапқы сумма — {DEPARTMENT_LABELS[department]}</h3>
       </div>
       <p className="form-hint">
-        Бұл қосымшаны қолдана бастаудан бұрын кассада тұрған сома. Тек "Барлық уақыт" қалдығына қосылады.
+        Есеп басталатын күндегі кассада тұрған сома. Тек "Барлық уақыт" қалдығына қосылады.
       </p>
+      <div className="form-group">
+        <label>Есеп басталатын күн</label>
+        <input
+          type="date"
+          className="form-input"
+          value={cashStartDate ?? ""}
+          onChange={(e) => changeStartDate(e.target.value)}
+        />
+        <p className="form-hint">
+          Осы күннен бұрынғы төлемдер мен шығындар Кассада есептелмейді (заказдар тарихы
+          сақталады).{savingDate ? " сақталуда…" : ""}
+        </p>
+      </div>
       <ul className="cashbox-mapping">
         {CASH_ACCOUNTS.map((a) => (
           <li key={a}>

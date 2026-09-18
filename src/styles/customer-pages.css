@@ -18,3 +18,12 @@
     align-items: start;
   }
 }
+/* Compact order header matching the workshop card. */
+.customer-status-hero-card { border: 1px solid #e6eaf2; border-radius: 8px; box-shadow: none; }
+.customer-status-hero-card .customer-status-header-row { gap: 8px; margin-bottom: 8px; }
+.customer-status-hero-card .customer-status-order-number { font-size: 16px; }
+.customer-status-hero-card .customer-status-pill { padding: 3px 8px; font-size: 11px; border: 1px solid #cdd8ff; border-radius: 20px; background: #edf2ff; color: #4262ff; }
+.customer-status-hero-card .customer-status-pill.is-ready { background: #e9f9ee; color: #087d37; border-color: #b4e3c4; }
+.customer-status-hero-card .customer-status-pill.is-cancelled { background: #fff0f0; color: #b42332; border-color: #f0c5ca; }
+.customer-status-hero-card .corder-tiles { border-radius: 0; box-shadow: none; padding: 9px 0; margin: 0; }
+.customer-status-hero-card .customer-status-stepper-wrap { border-top: 0; padding-top: 0; margin-top: 0; }

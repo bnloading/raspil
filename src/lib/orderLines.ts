@@ -42,6 +42,7 @@ export function buildLineJobs(order: Order): OrderLineJob[] {
     materialName: line.materialName,
     sheetQty: line.sheetQty,
     pvcMeters: line.pvcMeters,
+    ...(line.pvcJointed ? { pvcJointed: true } : {}),
     ...(single && order.cuttingConsumedQty ? { consumedQty: order.cuttingConsumedQty } : {}),
     ...(order.cuttingCompletedAt
       ? {

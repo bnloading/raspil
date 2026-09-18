@@ -1,6 +1,8 @@
 import type { MdfStage, Order, ProductionStatus } from "../types/domain";
 import { MDF_STAGE_LABELS } from "../types/domain";
-import { OrderProgressStepper } from "./OrderProgressStepper";
+import { CustomerProductionProgress } from "./CustomerProductionProgress";
+import { CustomerOrderMetrics } from "./CustomerOrderMetrics";
+import { formatRelativeDateTime } from "../lib/dates";
 
 /**
  * Maps the full 16-value internal ProductionStatus down to the small set of customer-facing
@@ -97,19 +99,21 @@ export function CustomerStatusCard({ order }: CustomerStatusCardProps) {
     <div className="panel-card customer-status-hero-card">
       <div className="customer-status-header-row">
         <span className="customer-status-order-number">{order.orderNumber}</span>
+        <span className="corder-name">{order.customerName}</span>
         <span
           className={`customer-status-pill ${
             isCancelled ? "is-cancelled" : isReady ? "is-ready" : "is-pending"
           }`}
         >
-          {isCancelled ? "Бас тартылды" : isReady ? "Дайын" : "Дайын емес"}
+          {stageLabel}
         </span>
       </div>
 
+      <CustomerOrderMetrics order={order} />
       {isQueued && (
         <div className="customer-status-queue-info">
           <p>
-            Распил кезегіндегі орны: <strong>№{aheadCount + 1}</strong>
+            {order.productionStatus === "pvc_queue" ? "ПВХ" : "Распил"} кезегіндегі орны: <strong>№{aheadCount + 1}</strong>
           </p>
           <p>
             {aheadCount > 0 ? (
@@ -130,9 +134,9 @@ export function CustomerStatusCard({ order }: CustomerStatusCardProps) {
       )}
 
       <div className="customer-status-stepper-wrap">
-        <h3>Заказдың жолы</h3>
-        <OrderProgressStepper order={order} />
+        <CustomerProductionProgress order={order} />
       </div>
+      {(order.updatedAt ?? order.createdAt) && <span className="corder-updated">Жаңартылды: {formatRelativeDateTime((order.updatedAt ?? order.createdAt)!)}</span>}
     </div>
   );
 }

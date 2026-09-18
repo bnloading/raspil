@@ -19,6 +19,8 @@ export type UserRole =
  *  lib/rbac.ts's departmentOf() for how a user's line is resolved from role + this field. */
 export type Department = "ldsp" | "mdf";
 
+export const DEPARTMENTS: Department[] = ["ldsp", "mdf"];
+
 export interface UserDoc {
   name: string;
   phone: string;
@@ -150,6 +152,9 @@ export interface OrderLineJob {
   pvcActualMinutes?: number;
   pvcByUid?: string;
   pvcByName?: string;
+  /** Needs edge-jointing before/during banding — a manager-set flag, shown to the PVC worker as a
+   *  red badge so they know to actually do the extra process. See OrderMaterialLine.pvcJointed. */
+  pvcJointed?: boolean;
 }
 
 /** One sheet type inside a multi-material order (see Order.items). */
@@ -160,6 +165,9 @@ export interface OrderMaterialLine {
   sheetPriceTiyn: number;
   pvcMeters: number;
   pvcPricePerMeterTiyn: number;
+  /** Edge-jointing — adds a flat per-metre surcharge on top of pvcPricePerMeterTiyn (see
+   *  lib/journal.ts's computeLineTotals) and flags the line for the PVC worker. */
+  pvcJointed?: boolean;
   /**
    * Which edge-banding colour this line used (a pvcTypes doc id), and its name kept alongside so
    * the line still says what it was even if the colour is later removed from the catalogue.
@@ -407,6 +415,9 @@ export interface Order {
    *  cross-order Firestore query their own security rules would deny). Null once at the front. */
   queueAheadOrderNumber?: string | null;
 
+  /** All workers who started a material line, retained for personal history. */
+  cuttingWorkerIds?: string[];
+  pvcWorkerIds?: string[];
   assignedManagerId?: string;
   assignedManagerName?: string;
   managerAcceptedAt?: Timestamp;
@@ -529,6 +540,9 @@ export interface Order {
   /** Free-text wrap film colour/name, typed by whoever creates the order. */
   mdfFilmColor?: string;
   mdfPricePerM2Tiyn?: number;
+  /** Manager-set flag — never affects the customer's price, only credits a flat bonus to whichever
+   *  vacuum worker finishes this order (see lib/salary.ts's packagingOrdersCount). */
+  mdfPackaging?: boolean;
   /** Pointer to the current station once productionStatus is "mdf_production". Whether that station
    *  is merely queued or actively being worked is derived from mdfStageJobs[mdfStage], not stored
    *  as a separate status value — see MdfStage's doc comment. */
@@ -682,6 +696,7 @@ export const SALARY_MODE_LABELS: Record<SalaryMode, string> = {
 
 /** Per-worker pay configuration. Document id == userId: one active rule per worker. */
 export interface SalaryRule {
+  policyVersion?: string;
   id: string;
   userId: string;
   mode: SalaryMode;
@@ -702,6 +717,9 @@ export interface SalaryRule {
   perMdfM2Tiyn?: number;
   perPvcMeterTiyn?: number;
   perOrderTiyn?: number;
+  /** Flat bonus per МДФ order flagged "Упаковка" (mdfPackaging), credited to whichever vacuum
+   *  worker finishes that order — added on top of the base mode's pay, not a mode of its own. */
+  perPackagingOrderTiyn?: number;
   hourlyTiyn?: number;
   /** Deducted per absent day when the mode includes attendance-based pay. */
   absentDayDeductionTiyn?: number;
@@ -736,6 +754,8 @@ export interface SalaryEntry {
   mdfSheets?: number;
   /** m² of МДФ wrap production credited this period (cnc/sanding/painting/vacuum roles only). */
   mdfM2Processed?: number;
+  /** МДФ orders flagged "Упаковка" this vacuum worker finished this period. */
+  packagingOrdersCount?: number;
   pvcMeters: number;
   ordersCompleted: number;
   presentDays: number;
@@ -822,6 +842,12 @@ export interface Payment {
    * reattachPayments and the narrow diff firestore.rules allows for it.
    */
   mergedFromOrderId?: string;
+  /** Set when the amount itself was retyped after the fact (a mistyped leg of an Аралас split,
+   *  say) — never a reversal, the order's paidTiyn is simply recomputed from the new figure. See
+   *  lib/payments.ts's correctPaymentAmount. */
+  correctedByUid?: string;
+  correctedByName?: string;
+  correctedAt?: Timestamp;
   createdAt?: Timestamp;
 }
 
@@ -910,6 +936,14 @@ export interface ApplicationSettings {
    * departmentOf()); a department or account absent from the map means 0. Admin-editable on Касса.
    */
   cashOpeningBalanceTiyn?: Partial<Record<Department, Partial<Record<CashAccount, number>>>>;
+  /**
+   * "YYYY-MM-DD" — the day the shop's money accounting starts over on Касса. Anything paid or
+   * spent before it is left out of every Касса figure, so `cashOpeningBalanceTiyn` reads as the
+   * balance *on* this date rather than a pre-app lump. Order/payment records themselves are never
+   * touched: this only changes what Касса counts, which is why a mid-year restart does not have to
+   * mean deleting payments that orders depend on. Unset means count everything, as before.
+   */
+  cashStartDate?: string;
 }
 
 /** The columns the cutting-program CSV export can include, in the spec's default order. */

@@ -81,7 +81,7 @@ export default function ProductionOrderDetail() {
 
 /** A worker's free-text note for the order, shared between cutting and PVC. Used to live on the
  *  dashboard's spotlighted "current order" card; moved here once that card was folded into a
- *  plain list, so a note is still one tap away via "Размерлер" without cluttering every card. */
+ *  plain list, so a note is still one tap away via the order number without cluttering every card. */
 function ProductionNoteField({ order, onToast }: { order: Order; onToast: (msg: string) => void }) {
   const [note, setNote] = useState(order.productionNote ?? "");
 

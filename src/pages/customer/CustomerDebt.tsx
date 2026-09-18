@@ -9,6 +9,9 @@ import { usePaymentsForOrders } from "../../hooks/usePayments";
 import { formatMoney } from "../../lib/money";
 import { customerOrderCode } from "../../lib/orderCode";
 import { formatDateDMY, formatDateTimeDMY } from "../../lib/dates";
+import type { Order } from "../../types/domain";
+
+const sumDebt = (list: Order[]) => list.reduce((sum, order) => sum + Math.max(0, order.debtTiyn), 0);
 
 /**
  * "Қарыз" for the logged-in customer only. Every figure is derived from their own orders and
@@ -27,7 +30,6 @@ export default function CustomerDebt() {
   // payments query would be rejected outright for a customer.
   const { byOrder } = usePaymentsForOrders(useMemo(() => billable.map((o) => o.id), [billable]));
   const unpaid = useMemo(() => billable.filter((o) => o.debtTiyn > 0), [billable]);
-  const sumDebt = (list: typeof billable) => list.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0);
   const totals = useMemo(
     () => ({
       ordered: billable.reduce((s, o) => s + o.totalTiyn, 0),

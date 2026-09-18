@@ -13,11 +13,13 @@ export function DurationPicker({
   onCancel,
   confirmLabel,
   busy,
+  quickMinutes = QUICK_MINUTES,
 }: {
   onConfirm: (minutes: number) => void;
   onCancel: () => void;
   confirmLabel: string;
   busy?: boolean;
+  quickMinutes?: readonly number[];
 }) {
   const [custom, setCustom] = useState("");
 
@@ -29,7 +31,7 @@ export function DurationPicker({
 
   return (
     <div className="wizard-actions">
-      {QUICK_MINUTES.map((m) => (
+      {quickMinutes.map((m) => (
         <button
           key={m}
           type="button"

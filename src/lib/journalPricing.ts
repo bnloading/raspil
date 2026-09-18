@@ -11,8 +11,6 @@ import type { Material, PvcType } from "../types/domain";
 /** ПВХ, ₸ per metre. */
 export const PVC_PRICE_WHITE_TIYN = 200_00;
 export const PVC_PRICE_OTHER_TIYN = 220_00;
-/** A customer's own sheet: we sell the labour, not the board. */
-export const EXTERNAL_CUT_PER_SHEET_TIYN = 1600_00;
 export const EXTERNAL_PVC_PER_METER_TIYN = 160_00;
 
 /**
@@ -221,16 +219,25 @@ export function externalCountertopPriceTiyn(
 
 export interface JournalDefaults {
   pvcPricePerMeterTiyn: number;
-  /** Per-sheet cutting charge — only non-zero for a customer's own board. */
+  /**
+   * An order-level extra to stack on top of the line's own sheetPriceTiyn — only non-zero for a
+   * customer's own COUNTERTOP, whose price is looked up by length (EXTERNAL_COUNTERTOP_PRICES_TIYN)
+   * rather than carried on the material doc. A customer's own SHEET is priced entirely through its
+   * own catalogue entry's sellingPriceTiyn (pickMaterial in ManagerJournal.tsx copies it straight
+   * into the line's sheetPriceTiyn) — a generic "Сырттан келетін лист" and a "…Эггер" one are cut
+   * at different agreed rates, so there is no single flat number to fall back to here any more, and
+   * returning one on top of the line's own price double-charged every customer's-own-sheet order.
+   */
   cuttingPerSheetTiyn: number;
 }
 
 /**
  * Prices to pre-fill for a chosen material.
  *
- *   Ақ                     ПВХ 200 ₸/м
- *   other shop sheets      ПВХ 220 ₸/м
- *   customer's own sheet   кесу 1600 ₸/лист, ПВХ 160 ₸/м
+ *   Ақ                          ПВХ 200 ₸/м
+ *   other shop sheets           ПВХ 220 ₸/м
+ *   customer's own sheet        ПВХ 160 ₸/м — the labour to cut it is the sheet's own selling price
+ *   customer's own countertop   ПВХ 160 ₸/м, plus кесу priced by length
  *
  * The external case is checked first: a customer's own white board is still labour-priced, so the
  * white rule must not shadow it.
@@ -238,10 +245,12 @@ export interface JournalDefaults {
 export function journalDefaultsFor(material: Pick<Material, "name" | "color"> | undefined): JournalDefaults {
   if (isExternalMaterial(material)) {
     // A countertop is quoted by its length, not per sheet — see EXTERNAL_COUNTERTOP_PRICES_TIYN.
+    // Any other customer's-own material (a sheet, ХДФ, ...) is priced through its own catalogue
+    // entry instead, so there is nothing to add here.
     const countertop = externalCountertopPriceTiyn(material);
     return {
       pvcPricePerMeterTiyn: EXTERNAL_PVC_PER_METER_TIYN,
-      cuttingPerSheetTiyn: countertop ?? EXTERNAL_CUT_PER_SHEET_TIYN,
+      cuttingPerSheetTiyn: countertop ?? 0,
     };
   }
   return {

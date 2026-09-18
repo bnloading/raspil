@@ -4611,12 +4611,13 @@ body {
 /* "Кесу" column — the .btn-sm base is sized for a panel, not a table cell this narrow. */
 .jt-cut-btn {
   width: 100%;
-  height: 26px;
-  padding: 0 4px;
+  min-height: 36px;
+  height: auto;
+  padding: 6px 4px;
   font-size: var(--jt-font-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Payment dialog — methods as tap targets rather than a dropdown. */
@@ -5338,7 +5339,7 @@ body {
     gap: 10px;
   }
   .worker-salary-teaser { padding: 18px; }
-  .worker-salary-amount { font-size: 2.1rem; }
+  .worker-salary-amount { font-size: clamp(1.15rem, 4.5vw, 1.6rem); overflow-wrap: anywhere; }
 }
 
 .worker-current { margin-bottom: 18px; }
@@ -6236,12 +6237,22 @@ body {
   }
 }
 
+.salary-month-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 2px; }
+.salary-month-arrow { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: #fff; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.salary-month-arrow:disabled { opacity: 0.35; cursor: default; }
+.salary-month-label { background: none; border: 0; font-size: 1.05rem; font-weight: 700; cursor: pointer; padding: 4px 8px; }
+.salary-asof { text-align: center; font-size: 0.78rem; color: var(--text-light); margin: 0 0 14px; }
 .salary-hero { text-align: center; margin-bottom: 16px; }
 .salary-total {
   font-size: 2.1rem;
   font-weight: 800;
   padding: 6px 0 10px;
 }
+.salary-subfigures { margin-top: 14px; }
+.salary-subfigures .is-green strong { color: var(--emerald, #12925a); }
+.salary-subfigures .is-blue strong { color: var(--info, #2f6fed); }
+.salary-work-tiles { margin-bottom: 14px; }
+.salary-past-row { width: 100%; background: none; border: 0; text-align: left; cursor: pointer; font: inherit; padding: 10px 0; }
 .salary-card { margin-bottom: 14px; }
 .salary-summary-row {
   display: grid;
@@ -7057,7 +7068,10 @@ body {
 }
 .job-card-actions {
   display: flex;
-  align-items: center;
+  /* flex-start, not center: a merged order's cutting panel can be several rows tall (one per
+     material), and centering it against the single-line Размерлер button pulls that button away
+     from the top row it belongs next to. */
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
@@ -7107,7 +7121,10 @@ body {
    inside a card it shares the row with "Размерлер". The duration picker that replaces it on
    click needs the whole row instead, so the wrapper grows rather than the button. */
 .job-card-actions > :last-child {
-  flex: 1 1 auto;
+  /* flex-basis 0, not auto: a basis measured from content (the "Бастау" button pins itself to
+     100% of this element's own box) would make the item claim the whole row and wrap below
+     Размерлер instead of sharing it. */
+  flex: 1 1 0;
   min-width: 0;
 }
 .job-card-actions .btn-full {
@@ -9004,6 +9021,8 @@ body {
   margin-top: 4px;
 }
 .jt-new-grid > *:last-child { grid-column: span 2; }
+.jt-pvc-jointed { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--danger); cursor: pointer; }
+.jt-pvc-jointed input { margin: 0; }
 
 /* ── Detail panel ───────────────────────────────────────────────────────────────────────────── */
 .journal-panel {
@@ -9197,6 +9216,7 @@ body {
   font-size: 0.98rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .journal-card-stat strong.is-paid { color: var(--emerald); }
 .journal-card-stat strong.is-debt { color: var(--danger); }
@@ -9288,6 +9308,8 @@ body {
 .journal-card-total {
   font-size: 1.06rem;
   font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .journal-card-money .jt-method-pill { flex: none; cursor: default; }
 .journal-card-money {
@@ -9327,7 +9349,231 @@ body {
     flex: none;
     /* Out of the flex row entirely here, so it bounds itself against the window again. */
     align-self: auto;
-    max-height: 82vh;
+    max-height: 82dvh;
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   }
 }
+
+/* Keep complete amounts readable on phones, including large balances and text zoom. */
+@media (max-width: 767px) {
+  .kpi-card { align-items: flex-start; min-width: 0; gap: 8px; }
+  .kpi-text { flex: 1; }
+  .kpi-value {
+    font-size: clamp(0.95rem, 3.6vw, 1.2rem);
+    line-height: 1.35;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-icon { width: 28px; height: 28px; }
+  .rdash-big, .customer-debt-total {
+    font-size: clamp(1.2rem, 5vw, 1.6rem);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .journal-card-summary, .journal-card-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .journal-card-top { flex-wrap: wrap; gap: 4px 8px; }
+  .journal-card-top strong, .journal-card-client { overflow-wrap: anywhere; }
+  .journal-card-main { padding: 12px 26px 12px 12px; }
+  .journal-card-total { font-size: 1rem; line-height: 1.4; }
+  .journal-card-stat strong { font-size: 0.9rem; line-height: 1.4; }
+  .journal-card-action, .journal-view-toggle, .journal-panel .jt-icon-btn, .jt-cut-btn { min-height: 44px; }
+  .journal-panel-foot { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .journal-panel input, .journal-panel select { font-size: 1rem; }
+  .cut-timer-top { flex-wrap: wrap; }
+  .cut-timer-clock { font-size: 1.35rem; }
+}
+/* Production stations — shared layout, individual stage accents. */
+.app-shell[data-worker-role="cnc"] { --station-accent: #084bda; --station-soft: #eaf0ff; }
+.app-shell[data-worker-role="sanding"] { --station-accent: #008b36; --station-soft: #e7f6ec; }
+.app-shell[data-worker-role="painting"] { --station-accent: #7435cf; --station-soft: #f1eaff; }
+.app-shell[data-worker-role="vacuum"] { --station-accent: #c94b00; --station-soft: #fff0e5; }
+.app-shell:has(.station-job-list), .app-shell:has(.station-stats) { --primary: var(--station-accent, #084bda); --primary-soft: var(--station-soft, #eaf0ff); }
+.station-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px 0; border: 1px solid #dfe3eb; border-radius: 8px; background: #fff; }
+.station-stats > div { display: flex; flex-direction: column; gap: 4px; align-items: center; min-width: 0; }
+.station-stats > div + div { border-left: 1px solid #e6e9ef; }
+.station-stats span { color: #687386; font-size: 12px; }
+.station-stats strong { font-size: 23px; line-height: 1.2; font-weight: 600; color: var(--station-accent, #084bda); }
+/* Admin's ЛДСП/МДФ view switch in the top bar (see AuthContext's setDepartment). */
+.topbar-department { display: flex; gap: 2px; background: #eef1f6; border-radius: 8px; padding: 2px; }
+.topbar-department button { border: 0; background: transparent; border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; color: #687386; cursor: pointer; white-space: nowrap; }
+.topbar-department button[aria-pressed="true"] { background: #fff; color: var(--primary, #084bda); font-weight: 600; box-shadow: 0 1px 2px #17213b14; }
+
+.station-search { margin: 0 0 12px; }
+.station-tabs { display: flex; gap: 4px; background: #eef1f6; border-radius: 10px; padding: 4px; margin: 12px 0 16px; }
+.station-tabs button { flex: 1; min-height: 40px; background: transparent; border: 0; border-radius: 8px; color: #687386; cursor: pointer; font: inherit; font-size: 13px; }
+.station-tabs button[aria-pressed="true"] { color: #fff; background: var(--station-accent, #084bda); font-weight: 600; }
+.station-job-list { display: grid; gap: 10px; }
+.station-job { min-width: 0; padding: 10px; background: #fff; border: 1px solid #f2cd8d; border-radius: 8px; }
+.station-job.is-active { border-color: var(--station-accent, #084bda); box-shadow: 0 2px 8px #17213b06; }
+.station-job-status, .station-status-line { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #626d7f; }
+.station-state { background: #fff3dd; color: #925000; padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.station-state.is-active { color: var(--station-accent, #084bda); background: var(--station-soft, #eaf0ff); }
+.station-state.is-done { color: #087c34; background: #e7f6ec; }
+.station-order-link { display: block; min-height: 36px; padding: 2px 0; border: 0; background: none; color: #171c26; font: inherit; font-size: 18px; font-weight: 750; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.station-customer { display: flex; gap: 6px; align-items: center; color: #465164; font-size: 13px; margin-bottom: 8px; }
+.station-customer svg { width: 16px; height: 16px; }
+.station-facts { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #e3e6ed; border-radius: 5px; padding: 6px 0; font-size: 12px; margin-bottom: 8px; }
+.station-facts span { padding: 0 10px; overflow-wrap: anywhere; }
+.station-facts span + span { border-left: 1px solid #e3e6ed; }
+.station-status-line > span:last-child { color: var(--station-accent, #084bda); }
+.station-note { font-size: 12px; color: #626d7f; margin: 8px 0; overflow-wrap: anywhere; }
+.station-job .cutting-line-row { display: block; padding: 0; margin: 10px 0 0; border: 0; background: none; }
+.station-job .cutting-line-row > .cutting-line-material { display: none; }
+.station-job .cutting-line-head { margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; font-size: 12px; }
+.station-job .cutting-line-head .cutting-line-material { display: none; }
+.station-job .btn { min-height: 44px; border-radius: 6px; font-size: 13px; }
+.station-job .cutting-line-row > .btn { width: 100%; border: 1px solid var(--station-accent, #084bda); color: var(--station-accent, #084bda); background: #fff; box-shadow: none; }
+.station-job .is-active .btn-primary { background: var(--station-accent); border-color: var(--station-accent); width: 100%; box-shadow: none; }
+.station-job .wizard-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.station-job .wizard-actions > .btn-outline { flex: 1; }
+.station-job .estimated-time-input { min-width: 0; max-width: 130px; }
+.app-shell[data-worker-role]:has(.station-stats) .topbar-title { color: var(--station-accent, #084bda); font-size: 22px; }
+.app-shell:has(.station-stats) .account-avatar { color: var(--station-accent, #084bda); background: var(--station-soft, #eaf0ff); }
+.app-shell:has(.station-stats) .bottom-nav-item.active { color: var(--station-accent, #084bda); }
+.station-tabs button:focus-visible, .station-order-link:focus-visible { outline: 2px solid var(--station-accent, #084bda); outline-offset: 3px; }
+@media (max-width: 767px) {
+  .app-shell:has(.station-stats) .app-content { padding: 12px 16px 100px; }
+  .app-shell:has(.station-stats) .app-topbar { border-bottom: 0; background: #f8f9fc; }
+  .app-shell:has(.station-stats) .app-main { background: #f8f9fc; }
+  .app-shell:has(.station-stats) .bottom-nav { background: #f8f9fc; border-top: 1px solid #e3e6ed; }
+}
+@media (min-width: 768px) { .station-job-list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.station-estimate { font-size: 12px; color: #626d7f; font-weight: 600; margin: 10px 0; }
+.station-estimate > div { display: flex; gap: 8px; margin-top: 8px; }
+.station-estimate > div > span { flex: 1; padding: 8px 4px; border: 1px solid #e3e6ed; border-radius: 999px; text-align: center; font-weight: 500; color: #465164; }
+.station-estimate .selected { background: var(--station-accent); color: #fff; border-color: var(--station-accent); font-weight: 700; }
+/* Compact floor cards and customer production timeline. */
+.app-shell[data-worker-role="raspil"] { --station-accent: #164ee8; --station-soft: #edf2ff; }
+.app-shell[data-worker-role="pvh"] { --station-accent: #008b50; --station-soft: #e8f7ee; }
+.worker-materials { display: grid; gap: 6px; margin: 8px 0; }
+.worker-material { border: 1px solid #e5e9f2; border-radius: 6px; padding: 7px 9px; }
+.worker-material-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
+.worker-material-head > strong { font-size: 13px; overflow-wrap: anywhere; }
+/* Compact inline reading — "6 лист · 126 м ПВХ" on one line — used inside a material row. The
+   history summary card below overrides this back to the bigger stacked KPI-tile look, since that
+   one is a single standalone total rather than one line among many. */
+.worker-quantities { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.worker-quantities span { font-size: 12px; color: #465164; white-space: nowrap; }
+.worker-quantities b { color: #192438; font-weight: 700; font-variant-numeric: tabular-nums; }
+.worker-history-summary .worker-quantities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 4px; }
+.worker-history-summary .worker-quantities span { font-size: 11px; color: #647086; white-space: normal; }
+.worker-history-summary .worker-quantities b { display: block; font-size: 17px; }
+.worker-material small { color: #647086; font-size: 11px; display: block; margin-top: 2px; }
+.worker-material .cutting-line-row { margin-top: 6px; }
+.worker-details { margin-top: 12px; }
+.worker-details summary { cursor: pointer; min-height: 44px; padding: 12px 0; font-size: 12px; color: var(--station-accent); }
+.worker-details .worker-current { margin: 0; padding: 10px; box-shadow: none; }
+
+/* Compact, collapsible per-order history row — one line closed, details on open. */
+.station-history-list { display: grid; gap: 8px; }
+.station-history-card { min-width: 0; background: #fff; border: 1px solid #e5e9f2; border-radius: 8px; }
+.station-history-card summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; min-height: 44px; }
+.station-history-card summary::-webkit-details-marker { display: none; }
+.station-history-check { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: var(--station-soft, #e7f6ec); color: var(--station-accent, #087c34); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.station-history-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.station-history-identity strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.station-history-identity span { font-size: 11px; color: #687386; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.station-history-volume { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
+.station-history-volume strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+.station-history-volume time { font-size: 10px; color: #90999f; }
+.station-history-chevron { flex: 0 0 auto; color: #9aa4b2; font-size: 12px; transition: transform .15s ease; }
+.station-history-card[open] .station-history-chevron { transform: rotate(180deg); }
+.station-history-details { margin: 0 12px 12px; padding-top: 10px; border-top: 1px solid #eef1f6; }
+.station-history-details .worker-materials { margin: 0 0 8px; }
+.station-history-details p { font-size: 12px; color: #465164; margin: 0 0 8px; }
+
+/* Раздспил's self-serve weekly cash payout card. */
+.weekly-payout-card { margin-bottom: 12px; }
+.weekly-payout-done { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 0; }
+.weekly-payout-done span { font-size: 12px; color: #087c34; }
+.weekly-payout-done strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.weekly-payout-done small { color: #90999f; font-size: 11px; }
+.weekly-payout-earned { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.weekly-payout-minus { display: grid; gap: 10px; margin-top: 10px; padding: 10px; background: #f8f9fc; border-radius: 6px; }
+.weekly-payout-final { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eef1f6; font-size: 13px; }
+.weekly-payout-final strong { font-size: 17px; }
+.weekly-payout-history { display: grid; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #eef1f6; }
+.weekly-payout-card .wizard-actions { margin-top: 2px; }
+.weekly-payout-card .wizard-actions .btn-primary { flex: 0 0 auto; width: auto; min-height: 42px; padding: 9px 16px; font-size: 14px; }
+.salary-weekly-card .panel-head > div { display: grid; gap: 2px; }
+.salary-weekly-card .panel-head .jt-muted { font-size: 11px; }
+.salary-weekly-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 9px 0 12px; border-bottom: 1px solid #eef1f6; }
+.salary-weekly-summary span { min-width: 0; display: grid; gap: 3px; }
+.salary-weekly-summary small { color: #788396; font-size: 10px; }
+.salary-weekly-summary b { color: #1d2b45; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.salary-weekly-empty { margin: 6px 0 0; color: #687386; font-size: 13px; line-height: 1.45; }
+.customer-production-progress { display: flex; width: 100%; padding: 12px 0 6px; grid-column: 1 / -1; }
+.production-step { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; color: #6c7689; font-size: 11px; text-align: center; }
+.production-step::before { content: ""; position: absolute; height: 2px; top: 6px; left: -50%; width: 100%; background: #e3e8f1; }
+.production-step:first-child::before { display: none; }
+.production-step.is-done::before, .production-step.is-active::before { background: #3e64ff; }
+.production-step-dot { position: relative; z-index: 1; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c8cfdb; background: #fff; line-height: 10px; font-size: 9px; }
+.production-step.is-done .production-step-dot { border-color: #18b65b; background: #18b65b; color: #fff; }
+.production-step.is-active .production-step-dot { border-color: #4165ff; box-shadow: 0 0 0 3px #4165ff10; }
+.production-step.is-skipped { opacity: .6; }
+.workshop-row .corder-tiles { grid-column: 1 / -1; width: 100%; margin: 0; }
+.workshop-row .corder-updated { grid-column: 1 / -1; font-size: 10px; color: #788396; }
+.workshop-row:has(.corder-tiles) .workshop-row-what { display: none; }
+.workshop-row:has(.corder-tiles) .workshop-row-name { display: inline; }
+.customer-status-hero-card .customer-status-stage { display: none; }
+.customer-status-hero-card .customer-status-stepper-wrap { margin-top: 8px; padding-top: 0; }
+.rdash-income-icon svg { width: 20px; height: 20px; }
+.rdash-tile { display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 8px; }
+.rdash-tile > svg, .rdash-ready-icon { grid-row: 1 / 3; align-self: center; color: #4966ff; width: 24px; height: 24px; }
+.rdash-tile.is-amber > svg { color: #ec9300; }
+.rdash-ready-icon { border: 1.5px solid #16b66a; border-radius: 50%; color: #16b66a; text-align: center; line-height: 21px; }
+.rdash-today li > span { display: inline-flex; align-items: center; gap: 8px; }
+.rdash-today svg { width: 17px; height: 17px; color: #4966ff; }
+@media (max-width: 767px) {
+  .app-shell:has(.rdash) { --primary: #4262ff; --primary-soft: #edf1ff; }
+  .app-shell:has(.rdash) .app-content { padding: 10px 12px 95px; }
+  .app-shell:has(.rdash) .app-topbar { border-bottom: 0; min-height: 72px; }
+  .app-shell:has(.rdash) .topbar-title { font-size: 22px; }
+  .app-shell:has(.rdash) .report-period { display: flex; width: 100%; padding: 3px; border: 1px solid #e8ebf2; background: #fff; border-radius: 24px; margin-bottom: 12px; }
+  .app-shell:has(.rdash) .report-period-btn { flex: 1; min-height: 40px; border-radius: 22px; padding: 7px; font-size: 12px; }
+  .app-shell:has(.rdash) .tab-pill-row { flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-bottom: 5px; margin-bottom: 10px; }
+  .app-shell:has(.rdash) .tab-pill { flex-shrink: 0; min-height: 40px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+  .rdash { gap: 10px; }
+  .rdash .panel-card { margin: 0; padding: 12px; border: 1px solid #e7ebf3; border-radius: 9px; box-shadow: none; }
+  .rdash .panel-head { margin-bottom: 9px; }
+  .rdash .panel-head h3 { font-size: 14px; }
+  .rdash-income-head { font-size: 13px; gap: 8px; }
+  .rdash-income-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: #4966ff; color: #fff; }
+  .rdash-big { font-size: clamp(24px, 7vw, 34px); line-height: 1.2; overflow-wrap: anywhere; }
+  .rdash-income-row { gap: 8px; margin-top: 8px; }
+  .rdash-delta { padding: 8px; font-size: 12px; }
+  .rdash-delta small { font-size: 9px; }
+  .rdash-cap { font-size: 11px; }
+  .rdash-subfigures { margin: 10px 0; padding: 9px 0 0; border-top: 1px solid #edf0f5; }
+  .rdash-subfigures strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+  .rdash .bar-chart { height: 104px !important; }
+  .rdash .bar-chart-bar { background: #4262ff; border-radius: 3px 3px 0 0; max-width: 23px; }
+  .rdash .bar-chart-value, .rdash .bar-chart-label { font-size: 9px; }
+  .rdash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rdash-tile { padding: 9px; border: 1px solid #e7ebf3; border-radius: 6px; }
+  .rdash-tile b { font-size: 17px; }
+  .rdash-tile span { font-size: 10px; }
+  .rdash-stagekeys { font-size: 9px; flex-wrap: wrap; }
+  .rdash-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rdash-pair .panel-card { min-width: 0; padding: 10px; }
+  .rdash-pair .rdash-big { font-size: clamp(19px, 5.5vw, 26px); }
+  .rdash-debt { background: #fff7f8; }
+  .rdash-link { font-size: 11px; }
+  .rdash-methods { font-size: 10px; }
+  .rdash-today li { padding: 8px 0; font-size: 11px; }
+  .corder-head { gap: 6px; }
+  .corder-tiles { padding: 8px 0; border-top: 1px solid #edf0f5; border-bottom: 1px solid #edf0f5; }
+  .corder-tile b { font-size: 14px; }
+  .corder-tile small { font-size: 10px; }
+  .customer-status-hero-card { padding: 12px; }
+}
+.worker-history-summary { background: #fff; border: 1px solid #dfe5ef; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.worker-history-summary h2 { font-size: 16px; margin: 0 0 5px; }
+.worker-history-summary p, .worker-history-summary small { font-size: 12px; color: #687386; }
+.rdash .rdash-link { color: #4262ff; }
+.rdash-debt .rdash-link { color: #cf3747; }

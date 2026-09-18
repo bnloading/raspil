@@ -55,6 +55,7 @@ const run = (args: {
   expenses?: Expense[];
   period?: string | null;
   openingBalanceTiyn?: Partial<Record<"deposit" | "cash", number>>;
+  startDate?: string | null;
 }) =>
   computeCashbox({
     payments: args.payments ?? [],
@@ -62,6 +63,7 @@ const run = (args: {
     methods,
     period: args.period === undefined ? "2026-08" : args.period,
     openingBalanceTiyn: args.openingBalanceTiyn,
+    startDate: args.startDate ?? null,
   });
 
 const of = (s: ReturnType<typeof run>, account: "deposit" | "cash") =>
@@ -204,6 +206,73 @@ describe("computeCashbox — the two pots", () => {
     expect(s.accounts.map((a) => a.account)).toEqual(["deposit", "cash"]);
     expect(s.accounts.every((a) => a.inTiyn === 0 && a.outTiyn === 0)).toBe(true);
     expect(CASH_ACCOUNT_LABELS.deposit).toBe("Депозит");
+  });
+});
+
+describe("computeCashbox — есеп басталатын күн (accounting restart)", () => {
+  const EARLY = Timestamp.fromDate(new Date("2026-08-10T12:00:00+05:00"));
+  const ON_DAY = Timestamp.fromDate(new Date("2026-08-18T12:00:00+05:00"));
+  const LATER = Timestamp.fromDate(new Date("2026-08-25T12:00:00+05:00"));
+
+  it("ignores money that moved before the start date", () => {
+    const s = run({
+      payments: [payment({ id: "a", amountTiyn: T(500000), paymentDate: EARLY })],
+      startDate: "2026-08-18",
+    });
+    expect(of(s, "deposit").inTiyn).toBe(0);
+  });
+
+  it("counts the start date itself — the restart day is in, not out", () => {
+    const s = run({
+      payments: [payment({ id: "a", amountTiyn: T(300000), paymentDate: ON_DAY })],
+      startDate: "2026-08-18",
+    });
+    expect(of(s, "deposit").inTiyn).toBe(T(300000));
+  });
+
+  it("ignores expenses dated before the start date", () => {
+    const s = run({
+      expenses: [
+        expense({ id: "old", amountTiyn: T(400000), date: "2026-08-01" }),
+        expense({ id: "new", amountTiyn: T(50000), date: "2026-08-20" }),
+      ],
+      startDate: "2026-08-18",
+    });
+    expect(of(s, "cash").outTiyn).toBe(T(50000));
+    expect(of(s, "cash").expenseCount).toBe(1);
+  });
+
+  it("all-time balance = opening balance on that day + only what moved since", () => {
+    // The shop's actual restart: a known deposit balance on the day, older flow left behind.
+    const s = run({
+      period: null,
+      startDate: "2026-08-18",
+      openingBalanceTiyn: { deposit: T(1467781) },
+      payments: [
+        payment({ id: "old", amountTiyn: T(4545520), paymentDate: EARLY }),
+        payment({ id: "new", amountTiyn: T(3335080), paymentDate: LATER }),
+      ],
+      expenses: [expense({ id: "old", amountTiyn: T(4426359), date: "2026-08-01" })],
+    });
+    expect(of(s, "deposit").inTiyn).toBe(T(3335080));
+    expect(of(s, "cash").outTiyn).toBe(0);
+    expect(of(s, "deposit").balanceTiyn).toBe(T(1467781 + 3335080));
+  });
+
+  it("counts everything when no start date is set, exactly as before", () => {
+    const s = run({
+      payments: [payment({ id: "a", amountTiyn: T(500000), paymentDate: EARLY })],
+    });
+    expect(of(s, "deposit").inTiyn).toBe(T(500000));
+  });
+
+  it("keeps the Шығындар list in step with the totals above it", () => {
+    const rows = expensesInPeriod(
+      [expense({ id: "old", date: "2026-08-01" }), expense({ id: "new", date: "2026-08-20" })],
+      "2026-08",
+      "2026-08-18",
+    );
+    expect(rows.map((r) => r.id)).toEqual(["new"]);
   });
 });
 

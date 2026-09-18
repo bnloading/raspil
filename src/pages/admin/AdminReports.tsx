@@ -1,3 +1,4 @@
+import { IconReports, IconOrders, IconAudit, IconWarehouse, IconCut, IconPvc } from "../../components/layout/icons";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { db } from "../../firebase";
@@ -89,7 +90,7 @@ export default function AdminReports() {
   const loading = ordersLoading || paymentsLoading || movementsLoading;
 
   return (
-    <AppShell title={`Есептер — ${DEPARTMENT_LABELS[myDepartment]}`} subtitle="Қаржы және өндіріс қорытындысы">
+    <AppShell variant="reports" title="Есептер" subtitle={`${DEPARTMENT_LABELS[myDepartment]} · Қаржы және өндіріс қорытындысы`}>
       {/* Бүгін / Апта / Ай sits above the tabs because it qualifies all of them: the question is
           "how much", and it is meaningless without saying over what. */}
       <div className="report-period">
@@ -128,6 +129,7 @@ export default function AdminReports() {
               movements={movements}
               materials={materials}
               period={period}
+              productionHref={isAdmin ? "/admin/orders" : "/manager/orders"}
             />
           )}
           {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} expenses={expenses} />}
@@ -879,24 +881,26 @@ function PvcTab({
  * The thirteen identical stat cards this replaces gave every figure the same weight, so the one
  * being looked for had to be found by reading all of them.
  */
-function DashboardTab({
+export function DashboardTab({
   orders,
   payments,
   movements,
   materials,
   period,
+  productionHref = "/admin/orders",
 }: {
   orders: ReturnType<typeof useAllOrders>["orders"];
   payments: ReturnType<typeof useAllPayments>["payments"];
   movements: ReturnType<typeof useAllInventoryMovements>["movements"];
   materials: ReturnType<typeof useMaterials>["materials"];
   period: ReportPeriod;
+  productionHref?: string;
 }) {
   const kpis = computeKpis({ orders, payments, movements, materials });
   const revenue = useMemo(() => revenueFor(payments, period), [payments, period]);
   const week = useMemo(() => weeklyRevenue(payments), [payments]);
   const debts = useMemo(() => debtOverview(orders), [orders]);
-  const methods = useMemo(() => computeMethodBreakdown(payments), [payments]);
+  const methods = useMemo(() => computeMethodBreakdown(payments.filter(p => p.paymentDate && p.paymentDate.toDate() >= periodStart(period, new Date()))), [payments, period]);
   const pvcToday = useMemo(() => pvcMetersSince(orders, periodStart("today", new Date())), [orders]);
 
   const methodTotal = methods.reduce((s, m) => s + m.value, 0);
@@ -912,7 +916,7 @@ function DashboardTab({
     <div className="rdash">
       <section className="panel-card rdash-income">
         <div className="rdash-income-head">
-          <span className="rdash-income-icon" aria-hidden="true">💰</span>
+          <span className="rdash-income-icon" aria-hidden="true"><IconReports /></span>
           <span>Кіріс</span>
         </div>
         <div className="rdash-income-row">
@@ -942,13 +946,13 @@ function DashboardTab({
 
       <section className="panel-card">
         <div className="panel-head">
-          <h3>Цех барысы</h3>
+          <h3>Цех барысы</h3><Link to={productionHref} className="rdash-link">Толығырақ ›</Link>
         </div>
         <div className="rdash-tiles">
-          <div className="rdash-tile"><b>{kpis.todayOrders}</b><span>Бүгінгі заказ</span></div>
-          <div className="rdash-tile is-blue"><b>{kpis.queueCount}</b><span>Кезекте</span></div>
-          <div className="rdash-tile is-amber"><b>{kpis.pvcPendingCount}</b><span>ПВХ күтуде</span></div>
-          <div className="rdash-tile is-green"><b>{kpis.readyCount}</b><span>Дайын</span></div>
+          <div className="rdash-tile"><IconOrders /><b>{kpis.todayOrders}</b><span>Бүгінгі заказ</span></div>
+          <div className="rdash-tile is-blue"><IconAudit /><b>{kpis.queueCount}</b><span>Кезекте</span></div>
+          <div className="rdash-tile is-amber"><IconWarehouse /><b>{kpis.pvcPendingCount}</b><span>ПВХ күтуде</span></div>
+          <div className="rdash-tile is-green"><span className="rdash-ready-icon">✓</span><b>{kpis.readyCount}</b><span>Дайын</span></div>
         </div>
 
         {/* One bar for the whole floor: where the work is sitting, in proportion. */}
@@ -1007,9 +1011,9 @@ function DashboardTab({
       <section className="panel-card">
         <div className="panel-head"><h3>Бүгінгі қорытынды</h3></div>
         <ul className="rdash-today">
-          <li><span>🪚 Кесілген лист</span><b>{kpis.sheetsToday}</b></li>
-          <li><span>🧻 ПВХ жабыстырылды</span><b>{pvcToday} м</b></li>
-          <li><span>📦 Қоймада аз қалған</span><b>{kpis.lowStockCount} материал</b></li>
+          <li><span><IconCut /> Кесілген лист</span><b>{kpis.sheetsToday}</b></li>
+          <li><span><IconPvc /> ПВХ жабыстырылды</span><b>{pvcToday} м</b></li>
+          <li><span><IconWarehouse /> Қоймада аз қалған</span><b>{kpis.lowStockCount} материал</b></li>
         </ul>
       </section>
     </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAuth } from "../AuthContext";
 import { Spinner } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { useMaterials } from "../hooks/useMaterials";
@@ -23,6 +24,8 @@ import type { Material, MaterialCategory } from "../types/domain";
  * already promised to other orders — so it is never a number the shop cannot honour.
  */
 export default function Assortment() {
+  const { userData } = useAuth();
+  const showPrices = userData?.role !== "raspil";
   const { materials, loading } = useMaterials(true);
 
   const [query, setQuery] = useState("");
@@ -81,7 +84,7 @@ export default function Assortment() {
               onChange={(e) => setSort(e.target.value as AssortmentSort)}
               aria-label="Сұрыптау"
             >
-              {(Object.keys(SORT_LABELS) as AssortmentSort[]).map((s) => (
+              {(Object.keys(SORT_LABELS) as AssortmentSort[]).filter(s => showPrices || !s.startsWith("price")).map((s) => (
                 <option key={s} value={s}>{SORT_LABELS[s]}</option>
               ))}
             </select>
@@ -115,7 +118,7 @@ export default function Assortment() {
 
                     <span className="assort-name">{m.name}</span>
                     <span className="assort-spec">{materialSpec(m)}</span>
-                    <span className="assort-price">{formatMoney(m.sellingPriceTiyn)} / лист</span>
+                    {showPrices && <span className="assort-price">{formatMoney(m.sellingPriceTiyn)} / лист</span>}
 
                     {/* What the customer actually came to find out. */}
                     <span className={`assort-stock is-${stock.tone}`}>
@@ -138,7 +141,7 @@ export default function Assortment() {
             )}
             <div className="lightbox-name">{selected.name}</div>
             <div className="assortment-detail">
-              {materialSpec(selected)} · {formatMoney(selected.sellingPriceTiyn)} / лист
+              {materialSpec(selected)}{showPrices && <> · {formatMoney(selected.sellingPriceTiyn)} / лист</>}
             </div>
             <div className={`assort-stock is-${assortmentStock(selected).tone}`}>
               {assortmentStock(selected).label}

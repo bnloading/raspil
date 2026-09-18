@@ -6,7 +6,7 @@ import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { PaymentStatusBadge } from "../../components/StatusBadge";
-import { OrderProgress } from "../../components/OrderProgress";
+import { CustomerProductionProgress } from "../../components/CustomerProductionProgress";
 import { WorkshopActivityBoard } from "../../components/WorkshopActivityBoard";
 import { getCustomerStageLabel, getCustomerStageTone } from "../../components/CustomerStatusCard";
 import { IconLayers, IconOrders, IconPvc } from "../../components/layout/icons";
@@ -251,7 +251,7 @@ export default function CustomerOrders() {
                     </div>
                   )}
 
-                  <OrderProgress order={o} />
+                  <CustomerProductionProgress order={o} />
 
                   <div className="corder-foot">
                     {(o.updatedAt ?? o.createdAt) && (

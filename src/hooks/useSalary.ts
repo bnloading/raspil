@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase";
+import { useAuth } from "../AuthContext";
+import { effectiveSalaryRule } from "../lib/salaryPolicy";
 import type { AttendanceRecord, SalaryAdjustment, SalaryEntry, SalaryRule } from "../types/domain";
 
 /** One worker's pay rule (document id == userId). Undefined once loaded means "no rule yet". */
 export function useSalaryRule(userId: string | undefined) {
+  const { user, userData } = useAuth();
   const [rule, setRule] = useState<SalaryRule | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +28,7 @@ export function useSalaryRule(userId: string | undefined) {
     return unsub;
   }, [userId]);
 
-  return { rule, loading };
+  return { rule: effectiveSalaryRule(userId ?? "", user?.uid === userId ? userData ?? undefined : undefined, rule), loading };
 }
 
 /** All salary rules — Admin's salary settings screen. */

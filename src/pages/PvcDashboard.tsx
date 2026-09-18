@@ -1,5 +1,6 @@
+import { jobsOf } from "../lib/orderLines";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "../firebase";
@@ -7,16 +8,18 @@ import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { PvcActionsPanel } from "../components/PvcActionsPanel";
-import { OrderProgress } from "../components/OrderProgress";
 import { PaymentStatusBadge } from "../components/StatusBadge";
+import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
+import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
+import { IconUsers } from "../components/layout/icons";
+import { WorkerMaterialSummary, WorkerHistorySummary } from "../components/WorkerMaterialSummary";
+import { workerJobs } from "../lib/workerQuantities";
 import { usePvcOrders } from "../hooks/useOrders";
 import { useOrderParts } from "../hooks/useOrderParts";
-import { usePvcTypes } from "../hooks/useMaterials";
+import { useMaterials, usePvcTypes } from "../hooks/useMaterials";
 import { useToast } from "../hooks";
-import { dayKey, formatDateDMY } from "../lib/dates";
-import { materialSummary } from "../lib/journal";
-import { formatMoney } from "../lib/money";
+import { dayKey } from "../lib/dates";
 import { computePvcBreakdown, edgeLengthMm } from "../lib/pricing";
 import { EDGE_KEYS } from "../types/domain";
 import type { EdgeKey, Order, PvcType, UserDoc } from "../types/domain";
@@ -31,6 +34,9 @@ type Actor = { user: User; userData: UserDoc };
 export default function PvcDashboard() {
   const { user, userData } = useAuth();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") ?? "queue";
+  const { materials } = useMaterials(false);
   const { orders, loading } = usePvcOrders(user?.uid);
   const { pvcTypes } = usePvcTypes(true);
   const { message, visible, showToast } = useToast();
@@ -51,130 +57,30 @@ export default function PvcDashboard() {
   );
   const doneToday = useMemo(() => {
     const today = dayKey(new Date());
-    return pvcOrders.filter((o) => o.pvcCompletedAt && dayKey(o.pvcCompletedAt.toDate()) === today);
-  }, [pvcOrders]);
-
-  const current: Order | undefined = inProgress[0] ?? queued[0];
-  const upNext = useMemo(
-    () => [...queued.filter((o) => o.id !== current?.id), ...awaitingCutting],
-    [queued, current, awaitingCutting],
-  );
+    return pvcOrders.filter(o => jobsOf(o).some(j => j.pvcByUid === user?.uid && j.pvcCompletedAt && dayKey(j.pvcCompletedAt.toDate()) === today));
+  }, [pvcOrders, user?.uid]);
 
   if (!user || !userData) return <Spinner />;
   const actor: Actor = { user, userData };
 
-  return (
-    <AppShell
-      title="ПВХ панелі"
-      subtitle={`Сәлем, ${userData.name}`}
-      actions={<span className="worker-shift-badge">● Бүгін: Жұмыста</span>}
-    >
-      <div className="worker-stat-row">
-        <div className="worker-stat-card">
-          <span className="worker-stat-icon">🕐</span>
-          <div>
-            <div className="worker-stat-num">{queued.length}</div>
-            <div className="worker-stat-cap">Кезекте</div>
-          </div>
-        </div>
-        <div className="worker-stat-card is-blue">
-          <span className="worker-stat-icon">▶</span>
-          <div>
-            <div className="worker-stat-num">{inProgress.length}</div>
-            <div className="worker-stat-cap">Қазір</div>
-          </div>
-        </div>
-        <div className="worker-stat-card is-green">
-          <span className="worker-stat-icon">✓</span>
-          <div>
-            <div className="worker-stat-num">{doneToday.length}</div>
-            <div className="worker-stat-cap">Бүгін дайын</div>
-          </div>
-        </div>
-        <WorkerSalaryTeaser uid={user.uid} orders={orders} hideSalary={userData.hideSalary} />
-      </div>
-
-      {loading ? (
-        <Spinner />
-      ) : !current ? (
-        <div className="empty-state">
-          <div className="icon">📭</div>
-          <p>ПВХ кезегінде заказ жоқ</p>
-        </div>
-      ) : (
-        <CurrentPvcOrder
-          order={current}
-          actor={actor}
-          pvcTypesById={pvcTypesById}
-          onToast={showToast}
-          onOpen={() => navigate(`/pvc/order/${current.id}`)}
-        />
-      )}
-
-      {upNext.length > 0 && (
-        <section className="panel-card">
-          <div className="panel-head">
-            <h3>Келесі заказдар (кезек)</h3>
-          </div>
-          {/* Same card shape the Распил панелі uses — a merged order's banded lines start and
-              finish independently here too, so this is never one blended "ПВХ" per order. */}
-          <div className="job-card-list">
-            {upNext.map((o) => (
-              <PvcJobCard key={o.id} order={o} actor={actor} onToast={showToast} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <Toast message={message} visible={visible} />
-    </AppShell>
-  );
-}
-
-/**
- * A queued order as the PVC worker sees it — the same card shape the Распил панелі uses. Still
- * waiting on the saw for a line still being cut ("Распил күтілуде"), or ready for edging.
- * Finishing is not offered here: the colour/edge breakdown lives on the "Қазіргі заказ" panel
- * above (and the order page), where the full part list is loaded.
- */
-function PvcJobCard({
-  order,
-  actor,
-  onToast,
-}: {
-  order: Order;
-  actor: Actor;
-  onToast: (m: string) => void;
-}) {
-  const waitingForSaw = order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started";
-
-  return (
-    <article className="ocard job-card">
-      <div className="ocard-top">
-        <span className="otable-num">{order.orderNumber}</span>
-        <span className="otable-sub">{order.createdAt ? formatDateDMY(order.createdAt) : "—"}</span>
-      </div>
-      <div className="ocard-mid">
-        <span className="otable-strong">{order.customerName}</span>
-        <span className="otable-money">{formatMoney(order.totalTiyn)}</span>
-      </div>
-      <div className="ocard-meta">
-        <span className="otable-sub">
-          №{(order.priority ?? 0) + 1} · {materialSummary(order)}
-        </span>
-        <PaymentStatusBadge status={order.paymentStatus} />
-      </div>
-      <OrderProgress order={order} />
-
-      {waitingForSaw ? (
-        <div className="job-card-actions">
-          <span className="jt-pill jt-tone-muted">Распил күтілуде</span>
-        </div>
-      ) : (
-        <PvcActionsPanel order={order} actor={actor} onToast={onToast} />
-      )}
-    </article>
-  );
+  const history = pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, true).length > 0);
+  const rows = view === "history" ? history : view === "mine" ? pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0) : [...inProgress, ...queued, ...awaitingCutting];
+  return <AppShell variant="station" title="ПВХ" subtitle={userData.name} contentWidth="narrow">
+    <WorkerDashboardHeader historyInNav queued={queued.length} active={inProgress.length} done={doneToday.length} view={view} onView={next => setParams(next === "queue" ? {} : { view: next })} />
+    {view === "queue" && <WorkerSalaryTeaser uid={user.uid} orders={orders} />}
+    {view === "history" && <WorkerHistorySummary orders={orders} materials={materials} stage="pvc" uid={user.uid} />}
+    {loading ? <Spinner /> : rows.length === 0 ? <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div> :
+      <div className={view === "history" ? "station-history-list" : "station-job-list"}>{rows.map(order => view === "history" ? <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} /> : <article key={order.id} className={`station-job ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>
+        <div className="station-job-status"><span className={`station-state ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>{view === "history" ? "ОРЫНДАЛДЫ" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{order.priority + 1}</span></div>
+        <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
+        <div className="station-customer"><IconUsers />{order.customerName}</div>
+        <WorkerMaterialSummary order={order} materials={materials} stage="pvc" uid={user.uid} history={view === "history"} />
+        <div className="station-status-line"><PaymentStatusBadge status={order.paymentStatus} /><span>{order.productionStatus === "pvc_started" ? "ПВХ жабыстырылуда" : order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "Кезекте"}</span></div>
+        {view !== "history" && <PvcActionsPanel order={order} actor={actor} onToast={showToast} />}
+        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} actor={actor} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
+      </article>)}</div>}
+    <Toast message={message} visible={visible} />
+  </AppShell>;
 }
 
 function CurrentPvcOrder({

@@ -23,6 +23,9 @@ export interface MdfJournalDraft {
   deliveryCostTiyn: number;
   discountTiyn: number;
   orderDate: Date;
+  /** Упаковка — never affects the customer's price, only the vacuum worker's pay (see
+   *  lib/salary.ts's packagingOrdersCount). Set by the МДФ manager, not computed. */
+  packaging: boolean;
 }
 
 export function emptyMdfJournalDraft(): MdfJournalDraft {
@@ -36,6 +39,7 @@ export function emptyMdfJournalDraft(): MdfJournalDraft {
     deliveryCostTiyn: 0,
     discountTiyn: 0,
     orderDate: new Date(),
+    packaging: false,
   };
 }
 
@@ -49,7 +53,8 @@ export function mdfDraftHasContent(draft: MdfJournalDraft): boolean {
     draft.filmColor.trim() !== "" ||
     draft.extraServicesTiyn !== 0 ||
     draft.deliveryCostTiyn !== 0 ||
-    draft.discountTiyn !== 0
+    draft.discountTiyn !== 0 ||
+    draft.packaging
   );
 }
 
@@ -65,6 +70,7 @@ export function draftFromMdfOrder(order: Order): MdfJournalDraft {
     deliveryCostTiyn: order.deliveryCostTiyn ?? 0,
     discountTiyn: order.discountTiyn ?? 0,
     orderDate: order.createdAt ? order.createdAt.toDate() : new Date(),
+    packaging: order.mdfPackaging ?? false,
   };
 }
 
@@ -114,6 +120,7 @@ export async function saveMdfJournalRow(
     mdfAreaM2: draft.areaM2,
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
+    mdfPackaging: draft.packaging,
     extraServicesTiyn: draft.extraServicesTiyn,
     deliveryCostTiyn: draft.deliveryCostTiyn,
     discountTiyn: draft.discountTiyn,
@@ -143,7 +150,7 @@ export async function publishMdfPrice(
   db: Firestore,
   actor: Actor,
   order: Order,
-  input: { areaM2: number; pricePerM2Tiyn: number; filmColor: string },
+  input: { areaM2: number; pricePerM2Tiyn: number; filmColor: string; packaging: boolean },
 ): Promise<void> {
   const totals = computeMdfOrderTotal({
     areaM2: input.areaM2,
@@ -158,6 +165,7 @@ export async function publishMdfPrice(
     mdfAreaM2: input.areaM2,
     mdfPricePerM2Tiyn: input.pricePerM2Tiyn,
     mdfFilmColor: input.filmColor.trim(),
+    mdfPackaging: input.packaging,
     totalTiyn: totals.totalTiyn,
     debtTiyn: totals.debtTiyn,
     paymentStatus: totals.paymentStatus,
@@ -201,6 +209,7 @@ export async function createMdfJournalOrder(db: Firestore, actor: Actor, draft: 
     mdfAreaM2: draft.areaM2,
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
+    mdfPackaging: draft.packaging,
     productionStatus: "waiting_payment",
     paymentStatus: "unpaid",
     priority: 0,

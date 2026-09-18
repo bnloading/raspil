@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Spinner } from "../components";
 import { NumberField } from "./NumberField";
 import { parseScannedParts, type ScannedPart } from "../lib/ocrDimensions";
-import { isHandwritingModelLoaded } from "../lib/handwritingOcr";
+import { isHandwritingModelLoaded, recognizeHandwriting, type HandwritingQuality } from "../lib/handwritingOcr";
 
 interface DimensionScannerProps {
   /** Every row the photo yielded, already reviewed and corrected by the user. */
@@ -32,7 +32,7 @@ async function preprocess(file: File): Promise<Blob> {
   // Tesseract wants roughly 30px-tall glyphs; on a list of ~20 rows, 1800px of width gets there
   // for a typical phone photo. Never downscale — that would destroy detail we need.
   const TARGET_W = 1800;
-  const scale = Math.max(1, Math.min(3, TARGET_W / bitmap.width));
+  const scale = Math.min(Math.max(1, Math.min(3, TARGET_W / bitmap.width)), 3200 / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
 
@@ -98,7 +98,8 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
   }, [engine]);
   const [rows, setRows] = useState<ScannedPart[]>([]);
   /** Skips the download warning once the weights are already in memory this session. */
-  const modelReady = isHandwritingModelLoaded();
+  const [quality, setQuality] = useState<HandwritingQuality>("accurate");
+  const modelReady = isHandwritingModelLoaded(quality);
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
@@ -160,7 +161,6 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
 
   /** Handwritten lists: TrOCR, which is what Tesseract's printed-text models cannot do. */
   const runHandwritten = async (source: Blob) => {
-    const { recognizeHandwriting } = await import("../lib/handwritingOcr");
     return await recognizeHandwriting(source, (p) => {
       if (p.stage === "download") {
         setProgress(Math.round((p.progress ?? 0) * 100));
@@ -171,7 +171,7 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
         setProgress(Math.round((p.progress ?? 0) * 100));
         setProgressNote(p.detail ?? "Оқылуда…");
       }
-    });
+    }, quality);
   };
 
   const handleRecognize = async () => {
@@ -325,10 +325,15 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
                     🖨 Басылған
                   </button>
                 </div>
+                {engine === "handwritten" && <label className="scan-quality">Тану моделі
+                  <select className="form-input" value={quality} onChange={e => setQuality(e.target.value as HandwritingQuality)}>
+                    <option value="accurate">TrOCR Base — үлкен модель</option>
+                    <option value="fast">TrOCR Small — жеңіл модель</option>
+                  </select>
+                </label>}
                 {engine === "handwritten" && !modelReady && (
                   <p className="form-hint">
-                    Қолжазбаны тану моделі бірінші рет ~60 МБ жүктеледі. Кейін интернетсіз де
-                    жұмыс істейді.
+                    Модель алғаш қолданғанда жүктеледі: Base бірнеше жүз МБ, Small шамамен 60 МБ. Сурет құрылғыда өңделеді, API кілті қажет емес. Үлкен модель баяуырақ; телефон жады жетпесе, жеңіл модельді таңдаңыз.
                   </p>
                 )}
               </div>

@@ -11,6 +11,7 @@ import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
 import { availablePeriods } from "../../lib/salary";
+import { effectiveSalaryRule } from "../../lib/salaryPolicy";
 import { formatMoney } from "../../lib/money";
 import { monthKey, monthLabel } from "../../lib/dates";
 import { ROLE_LABELS } from "../../lib/rbac";
@@ -71,7 +72,14 @@ export default function AdminSalary() {
     () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
     [materials],
   );
-  const rulesByUid = useMemo(() => new Map(rules.map((r) => [r.userId, r])), [rules]);
+  const rulesByUid = useMemo(() => {
+    const result = new Map(rules.map((r) => [r.userId, r]));
+    for (const member of staff) {
+      const rule = effectiveSalaryRule(member.id, member, result.get(member.id));
+      if (rule) result.set(member.id, rule);
+    }
+    return result;
+  }, [rules, staff]);
   const entryFor = (uid: string) => entries.find((e) => e.userId === uid && e.periodKey === period);
   const adjustmentTotal = (uid: string) =>
     adjustments.filter((a) => a.userId === uid && a.periodKey === period).reduce((s, a) => s + a.amountTiyn, 0);

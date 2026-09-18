@@ -247,6 +247,28 @@ export function computePvcProductivity(orders: Order[]): Map<string, number> {
   return map;
 }
 
+/**
+ * How many sheets were actually cut ("cutting_consumption" movements — real warehouse deductions,
+ * not orders merely sitting in the queue) this week and this month. Standalone rather than folded
+ * into computeKpis so Касса/Қойма pages, which don't load orders/payments, can show it without
+ * pulling in unrelated data.
+ */
+export function computeSheetsCutByPeriod(
+  movements: InventoryMovement[],
+  now: Date = new Date(),
+  /** Restrict to one line's materials (see lib/rbac.ts departmentOf) — omitted counts every material. */
+  materialIds?: ReadonlySet<string>,
+): { week: number; month: number } {
+  const weekStart = startOfWeekAlmaty(now);
+  const monthStart = startOfMonthAlmaty(now);
+  const cuttingMovements = movements.filter(
+    (m) => m.type === "cutting_consumption" && (!materialIds || materialIds.has(m.materialId)),
+  );
+  const week = cuttingMovements.filter((m) => inRange(m.createdAt, weekStart)).reduce((s, m) => s + -m.qty, 0);
+  const month = cuttingMovements.filter((m) => inRange(m.createdAt, monthStart)).reduce((s, m) => s + -m.qty, 0);
+  return { week, month };
+}
+
 export function computeMaterialCutBreakdown(movements: InventoryMovement[], materials: Material[]): { label: string; value: number }[] {
   const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption");
   const map = new Map<string, number>();

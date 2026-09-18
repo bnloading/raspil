@@ -119,6 +119,51 @@ export async function reversePayment(
 }
 
 /**
+ * Corrects a mistyped amount on an existing, non-reversed payment — never a reversal, never a new
+ * row, just the figure that was actually agreed (a leg of an Аралас split typed as 8 000 when it
+ * should have been 18 000, say). Recalculates the order's paidTiyn/debtTiyn/paymentStatus from the
+ * delta in the same transaction, same as recordPayment/reversePayment.
+ */
+export async function correctPaymentAmount(
+  db: Firestore,
+  actor: Actor,
+  params: { paymentId: string; amountTiyn: number },
+): Promise<void> {
+  if (params.amountTiyn <= 0) throw new Error("Сома дұрыс емес");
+  const paymentRef = doc(db, "payments", params.paymentId);
+
+  await runTransaction(db, async (tx) => {
+    const paymentSnap = await tx.get(paymentRef);
+    if (!paymentSnap.exists()) throw new Error("Төлем табылмады");
+    const payment = paymentSnap.data() as { orderId: string; amountTiyn: number; reversed: boolean };
+    if (payment.reversed) throw new Error("Қайтарылған төлемді түзетуге болмайды");
+    if (payment.amountTiyn === params.amountTiyn) return; // nothing actually changed
+
+    const orderRef = doc(db, "orders", payment.orderId);
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists()) throw new Error("Заказ табылмады");
+    const order = orderSnap.data() as Order;
+    const newPaid = order.paidTiyn - payment.amountTiyn + params.amountTiyn;
+    const newDebt = order.totalTiyn - newPaid;
+    const newPaymentStatus = computePaymentStatus(order.totalTiyn, newPaid);
+    const newProductionStatus = nextProductionStatusForPayment(order.productionStatus, newPaymentStatus);
+
+    tx.update(paymentRef, {
+      amountTiyn: params.amountTiyn,
+      correctedByUid: actor.user.uid,
+      correctedByName: actor.userData.name,
+      correctedAt: serverTimestamp(),
+    });
+    tx.update(orderRef, {
+      paidTiyn: newPaid,
+      debtTiyn: newDebt,
+      paymentStatus: newPaymentStatus,
+      ...(newProductionStatus ? { productionStatus: newProductionStatus } : {}),
+    });
+  });
+}
+
+/**
  * Moves payments left behind by a merge onto the order that is actually live, then re-syncs that
  * order's own paidTiyn/debtTiyn/paymentStatus from the rolled-up total.
  *

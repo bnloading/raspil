@@ -31,6 +31,10 @@ export interface SalaryWorkTotals {
    *  production line (cnc/sanding/painting/vacuum roles), unrelated to mdfSheets above (which is
    *  a распил-line cutter cutting an МДФ-category sheet — see SalaryRule.perMdfM2Tiyn). */
   mdfM2Processed: number;
+  /** МДФ orders flagged "Упаковка" (mdfPackaging) whose vacuum stage this worker finished — a flat
+   *  per-order bonus, separate from the per-m² mdfM2Processed above. Only ever accrues on the
+   *  vacuum stage; every other role's count stays 0. */
+  packagingOrdersCount: number;
   ordersCompleted: number;
   presentDays: number;
   absentDays: number;
@@ -45,6 +49,7 @@ export const EMPTY_WORK_TOTALS: SalaryWorkTotals = {
   mdfSheets: 0,
   pvcMeters: 0,
   mdfM2Processed: 0,
+  packagingOrdersCount: 0,
   ordersCompleted: 0,
   presentDays: 0,
   absentDays: 0,
@@ -74,6 +79,7 @@ export function measureWork(
   let mdfSheets = 0;
   let pvcMeters = 0;
   let mdfM2Processed = 0;
+  let packagingOrdersCount = 0;
   let ordersCompleted = 0;
 
   for (const order of orders) {
@@ -114,6 +120,7 @@ export function measureWork(
         const job = order.mdfStageJobs[stage];
         if (job?.byUid === userId && job.completedAt && monthKey(job.completedAt.toDate()) === periodKey) {
           mdfM2Processed += order.mdfAreaM2 ?? 0;
+          if (stage === "vacuum" && order.mdfPackaging) packagingOrdersCount += 1;
           touchedThisOrder = true;
         }
       }
@@ -138,7 +145,7 @@ export function measureWork(
 
   return {
     sheetsCut, ldspSheets, hdfSheets, countertopSheets, mdfSheets,
-    pvcMeters, mdfM2Processed, ordersCompleted, presentDays, absentDays, workedHours,
+    pvcMeters, mdfM2Processed, packagingOrdersCount, ordersCompleted, presentDays, absentDays, workedHours,
   };
 }
 
@@ -213,6 +220,14 @@ export function computeSalaryBase(rule: SalaryRule | undefined, work: SalaryWork
         round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0)) +
         round(work.workedHours * (rule?.hourlyTiyn ?? 0));
       break;
+  }
+
+  // Упаковка is a flat bonus on top of whatever the base mode already pays — not a mode of its
+  // own, so it applies regardless of whether a vacuum worker is on PER_MDF_M2, MIXED, or anything
+  // else, without needing MIXED just to receive it. Same MANUAL exception as the deduction below:
+  // an Admin typing the final figure by hand is already accounting for everything themselves.
+  if (mode !== "MANUAL") {
+    baseTiyn += round(work.packagingOrdersCount * (rule?.perPackagingOrderTiyn ?? 0));
   }
 
   // Attendance deductions never apply to MANUAL — an Admin typing the final number is already

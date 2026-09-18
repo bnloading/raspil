@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   signInWithEmailAndPassword,
@@ -20,7 +20,9 @@ import moderaLogo from "../assets/modera-logo.png";
 export default function Login() {
   const { user, userData, loading } = useAuth();
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(() => {
+    try { return localStorage.getItem("loginIdentifier") ?? ""; } catch { return ""; }
+  });
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
@@ -28,10 +30,9 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(true);
   const { message, visible, showToast } = useToast();
 
-  if (!loading && user && userData) {
-    navigate(roleHome(userData.role), { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (!loading && user && userData) navigate(roleHome(userData.role), { replace: true });
+  }, [loading, user, userData, navigate]);
 
   if (loading) return <Spinner />;
 
@@ -80,6 +81,10 @@ export default function Login() {
         return;
       }
 
+      try {
+        if (rememberMe) localStorage.setItem("loginIdentifier", identifier.trim());
+        else localStorage.removeItem("loginIdentifier");
+      } catch { /* Authentication remains usable when browser storage is unavailable. */ }
       navigate(roleHome(data.role));
     } catch (err: unknown) {
       const fireErr = err as { code?: string };
@@ -146,11 +151,13 @@ export default function Login() {
             <p>Аккаунтыңызға кіріңіз</p>
           </div>
 
-          <form onSubmit={handleSubmit} className={shake ? "shake" : ""}>
+          <form onSubmit={handleSubmit} autoComplete="on" className={shake ? "shake" : ""}>
             <div className="form-group">
-              <label>Email немесе телефон</label>
+              <label htmlFor="login-username">Email немесе телефон</label>
               <input
                 type="text"
+                id="login-username"
+                name="username"
                 className="form-input"
                 placeholder="email@example.com немесе +7 777 123 4567"
                 autoComplete="username"
@@ -160,12 +167,14 @@ export default function Login() {
               />
             </div>
             <div className="form-group">
-              <label>Құпия сөз</label>
+              <label htmlFor="login-password">Құпия сөз</label>
               {/* A reveal toggle, because a mistyped password on a phone keyboard is otherwise
                   invisible and reads to the user as "the site won't let me in". */}
               <div className="input-with-affix">
                 <input
                   type={showPassword ? "text" : "password"}
+                  id="login-password"
+                  name="password"
                   className="form-input"
                   placeholder="••••••••"
                   autoComplete="current-password"

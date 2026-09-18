@@ -1,5 +1,6 @@
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -177,20 +178,16 @@ export async function enterCuttingQueue(
     }
   }
 
-  const orderRef = doc(db, "orders", order.id);
   // The sheets leave the warehouse now, not when the cutter reports back: once a job is queued the
   // boards are off the rack, and the Қойма page has to show what is actually left. Each material
   // line is charged to its own balance — a merged order (10 ЛДСП + 3 ХДФ) used to draw all 13
   // sheets from whichever material happened to be the order's primary one. A line whose material
   // is not shop stock (customer's own board, offcut) moves nothing — see consumeStockOnQueue.
   const jobs = buildLineJobs(order);
-  await consumeStockOnQueue(db, actor, { orderId: order.id, orderNumber: order.orderNumber, jobs });
-  await updateDoc(orderRef, {
-    productionStatus: "cutting_queue",
-    priority: opts.queuePosition,
-    cuttingQueuedAt: serverTimestamp(),
-    ...(!gateOk ? { paymentGateOverride: true, paymentGateOverrideReason: opts.overrideReason } : {}),
+  const result = await consumeStockOnQueue(db, actor, {
+    orderId: order.id, orderNumber: order.orderNumber, jobs, queue: opts,
   });
+  if (result.alreadyQueued) return;
   await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "cutting_queue", !gateOk ? opts.overrideReason : undefined);
 
   if (!gateOk) {
@@ -259,6 +256,7 @@ export async function startCuttingLine(
 
   await updateDoc(orderRef, {
     lineJobs: nextJobs,
+    cuttingWorkerIds: arrayUnion(actor.user.uid),
     assignedCutterId: order.assignedCutterId || actor.user.uid,
     assignedCutterName: order.assignedCutterName || actor.userData.name,
     // The order-level fields mirror whichever line was started most recently — used by the
@@ -401,6 +399,7 @@ export async function startPvcLine(
 
   await updateDoc(orderRef, {
     lineJobs: nextJobs,
+    pvcWorkerIds: arrayUnion(actor.user.uid),
     assignedPvcId: order.assignedPvcId || actor.user.uid,
     assignedPvcName: order.assignedPvcName || actor.userData.name,
     pvcEstimatedMinutes: estimatedMinutes,

@@ -121,33 +121,17 @@ function customerNav(): NavItem[] {
   ];
 }
 
-function cutterNav(): NavItem[] {
-  return [
-    { key: "cutting-home", label: "Кезек", short: "Кезек", path: "/cutting", icon: IconCut, group: "main", mobile: true },
-    { key: "cutting-history", label: "Тарих", short: "Тарих", path: "/cutting/history", icon: IconReports, group: "main", mobile: true },
-    { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
-    { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "main", mobile: true },
-    { key: "assortment", label: "Листтар", short: "Лист", path: "/assortment", icon: IconLayers, group: "secondary" },
-    { key: "camera", label: "Камера", path: "/camera", icon: IconCamera, group: "secondary" },
-  ];
-}
-
-function pvcNav(): NavItem[] {
-  return [
-    { key: "pvc-home", label: "ПВХ кезегі", short: "ПВХ", path: "/pvc", icon: IconPvc, group: "main", mobile: true },
-    { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
-    { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "main", mobile: true },
-    { key: "assortment", label: "Листтар", short: "Лист", path: "/assortment", icon: IconLayers, group: "secondary" },
-    { key: "camera", label: "Камера", path: "/camera", icon: IconCamera, group: "secondary" },
-  ];
-}
+function cutterNav(): NavItem[] { return mdfWorkerNav("raspil"); }
+function pvcNav(): NavItem[] { return mdfWorkerNav("pvh"); }
 
 /** Same shape for all 4 МДФ worker roles — only the home path/label differ, matching roleHome(). */
 function mdfWorkerNav(role: UserRole): NavItem[] {
   return [
-    { key: "mdf-home", label: "Кезек", short: "Кезек", path: roleHome(role), icon: IconLayers, group: "main", mobile: true },
+    { key: "mdf-home", label: "Тапсырмалар", short: "Тапсырмалар", path: roleHome(role), icon: IconLayers, group: "main", mobile: true },
+    { key: "mdf-history", label: "Тарих", path: `${roleHome(role)}?view=history`, icon: IconAudit, group: "main", mobile: true },
     { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
-    { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "main", mobile: true },
+    { key: "mdf-profile", label: "Профиль", path: "/profile", icon: IconUsers, group: "main", mobile: true },
+    { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "secondary" },
     { key: "assortment", label: "Листтар", short: "Лист", path: "/assortment", icon: IconLayers, group: "secondary" },
     { key: "camera", label: "Камера", path: "/camera", icon: IconCamera, group: "secondary" },
   ];
@@ -196,17 +180,19 @@ export function getNavForRole(
  * `/admin` nav entry, while `/admin/materials` highlights its own (longer, more specific) entry.
  */
 export function matchNavKey(pathname: string, search: string, items: NavItem[]): string | undefined {
-  void search; // not currently needed for matching, kept for API symmetry with useLocation()
   let bestKey: string | undefined;
   let bestLen = -1;
   for (const item of items) {
-    const path = item.path;
+    const [path, queryString] = item.path.split("?");
+    if (queryString && new URLSearchParams(queryString).get("view") !== new URLSearchParams(search).get("view")) continue;
     const isMatch =
       pathname === path || (pathname.startsWith(path) && (path === "/" || pathname[path.length] === "/"));
-    if (isMatch && path.length > bestLen) {
-      bestLen = path.length;
+    if (isMatch && item.path.length > bestLen) {
+      bestLen = item.path.length;
       bestKey = item.key;
     }
   }
   return bestKey;
 }
+
+

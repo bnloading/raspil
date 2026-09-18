@@ -61,6 +61,23 @@ describe("buildLineJobs", () => {
     const jobs = buildLineJobs(order());
     expect(Object.keys(jobs[0]).some((k) => k.toLowerCase().includes("tiyn"))).toBe(false);
   });
+
+  // This is the one hop that carries Прифуговка from the priced line to the shop floor: it is what
+  // enterCuttingQueue() persists into lineJobs, so without it the PVC worker never sees the flag.
+  it("carries Прифуговка through to the line's production job, per line", () => {
+    const jobs = buildLineJobs(
+      order({
+        items: [
+          { materialId: "ldsp-ak", materialName: "ЛДСП Ақ", sheetQty: 10, sheetPriceTiyn: 1600000, pvcMeters: 176, pvcPricePerMeterTiyn: 20000, pvcJointed: true },
+          { materialId: "ldsp-kashemir", materialName: "ЛДСП Кашемир", sheetQty: 4, sheetPriceTiyn: 1600000, pvcMeters: 50, pvcPricePerMeterTiyn: 20000 },
+        ],
+      }),
+    );
+    expect(jobs[0].pvcJointed).toBe(true);
+    // Not set on a line that was never flagged — and absent rather than false, since Firestore
+    // rejects undefined and the field is optional everywhere downstream.
+    expect(jobs[1].pvcJointed).toBeUndefined();
+  });
 });
 
 describe("jobsOf", () => {

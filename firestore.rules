@@ -231,6 +231,11 @@ service cloud.firestore {
       function order() {
         return resource.data;
       }
+      function ownHistoryAppend(field) {
+        let old = resource.data.get(field, []);
+        let next = request.resource.data.get(field, []);
+        return next is list && (next == old || next.toSet() == old.toSet().union([uid()].toSet()));
+      }
       function isOwner() {
         return isCustomer() && order().customerId == uid();
       }
@@ -238,6 +243,7 @@ service cloud.firestore {
         return isCutter() && (
           order().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed']
           || order().assignedCutterId == uid()
+          || uid() in order().get('cuttingWorkerIds', [])
         );
       }
       // Read access starts one stage earlier than write access: a PVC worker needs to see the
@@ -250,6 +256,7 @@ service cloud.firestore {
             'pvc_queue', 'pvc_started', 'pvc_completed'
           ]
           || order().assignedPvcId == uid()
+          || uid() in order().get('pvcWorkerIds', [])
         );
       }
       function pvcCanEdit() {
@@ -328,6 +335,8 @@ service cloud.firestore {
         && (request.resource.data.productionStatus in ['draft', 'submitted'] || mdfSelfPriced())
         && request.resource.data.paidTiyn == 0
         && request.resource.data.priority == 0
+        && request.resource.data.get('cuttingWorkerIds', []).size() == 0
+        && request.resource.data.get('pvcWorkerIds', []).size() == 0
         && request.resource.data.get('assignedCutterId', null) == null
         && request.resource.data.get('assignedPvcId', null) == null
         && request.resource.data.get('adminNote', '') == ''
@@ -354,10 +363,12 @@ service cloud.firestore {
         && request.resource.data.customerId == order().customerId
         && unchanged([
           'paidTiyn', 'debtTiyn', 'paymentStatus', 'assignedCutterId', 'assignedPvcId',
-          'priority', 'adminNote', 'confirmedSheets', 'cuttingConsumedAt', 'cuttingConsumedMovementId'
+          'priority', 'adminNote', 'confirmedSheets', 'cuttingConsumedAt', 'cuttingConsumedMovementId', 'cuttingWorkerIds', 'pvcWorkerIds'
         ])
       ) || (
         cutterCanSee()
+        && ownHistoryAppend('cuttingWorkerIds')
+        && unchanged(['pvcWorkerIds'])
         && unchanged([
           'customerId', 'materialId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
           'assignedPvcId', 'discountTiyn', 'adminNote'
@@ -374,6 +385,8 @@ service cloud.firestore {
         )
       ) || (
         pvcCanEdit()
+        && ownHistoryAppend('pvcWorkerIds')
+        && unchanged(['cuttingWorkerIds'])
         && unchanged([
           'customerId', 'materialId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
           'assignedCutterId', 'discountTiyn', 'adminNote', 'confirmedSheets',
@@ -381,6 +394,7 @@ service cloud.firestore {
         ])
       ) || (
         mdfCanEdit()
+        && unchanged(['cuttingWorkerIds', 'pvcWorkerIds'])
         && unchanged([
           'customerId', 'totalTiyn', 'paidTiyn', 'debtTiyn', 'paymentStatus',
           'discountTiyn', 'adminNote', 'mdfAreaM2', 'mdfFilmColor', 'mdfPricePerM2Tiyn'
@@ -395,8 +409,8 @@ service cloud.firestore {
         }
         allow read: if isAdmin() || isManager()
           || (isCustomer() && parentOrder().customerId == uid())
-          || (isCutter() && (parentOrder().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed'] || parentOrder().assignedCutterId == uid()))
-          || (isPvc() && (parentOrder().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed'] || parentOrder().assignedPvcId == uid()))
+          || (isCutter() && (parentOrder().productionStatus in ['cutting_queue', 'cutting_started', 'cutting_completed'] || (parentOrder().get('assignedCutterId', null) == uid() || uid() in parentOrder().get('cuttingWorkerIds', []))))
+          || (isPvc() && (parentOrder().productionStatus in ['cutting_completed', 'pvc_queue', 'pvc_started', 'pvc_completed'] || (parentOrder().get('assignedPvcId', null) == uid() || uid() in parentOrder().get('pvcWorkerIds', []))))
           || (isMdfWorker() && parentOrder().orderKind == 'mdf_wrap');
         // Manager may correct dimensions/specification any time before the order is fully paid
         // (spec: "Correct the order specification before calculating the final price") — once
@@ -414,8 +428,8 @@ service cloud.firestore {
         }
         allow read: if isAdmin() || isManager()
           || (isCustomer() && parentOrderStatusHistory().customerId == uid())
-          || (isCutter() && parentOrderStatusHistory().assignedCutterId == uid())
-          || (isPvc() && parentOrderStatusHistory().assignedPvcId == uid())
+          || (isCutter() && (parentOrderStatusHistory().get('assignedCutterId', null) == uid() || uid() in parentOrderStatusHistory().get('cuttingWorkerIds', [])))
+          || (isPvc() && (parentOrderStatusHistory().get('assignedPvcId', null) == uid() || uid() in parentOrderStatusHistory().get('pvcWorkerIds', [])))
           || (isMdfWorker() && parentOrderStatusHistory().orderKind == 'mdf_wrap');
         allow create: if isStaff() && request.resource.data.userId == uid();
         allow update, delete: if false; // immutable audit trail
@@ -459,6 +473,15 @@ service cloud.firestore {
               .hasOnly(['orderId', 'mergedFromOrderId'])
             && request.resource.data.mergedFromOrderId == resource.data.orderId
             && request.resource.data.orderId != resource.data.orderId
+          )
+          // Correcting a mistyped amount (a leg of an Аралас split typed wrong) — never on an
+          // already-reversed payment, and the corrector has to be who they claim, same rule the
+          // reversal branch above already applies.
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['amountTiyn', 'correctedByUid', 'correctedByName', 'correctedAt'])
+            && resource.data.reversed == false
+            && request.resource.data.correctedByUid == uid()
           )
         )
       );
@@ -571,6 +594,15 @@ service cloud.firestore {
         && request.resource.data.userId == resource.data.userId;
       allow delete: if false; // money records are never deleted
     }
+
+    // Historical note: this app briefly had a раздспил-only self-serve `weeklyPayouts` +
+    // `advanceRepaymentRequests` pair (worker presses "Алдым" themself, requests an advance
+    // deduction, a Manager accepts it). That let one bad tap zero out a real week's pay by
+    // stacking an advance deduction on top of it, so раздспил was folded back into the same
+    // monthly salaryEntries/advances flow every other role already uses — Manager/Admin runs it
+    // end-to-end (Қайта есептеу → Растау → Төленді, plus Аванс беру), the worker only ever views
+    // their own "Айлығым" (see MySalary.tsx). Both collections' rules were removed with it; a
+    // handful of now-orphaned documents from that period were left in place rather than deleted.
 
     match /salaryAdjustments/{id} {
       allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == uid());

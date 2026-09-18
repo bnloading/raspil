@@ -47,7 +47,7 @@ export function WorkerSalaryTeaser({
 
   // Confirmed figure if there is one; otherwise the live estimate, which is only worth showing
   // once a rule exists — a MANUAL worker has no formula, so there is nothing honest to display.
-  const amountTiyn = entry ? entry.finalTiyn : live.baseTiyn - live.deductionTiyn;
+  const amountTiyn = entry ? entry.finalTiyn : Math.max(0, live.baseTiyn - live.deductionTiyn);
   const isEstimate = !entry;
   if (!entry && (!rule || rule.mode === "MANUAL")) return null;
 
@@ -61,7 +61,7 @@ export function WorkerSalaryTeaser({
           : "Әзірге жұмыс жоқ";
 
   return (
-    <Link to="/salary" className="worker-stat-card worker-salary-teaser">
+    <section className="worker-stat-card worker-salary-teaser" aria-label="Осы айдағы айлық">
       <div>
         <div className="worker-stat-cap">
           Осы айдағы айлық{isEstimate && <span className="worker-salary-est"> · болжам</span>}
@@ -71,19 +71,20 @@ export function WorkerSalaryTeaser({
           <button
             type="button"
             className="worker-salary-reveal-btn"
-            style={{ background: "none", border: "none", cursor: "pointer", marginLeft: 8, fontSize: "0.8rem" }}
+            aria-label={revealed ? "Айлықты жасыру" : "Айлықты көрсету"}
+            aria-pressed={revealed}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setRevealed((r) => !r);
             }}
           >
-            {revealed ? "🙈" : "👁"}
+            {revealed ? "Жасыру" : "Көрсету"}
           </button>
         </div>
         <div className="worker-salary-detail">{detail}</div>
-        <span className="worker-salary-link">Толығырақ →</span>
+        <Link to="/salary" className="worker-salary-link">Айлығым →</Link>
       </div>
-    </Link>
+    </section>
   );
 }

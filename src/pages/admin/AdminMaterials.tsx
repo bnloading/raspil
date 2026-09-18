@@ -17,6 +17,8 @@ import { Toast, Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
+import { useAllInventoryMovements } from "../../hooks/useReports";
+import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
 import { stockStatus, lowStockCount } from "../../lib/stockStatus";
 import { pvcStockStatus } from "../../lib/pvcStock";
 import { RowMenu } from "../../components/RowMenu";
@@ -44,6 +46,7 @@ export default function AdminMaterials() {
   const [tab, setTab] = useState<Tab>("materials");
   const { materials, loading: materialsLoading } = useMaterials(false);
   const { pvcTypes, loading: pvcLoading } = usePvcTypes(false);
+  const { movements } = useAllInventoryMovements();
   const [ledgerFor, setLedgerFor] = useState<Material | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<Material | "new" | null>(null);
   const [editingPvc, setEditingPvc] = useState<PvcType | "new" | null>(null);
@@ -61,6 +64,8 @@ export default function AdminMaterials() {
     }),
     [materials],
   );
+  // "Нақты" — real cuts (cutting_consumption movements), not orders merely sitting in a queue.
+  const sheetsCut = useMemo(() => computeSheetsCutByPeriod(movements), [movements]);
 
   if (!auth.userData) return <Spinner />;
 
@@ -108,6 +113,20 @@ export default function AdminMaterials() {
             <div className="kpi-value">{stockTotals.reserved} лист</div>
           </div>
           <span className="kpi-icon is-blue">🔖</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Осы аптада нақты кесілген</div>
+            <div className="kpi-value">{sheetsCut.week} лист</div>
+          </div>
+          <span className="kpi-icon is-indigo">🪚</span>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-text">
+            <div className="kpi-label">Осы айда нақты кесілген</div>
+            <div className="kpi-value">{sheetsCut.month} лист</div>
+          </div>
+          <span className="kpi-icon is-green">🪚</span>
         </div>
       </div>
 

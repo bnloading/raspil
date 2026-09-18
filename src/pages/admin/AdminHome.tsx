@@ -35,6 +35,10 @@ import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 export default function AdminHome() {
   const { userData } = useAuth();
   const myDepartment = userData ? departmentOf(userData) : "ldsp";
+  // Cut sheets and sheet stock are распил concepts — the МДФ line wraps panels by m² and keeps no
+  // sheet inventory, so these read as ЛДСП figures no matter who is looking. Hidden rather than
+  // zeroed for a МДФ viewer, exactly as AdminReports.tsx hides its ЛДСП-only tabs.
+  const isLdsp = myDepartment === "ldsp";
   const navigate = useNavigate();
   const { orders: allOrders, loading: ordersLoading } = useAllOrders();
   const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
@@ -119,13 +123,15 @@ export default function AdminHome() {
               <div className="number">{formatMoney(kpis.totalDebtTiyn)}</div>
               <div className="label">Қарыз</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-card-icon">
-                <IconCut />
+            {isLdsp && (
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <IconCut />
+                </div>
+                <div className="number">{kpis.sheetsMonth}</div>
+                <div className="label">Кесілген лист</div>
               </div>
-              <div className="number">{kpis.sheetsMonth}</div>
-              <div className="label">Кесілген лист</div>
-            </div>
+            )}
           </div>
 
           <div className="dashboard-grid">
@@ -150,6 +156,7 @@ export default function AdminHome() {
               <DonutChart data={incomeAllocation} centerLabel="Айлық" centerValue={formatMoney(kpis.monthRevenueTiyn)} />
             </div>
 
+            {isLdsp && (
             <div className="panel-card">
               <div className="panel-head">
                 <h3>Материал қоры</h3>
@@ -181,6 +188,7 @@ export default function AdminHome() {
                 </div>
               )}
             </div>
+            )}
 
             <div className="panel-card span-2">
               <div className="panel-head">

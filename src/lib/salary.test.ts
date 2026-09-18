@@ -163,6 +163,24 @@ describe("measureWork", () => {
     expect(measureWork(orders, [], SANDING, "2026-03").mdfM2Processed).toBe(10);
   });
 
+  it("credits packagingOrdersCount only on the vacuum stage of a mdfPackaging order", () => {
+    const VACUUM = "vacuum-1";
+    const orders = [
+      order({ orderKind: "mdf_wrap", mdfAreaM2: 5, mdfPackaging: true, mdfStageJobs: { vacuum: { byUid: VACUUM, completedAt: MARCH } } }),
+      // Same worker, same stage, but this order was never flagged — must not count.
+      order({ orderKind: "mdf_wrap", mdfAreaM2: 5, mdfPackaging: false, mdfStageJobs: { vacuum: { byUid: VACUUM, completedAt: MARCH } } }),
+    ];
+    expect(measureWork(orders, [], VACUUM, "2026-03").packagingOrdersCount).toBe(1);
+  });
+
+  it("does not credit packagingOrdersCount for a non-vacuum stage, even when mdfPackaging is set", () => {
+    const CNC = "cnc-1";
+    const orders = [
+      order({ orderKind: "mdf_wrap", mdfAreaM2: 5, mdfPackaging: true, mdfStageJobs: { cnc: { byUid: CNC, completedAt: MARCH } } }),
+    ];
+    expect(measureWork(orders, [], CNC, "2026-03").packagingOrdersCount).toBe(0);
+  });
+
   it("counts present/late as worked days and absent separately; day-off and sick count as neither", () => {
     const work = measureWork([], [
       attendance({ id: "1", date: "2026-03-02", status: "present", workedHours: 8 }),
@@ -219,6 +237,30 @@ describe("computeSalaryBase — MANUAL is the default and invents nothing", () =
     const rule: SalaryRule = { id: CNC, userId: CNC, mode: "PER_MDF_M2", perMdfM2Tiyn: T(3000) };
     const mdfWork = { ...EMPTY_WORK_TOTALS, mdfM2Processed: 12 };
     expect(computeSalaryBase(rule, mdfWork).baseTiyn).toBe(T(36000));
+  });
+
+  it("Упаковка bonus adds on top of PER_MDF_M2, not just inside MIXED", () => {
+    const VACUUM = "vacuum-1";
+    const rule: SalaryRule = {
+      id: VACUUM, userId: VACUUM, mode: "PER_MDF_M2",
+      perMdfM2Tiyn: T(2000), perPackagingOrderTiyn: T(2250),
+    };
+    const vacuumWork = { ...EMPTY_WORK_TOTALS, mdfM2Processed: 12, packagingOrdersCount: 3 };
+    // 12 × 2000 + 3 × 2250
+    expect(computeSalaryBase(rule, vacuumWork).baseTiyn).toBe(T(30750));
+  });
+
+  it("Упаковка bonus is 0 when the rule sets no rate for it", () => {
+    const VACUUM = "vacuum-1";
+    const rule: SalaryRule = { id: VACUUM, userId: VACUUM, mode: "PER_MDF_M2", perMdfM2Tiyn: T(2000) };
+    const vacuumWork = { ...EMPTY_WORK_TOTALS, mdfM2Processed: 12, packagingOrdersCount: 3 };
+    expect(computeSalaryBase(rule, vacuumWork).baseTiyn).toBe(T(24000));
+  });
+
+  it("Упаковка bonus never applies under MANUAL, same as every other automatic component", () => {
+    const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "MANUAL", perPackagingOrderTiyn: T(2250) };
+    const packagingWork = { ...EMPTY_WORK_TOTALS, packagingOrdersCount: 5 };
+    expect(computeSalaryBase(rule, packagingWork).baseTiyn).toBe(0);
   });
 
   it("PER_ORDER multiplies completed orders by the per-order rate", () => {

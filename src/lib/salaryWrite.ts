@@ -12,6 +12,7 @@ import type {
 } from "../types/domain";
 import { buildSalaryEntry } from "./salary";
 import { logAudit } from "./audit";
+import { SALARY_POLICY_VERSION } from "./salaryPolicy";
 
 type Actor = { user: User; userData: UserDoc };
 
@@ -84,6 +85,7 @@ export async function saveSalaryRule(
     {
       userId,
       ...rule,
+      policyVersion: SALARY_POLICY_VERSION,
       updatedAt: serverTimestamp(),
       updatedByUid: actor.user.uid,
       updatedByName: actor.userData.name,

@@ -114,6 +114,7 @@ export function useCutterOrders(uid: string | undefined) {
     return [
       query(collection(db, "orders"), where("productionStatus", "in", CUTTER_VISIBLE_STATUSES)),
       query(collection(db, "orders"), where("assignedCutterId", "==", uid)),
+      query(collection(db, "orders"), where("cuttingWorkerIds", "array-contains", uid)),
     ];
   }, [uid]);
   return useOrderQueries(queries);
@@ -126,6 +127,7 @@ export function usePvcOrders(uid: string | undefined) {
     return [
       query(collection(db, "orders"), where("productionStatus", "in", PVC_VISIBLE_STATUSES)),
       query(collection(db, "orders"), where("assignedPvcId", "==", uid)),
+      query(collection(db, "orders"), where("pvcWorkerIds", "array-contains", uid)),
     ];
   }, [uid]);
   return useOrderQueries(queries);

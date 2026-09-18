@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { collection, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -14,7 +14,7 @@ import { formatMoney, formatMoneyBare } from "../../lib/money";
 import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
-import { computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
+import { PVC_JOINTING_SURCHARGE_TIYN, computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
 import { departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
@@ -74,9 +74,9 @@ import {
   mergeCustomerSources,
   type CustomerSuggestion,
 } from "../../lib/customerSuggest";
-import { IconCut, IconLayers, IconPvc } from "../../components/layout/icons";
+import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
-import { reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
+import { correctPaymentAmount, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { enterCuttingQueue } from "../../lib/orderStatus";
 import {
   canEnterCuttingQueue,
@@ -97,6 +97,9 @@ function shortOrderNumber(orderNumber: string): string {
 
 /** Stable empty list, so an ordinary row never re-renders for a new array of nothing. */
 const EMPTY_ORDERS: Order[] = [];
+
+/** "+20 ₸/м" — derived from the rate itself so the label can never quote a stale price. */
+const JOINTING_LABEL = `+${PVC_JOINTING_SURCHARGE_TIYN / 100} ₸/м`;
 
 /** Stable empty set, so "everything visible" never re-renders the table for a new object. */
 const NOTHING_HIDDEN: ReadonlySet<JournalColumnId> = new Set<JournalColumnId>();
@@ -595,6 +598,7 @@ export default function ManagerJournal() {
     };
   }, [filtered, paymentsByOrder]);
 
+  const queuePending = useRef(new Set<string>());
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
 
@@ -703,7 +707,7 @@ export default function ManagerJournal() {
           setPayFor(order); // first use — let the method be chosen, then remember it
           return;
         }
-        await handleAddPayment(order, remembered.id, remaining);
+        await handleAddPayment(order, [{ methodId: remembered.id, amountTiyn: remaining }]);
         return;
       }
 
@@ -745,7 +749,7 @@ export default function ManagerJournal() {
 
     try {
       if (targetTiyn > paid) {
-        await handleAddPayment(order, method.id, targetTiyn - paid);
+        await handleAddPayment(order, [{ methodId: method.id, amountTiyn: targetTiyn - paid }]);
         return;
       }
       if (!confirm(
@@ -821,40 +825,15 @@ export default function ManagerJournal() {
     setSaving(false);
   };
 
-  /**
-   * A journal row is a walk-in the manager has already agreed and just took the money for, so
-   * nothing is left to review: settling it here sends the order straight on to the shop floor
-   * instead of leaving it parked one manual step short of the cutting queue. The PVC worker sees
-   * the same order the moment it is queued (PVC_VISIBLE_STATUSES in hooks/useOrders.ts), so both
-   * stages pick it up at once — PVC starts its own work when the cutter is done, as before.
-   *
-   * Returns what to append to the payment toast, and never throws: a queue problem must not read
-   * as a failed payment, because the money is already recorded by the time this runs.
-   */
-  const queueAfterPayment = async (orderId: string): Promise<string> => {
-    try {
-      const snap = await getDoc(doc(db, "orders", orderId));
-      if (!snap.exists()) return "";
-      const fresh = { id: snap.id, ...(snap.data() as Omit<Order, "id">) };
-      // Anything already on the shop floor, or still short of full payment, stays where it is.
-      if (fresh.productionStatus !== "paid" || !canEnterCuttingQueue(fresh.paymentStatus)) return "";
-      // Queueing reserves the sheets, which needs a real material — a row typed without one is
-      // paid but cannot be cut yet, and the manager has to say what it is made of first.
-      if (!fresh.materialId) return " · лист түрі таңдалмаған, кезекке қосылмады";
-
-      const queuePosition = orders.filter((o) => o.productionStatus === "cutting_queue").length + 1;
-      await enterCuttingQueue(db, actor, fresh, { isAdmin: false, queuePosition });
-      return fresh.pvcMetersTotal > 0 ? " · распил мен ПВХ кезегінде" : " · распил кезегінде";
-    } catch (err: unknown) {
-      return " · кезекке қосылмады: " + (err as Error).message;
-    }
-  };
 
   const computeQueuePosition = (orderId: string) =>
     orders.filter((o) => o.productionStatus === "cutting_queue" && o.id !== orderId).length + 1;
 
   /** "📦 Кесуге" — the order is already fully paid, so nothing more needs to be asked. */
   const handleQueueOrder = async (order: Order) => {
+    if (queuePending.current.has(order.id)) return;
+    queuePending.current.add(order.id);
+    showToast("Распилға жіберілуде…");
     try {
       await enterCuttingQueue(db, actor, order, { isAdmin: false, queuePosition: computeQueuePosition(order.id) });
       // One button covers both stations: cutting_queue is in PVC_VISIBLE_STATUSES, so the ПВХ
@@ -865,6 +844,8 @@ export default function ManagerJournal() {
         : "✅ Распил кезегіне жіберілді");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
+    } finally {
+      queuePending.current.delete(order.id);
     }
   };
 
@@ -880,6 +861,8 @@ export default function ManagerJournal() {
    * wants to record something specific still types it on the order page.
    */
   const handleOverrideQueueOrder = async (order: Order) => {
+    if (queuePending.current.has(order.id)) return;
+    queuePending.current.add(order.id);
     const owed = Math.max(0, order.totalTiyn - netPaidTiyn(livePaymentsFor(order.id)));
     try {
       await enterCuttingQueue(db, actor, order, {
@@ -890,6 +873,8 @@ export default function ManagerJournal() {
       showToast(`⚠️ Қарызға жіберілді — ${formatMoney(owed)} қарыз (аудитте тіркелді)`);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
+    } finally {
+      queuePending.current.delete(order.id);
     }
   };
 
@@ -916,29 +901,53 @@ export default function ManagerJournal() {
     }
   };
 
-  const handleAddPayment = async (order: Order, methodId: string, amountTiyn: number) => {
-    const method = methods.find((m) => m.id === methodId);
-    if (!method) {
-      showToast("Төлем түрі табылмады");
-      return;
-    }
-    if (amountTiyn <= 0) {
-      showToast("Сома дұрыс емес");
-      return;
-    }
+  /**
+   * Corrects a mistyped amount on a recorded payment — a leg of an Аралас split typed as 8 000
+   * instead of 18 000, say. Not a reversal: the order's paidTiyn/debtTiyn/paymentStatus are simply
+   * recomputed from the new figure (see lib/payments.ts correctPaymentAmount).
+   */
+  const handleChangeAmount = async (payment: Payment, amountTiyn: number) => {
+    if (amountTiyn <= 0 || payment.amountTiyn === amountTiyn) return;
     try {
-      await recordPayment(db, actor, {
-        orderId: order.id,
-        amountTiyn,
-        methodId: method.id,
-        methodName: method.name,
-        comment: "Журнал арқылы",
-      });
-      const queued = await queueAfterPayment(order.id);
-      // Remembered so the Статус toggle can settle the next order without asking again.
-      setDefaultMethodId(method.id);
-      localStorage.setItem("journalDefaultMethod", method.id);
-      showToast(`✅ Төлем тіркелді — ${method.name}${queued}`);
+      await correctPaymentAmount(db, actor, { paymentId: payment.id, amountTiyn });
+      showToast(`✅ Сома түзетілді — ${formatMoney(amountTiyn)}`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  /**
+   * One or more legs at once — "Аралас" (500 нал + 500 Нұр) records one payment per leg, all
+   * sharing a single groupId so paidByMethod() can still show the split by real method rather than
+   * one lump "Аралас" figure nobody can reconcile against the drawer/deposit.
+   */
+  const handleAddPayment = async (order: Order, legs: { methodId: string; amountTiyn: number }[]) => {
+    const resolved = legs
+      .map((leg) => ({ ...leg, method: methods.find((m) => m.id === leg.methodId) }))
+      .filter((leg) => leg.method && leg.amountTiyn > 0);
+    if (resolved.length === 0) {
+      showToast(legs.some((l) => l.amountTiyn > 0) ? "Төлем түрі табылмады" : "Сома дұрыс емес");
+      return;
+    }
+    const groupId = resolved.length > 1 ? crypto.randomUUID() : undefined;
+    try {
+      for (const leg of resolved) {
+        await recordPayment(db, actor, {
+          orderId: order.id,
+          amountTiyn: leg.amountTiyn,
+          methodId: leg.method!.id,
+          methodName: leg.method!.name,
+          comment: "Журнал арқылы",
+          ...(groupId ? { groupId } : {}),
+        });
+      }
+      // Remembered so the Статус toggle can settle the next order without asking again — the last
+      // leg's method wins for a mixed payment, same as any other "what did we just pick" memory.
+      const lastMethod = resolved[resolved.length - 1].method!;
+      setDefaultMethodId(lastMethod.id);
+      localStorage.setItem("journalDefaultMethod", lastMethod.id);
+      const label = resolved.length > 1 ? "Аралас" : lastMethod.name;
+      showToast(`✅ Төлем тіркелді — ${label}. Өндіріске беру үшін «Распилға жіберу» басыңыз`);
       setPayFor(null);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
@@ -1247,12 +1256,12 @@ export default function ManagerJournal() {
                       canEnterCuttingQueue(order.paymentStatus) ? (
                         <button className="btn btn-primary btn-full journal-card-action"
                           onClick={() => handleQueueOrder(order)}>
-                          Распилге жіберу
+                          Распилға жіберу
                         </button>
                       ) : (
                         <button className="btn btn-danger-outline btn-full journal-card-action"
                           onClick={() => handleOverrideQueueOrder(order)}>
-                          ⚠️ Қарызға жіберу
+                          Распилға жіберу · қарызға
                         </button>
                       )
                     )}
@@ -1458,10 +1467,11 @@ export default function ManagerJournal() {
           payments={livePaymentsFor(payFor.id)}
           remainingTiyn={Math.max(0, payFor.totalTiyn - netPaidTiyn(livePaymentsFor(payFor.id)))}
           onChangeMethod={handleChangeMethod}
+          onChangeAmount={handleChangeAmount}
           order={payFor}
           methods={methods}
           onClose={() => setPayFor(null)}
-          onSubmit={(methodId, amountTiyn) => handleAddPayment(payFor, methodId, amountTiyn)}
+          onSubmit={(legs) => handleAddPayment(payFor, legs)}
         />
       )}
 
@@ -1483,12 +1493,13 @@ function PaymentDialog({
   payments,
   remainingTiyn,
   onChangeMethod,
+  onChangeAmount,
   onClose,
   onSubmit,
 }: {
   order: Order;
   methods: PaymentMethodDef[];
-  /** Live (non-reversed) payments on this order — each one's method stays editable. */
+  /** Live (non-reversed) payments on this order — each one's method and amount stay editable. */
   payments: Payment[];
   /**
    * What is still outstanding, worked out by the caller from those payments rather than read off
@@ -1496,8 +1507,12 @@ function PaymentDialog({
    */
   remainingTiyn: number;
   onChangeMethod: (payment: Payment, methodId: string) => Promise<void> | void;
+  /** Corrects a mistyped amount — never a reversal, the order's totals are just recomputed. */
+  onChangeAmount: (payment: Payment, amountTiyn: number) => Promise<void> | void;
   onClose: () => void;
-  onSubmit: (methodId: string, amountTiyn: number) => Promise<void> | void;
+  /** One call, one or more legs — "Аралас" submits every non-empty leg in a single batch, each a
+   *  real method with its own amount (500 нал + 500 Нұр), not one lump "Аралас" figure. */
+  onSubmit: (legs: { methodId: string; amountTiyn: number }[]) => Promise<void> | void;
 }) {
   const remaining = remainingTiyn;
   /**
@@ -1511,6 +1526,12 @@ function PaymentDialog({
    */
   const [methodId, setMethodId] = useState("");
   const [amountTenge, setAmountTenge] = useState(remaining > 0 ? remaining / 100 : 0);
+  // Only used once "Аралас" is picked — each leg is a real method (never "Аралас" itself) plus its
+  // own amount. Starts at two rows, matching the shop's actual case ("500 нал, 500 Нұрға кетті").
+  const [mixedLegs, setMixedLegs] = useState<{ id: string; methodId: string; amountTenge: number }[]>([
+    { id: crypto.randomUUID(), methodId: "", amountTenge: 0 },
+    { id: crypto.randomUUID(), methodId: "", amountTenge: 0 },
+  ]);
   const [busy, setBusy] = useState(false);
   /**
    * Is the "add new money" half open?
@@ -1523,11 +1544,22 @@ function PaymentDialog({
    */
   const [adding, setAdding] = useState(payments.length === 0);
 
-  const overpaying = adding && Math.round(amountTenge * 100) > remaining;
+  const isMixed = methodId === "mixed";
+  const mixedTotalTiyn = mixedLegs.reduce((s, l) => s + Math.round((l.amountTenge || 0) * 100), 0);
+  const totalTiyn = isMixed ? mixedTotalTiyn : Math.round(amountTenge * 100);
+  const overpaying = adding && totalTiyn > remaining;
+
+  const patchLeg = (id: string, patch: Partial<{ methodId: string; amountTenge: number }>) =>
+    setMixedLegs((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const addLeg = () => setMixedLegs((rows) => [...rows, { id: crypto.randomUUID(), methodId: "", amountTenge: 0 }]);
+  const removeLeg = (id: string) => setMixedLegs((rows) => rows.filter((r) => r.id !== id));
 
   const submit = async () => {
     setBusy(true);
-    await onSubmit(methodId, Math.round(amountTenge * 100));
+    const legs = isMixed
+      ? mixedLegs.map((l) => ({ methodId: l.methodId, amountTiyn: Math.round((l.amountTenge || 0) * 100) }))
+      : [{ methodId, amountTiyn: Math.round(amountTenge * 100) }];
+    await onSubmit(legs);
     setBusy(false);
   };
 
@@ -1549,7 +1581,7 @@ function PaymentDialog({
             <label>Тіркелген төлем</label>
             {payments.map((p) => (
               <div key={p.id} className="pay-recorded-row">
-                <span className="pay-recorded-sum">{formatMoney(p.amountTiyn)}</span>
+                <RecordedAmountInput payment={p} onChangeAmount={onChangeAmount} />
                 <select
                   className="form-input"
                   value={p.methodId}
@@ -1567,11 +1599,12 @@ function PaymentDialog({
                 </select>
               </div>
             ))}
-            {/* Says outright what the select does, because the consequence is invisible: the sum
-                on the left does not move, and the order's paid total does not change. */}
+            {/* Says outright what each field does, because the consequence is invisible: changing
+                the method moves no money, only relabels it — changing the sum DOES recompute the
+                order's paid/debt total, it is a correction, not a new payment. */}
             <p className="pay-hint">
-              Түрін ауыстырсаңыз ақша қозғалмайды — тек қай әдіспен түскені түзетіледі. Бірден
-              сақталады.
+              Түрін ауыстырсаңыз ақша қозғалмайды — тек қай әдіспен түскені түзетіледі. Соманы
+              өзгертсеңіз — заказдың төленген сомасы қайта есептеледі. Бірден сақталады.
             </p>
           </div>
         )}
@@ -1601,17 +1634,57 @@ function PaymentDialog({
               </div>
             </div>
 
-            <div className="form-group">
-              <label>Сома (₸)</label>
-              <NumberField value={amountTenge} min={0} onChange={setAmountTenge} ariaLabel="Төлем сомасы" />
-            </div>
+            {isMixed ? (
+              <div className="form-group">
+                <label>Әдіс бойынша сомалар</label>
+                {mixedLegs.map((leg) => (
+                  <div key={leg.id} className="mdf-panel-row">
+                    <select
+                      className="form-input"
+                      aria-label="Аралас төлем әдісі"
+                      value={leg.methodId}
+                      onChange={(e) => patchLeg(leg.id, { methodId: e.target.value })}
+                    >
+                      <option value="">Әдісті таңдаңыз</option>
+                      {methods.filter((m) => !m.isMixed).map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <NumberField
+                      value={leg.amountTenge}
+                      min={0}
+                      onChange={(v) => patchLeg(leg.id, { amountTenge: v })}
+                      ariaLabel="Аралас төлем сомасы"
+                    />
+                    {mixedLegs.length > 2 && (
+                      <button type="button" className="btn btn-outline btn-sm" aria-label="Жолды өшіру"
+                        onClick={() => removeLeg(leg.id)}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline btn-sm" onClick={addLeg}>
+                  + Әдіс қосу
+                </button>
+                <div className="track-card-meta-row">
+                  <span>Барлығы</span>
+                  <strong>{formatMoney(mixedTotalTiyn)}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label>Сома (₸)</label>
+                <NumberField value={amountTenge} min={0} onChange={setAmountTenge} ariaLabel="Төлем сомасы" />
+              </div>
+            )}
 
             {/* The mistake this dialog invites is adding a second payment to a settled order while
                 meaning to correct the first one's method. It is allowed — a customer really can
                 overpay — but never silently. */}
             {overpaying && (
               <p className="pay-warn">
-                ⚠️ Бұл сома қалдықтан {formatMoney(Math.round(amountTenge * 100) - remaining)} артық.
+                ⚠️ Бұл сома қалдықтан {formatMoney(totalTiyn - remaining)} артық.
                 Заказ артық төленген болып жазылады.
               </p>
             )}
@@ -1625,7 +1698,7 @@ function PaymentDialog({
                 onClick={() => (payments.length > 0 ? setAdding(false) : onClose())}>
                 Болдырмау
               </button>
-              <button type="button" className="btn btn-primary" disabled={busy || !methodId || amountTenge <= 0}
+              <button type="button" className="btn btn-primary" disabled={busy || !methodId || totalTiyn <= 0}
                 onClick={submit}>
                 {busy ? "Сақталуда…" : overpaying ? "⚠️ Артық төлем тіркеу" : "✅ Тіркеу"}
               </button>
@@ -1637,6 +1710,47 @@ function PaymentDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * One recorded payment's amount, editable in place — commits on blur/Enter rather than per
+ * keystroke, so typing "18000" fires one correction, not five. Local text so a keystroke never
+ * round-trips through Firestore before the field is done being typed into.
+ */
+function RecordedAmountInput({
+  payment,
+  onChangeAmount,
+}: {
+  payment: Payment;
+  onChangeAmount: (payment: Payment, amountTiyn: number) => Promise<void> | void;
+}) {
+  const [text, setText] = useState(String(payment.amountTiyn / 100));
+
+  useEffect(() => setText(String(payment.amountTiyn / 100)), [payment.amountTiyn]);
+
+  const commit = () => {
+    const tenge = parseFloat(text.replace(",", "."));
+    if (!Number.isFinite(tenge) || tenge <= 0) {
+      setText(String(payment.amountTiyn / 100)); // not a usable number — snap back rather than save junk
+      return;
+    }
+    onChangeAmount(payment, Math.round(tenge * 100));
+  };
+
+  return (
+    <input
+      type="number"
+      className="form-input pay-recorded-sum"
+      min={0}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      aria-label={`${formatMoney(payment.amountTiyn)} — сомасы`}
+    />
   );
 }
 
@@ -1987,11 +2101,11 @@ function JournalRow({
           <ProgressSteps steps={steps} />
           {onGate && (
             canEnterCuttingQueue(order.paymentStatus) ? (
-              <button className="btn btn-primary btn-sm jt-cut-btn" onClick={onQueue}>Распилге жіберу</button>
+              <button className="btn btn-primary btn-sm jt-cut-btn" onClick={onQueue}>Распилға жіберу</button>
             ) : (
               <button className="btn btn-danger-outline btn-sm jt-cut-btn" onClick={onOverrideQueue}
                 title={`Қарызға жіберу — қалдық ${formatMoney(Math.max(0, preview.debtTiyn))}`}>
-                ⚠️ Қарызға жіберу
+                Распилға жіберу · қарызға
               </button>
             )
           )}
@@ -2017,16 +2131,16 @@ function JournalRow({
         {/* The saw, next to the row's other actions. Which of the two paths it takes is decided by
             the payment gate, exactly as the wide button in the progress column does: a settled
             order goes straight on, an owing one goes on credit and is written into the audit. */}
-        {onGate && (
+        {onGate && !show("progress") && (
           canEnterCuttingQueue(order.paymentStatus) ? (
-            <button className="jt-icon-btn is-cut" onClick={onQueue} aria-label="Распилге жіберу"
+            <button className="btn btn-primary btn-sm jt-cut-btn" onClick={onQueue} aria-label="Распилға жіберу"
               title={order.pvcMetersTotal > 0 ? "Распил + ПВХ кезегіне жіберу" : "Распилге жіберу"}>
-              <IconCut />
+              Распилға жіберу
             </button>
           ) : (
-            <button className="jt-icon-btn is-cut-debt" onClick={onOverrideQueue} aria-label="Қарызға жіберу"
+            <button className="btn btn-danger-outline btn-sm jt-cut-btn" onClick={onOverrideQueue} aria-label="Распилға қарызға жіберу"
               title={`Қарызға жіберу — қалдық ${formatMoney(Math.max(0, preview.debtTiyn))}`}>
-              <IconCut />
+              Распилға жіберу · қарызға
             </button>
           )
         )}
@@ -2309,6 +2423,16 @@ function JournalDetailPanel({
                       <span>ПВХ түсі</span>
                       <PvcColorSelect pvcTypes={pvcTypes} line={line} onPick={(id) => pickPvcType(index, id)} />
                     </label>
+                    {/* Прифуговка: a per-metre surcharge added on top of the price above (see
+                        lib/journal.ts's computeLineTotals) — never mutates the price field itself,
+                        so toggling it never has to remember to add or subtract. The rate is read
+                        from the constant rather than written out, so the two can never disagree. */}
+                    <label className="remember-me is-wide">
+                      <input type="checkbox" checked={!!line.pvcJointed}
+                        onChange={(e) => patchLine(index, { pvcJointed: e.target.checked })} />
+                      <span className="remember-check">{line.pvcJointed ? "✓" : ""}</span>
+                      <span>Прифуговкамен ({JOINTING_LABEL})</span>
+                    </label>
                   </>
                 )}
               </div>
@@ -2352,7 +2476,7 @@ function JournalDetailPanel({
         {onGate && canEnterCuttingQueue(order.paymentStatus) ? (
           <>
             <button className="btn btn-primary btn-full" onClick={onQueue}>
-              {order.pvcMetersTotal > 0 ? "Распил + ПВХ кезегіне жіберу" : "Распилге жіберу"}
+              Распилға жіберу
             </button>
             {order.pvcMetersTotal > 0 && (
               <p className="journal-panel-note">
@@ -2427,6 +2551,7 @@ function PaidCell({
 }) {
   const [text, setText] = useState(() => String(paidTiyn / 100));
   const [editing, setEditing] = useState(false);
+  const cancelCommit = useRef(false);
 
   useEffect(() => {
     if (!editing) setText(String(paidTiyn / 100));
@@ -2434,6 +2559,11 @@ function PaidCell({
 
   const commit = () => {
     setEditing(false);
+    if (cancelCommit.current) {
+      cancelCommit.current = false;
+      setText(String(paidTiyn / 100));
+      return;
+    }
     const parsed = Number(text.trim());
     if (!Number.isFinite(parsed) || parsed < 0) {
       setText(String(paidTiyn / 100));
@@ -2458,7 +2588,7 @@ function PaidCell({
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") { setText(String(paidTiyn / 100)); setEditing(false); e.currentTarget.blur(); }
+        if (e.key === "Escape") { cancelCommit.current = true; e.currentTarget.blur(); }
       }}
     />
   );
@@ -2584,6 +2714,13 @@ function NewJournalRow({
             ariaLabel="ПВХ 1 м бағасы" placeholder="ПВХ баға"
             onChange={(v) => patchLine({ pvcPricePerMeterTiyn: Math.round(v * 100) })} />
         </div>
+        {/* A per-metre surcharge on top of the price above, never a mutation of it — see
+            computeLineTotals. The tooltip carries the rate so the number lives in one place. */}
+        <label className="jt-pvc-jointed" title={`Прифуговка: ${JOINTING_LABEL}`}>
+          <input type="checkbox" checked={!!line.pvcJointed}
+            onChange={(e) => patchLine({ pvcJointed: e.target.checked })} />
+          <span>Прифуговка</span>
+        </label>
         </>
         )}
       </td>
