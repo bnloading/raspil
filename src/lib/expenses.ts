@@ -1,9 +1,25 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { CashAccount, Department, Expense, UserDoc } from "../types/domain";
+import { dayKey, monthKey } from "./dates";
 import { logAudit } from "./audit";
 
 type Actor = { user: User; userData: UserDoc };
+
+/**
+ * The day a new expense should be dated, given whichever period the Касса page is showing.
+ *
+ * Following the period picker is right for a past month: choosing Тамыз and being handed today's
+ * date would mean correcting every backdated entry by hand. But it used to hand back the FIRST of
+ * the month for the current one too, so an expense written this afternoon was filed on the 1st.
+ * That was merely untidy until the accounting restart — now anything dated before it is left out
+ * of every Касса figure, so seven expenses typed in a row landed where nothing would ever show
+ * them. The current month gets today; only a month that is genuinely over falls back to its 1st.
+ */
+export function expenseDefaultDate(period: string | null, now: Date = new Date()): string {
+  if (!period || period === monthKey(now)) return dayKey(now);
+  return `${period}-01`;
+}
 
 /**
  * Logs one real, named expense — "Мусор — 15 000 ₸", "Лист алуға — 20 000 ₸".

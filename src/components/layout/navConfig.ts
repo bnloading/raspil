@@ -70,7 +70,9 @@ function adminNav(department: Department): NavItem[] {
       { key: "admin-debt", label: "Қарыз", short: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main", mobile: true },
       { key: "admin-customers", label: "Клиенттер", path: "/setup", icon: IconUsers, group: "main" },
       { key: "admin-staff", label: "Қызметкерлер", path: "/setup", icon: IconUsers, group: "main" },
-      { key: "admin-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main" },
+      // In the phone's bottom bar, which is capped at six: the register is a thing to do every
+      // morning, and Камера — the item it displaces — is a utility reached when it is wanted.
+      { key: "admin-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main", mobile: true },
       { key: "admin-salary", label: "Айлық", path: "/admin/salary", icon: IconReports, group: "main" },
       { key: "admin-cashbox", label: "Касса / Шығын", path: "/manager/cashbox", icon: IconReports, group: "main" },
       { key: "admin-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },

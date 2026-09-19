@@ -8030,6 +8030,18 @@ body {
   min-width: 0;
 }
 .cashbox-field.is-wide { grid-column: span 2; }
+/* Sits between the last field and the save button, so it is read on the way to pressing it. */
+.cashbox-warn {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-light);
+  color: #8a5300;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.cashbox-warn.is-wide { grid-column: span 2; }
 .cashbox-field > span {
   font-size: 0.76rem;
   font-weight: 600;

@@ -13,7 +13,7 @@ import { useAppSettings } from "../../hooks/useAppSettings";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
-import { addExpense, deleteExpense } from "../../lib/expenses";
+import { addExpense, deleteExpense, expenseDefaultDate } from "../../lib/expenses";
 import {
   accountForExpense,
   computeCashbox,
@@ -237,7 +237,8 @@ export default function ManagerCashbox() {
           </div>
 
           <ExpenseForm
-            defaultDate={effectivePeriod ? `${effectivePeriod}-01` : dayKey(new Date())}
+            defaultDate={expenseDefaultDate(effectivePeriod)}
+            cashStartDate={cashStartDate}
             department={myDepartment}
             onSaved={(name, amountTiyn) => showToast(`✅ ${name} — ${formatMoney(amountTiyn)} жазылды`)}
             onError={showToast}
@@ -345,11 +346,14 @@ export default function ManagerCashbox() {
  */
 function ExpenseForm({
   defaultDate,
+  cashStartDate,
   department,
   onSaved,
   onError,
 }: {
   defaultDate: string;
+  /** The accounting restart day — an expense dated before it is saved but never counted here. */
+  cashStartDate: string | null;
   department: Department;
   onSaved: (name: string, amountTiyn: number) => void;
   onError: (message: string) => void;
@@ -365,6 +369,8 @@ function ExpenseForm({
   // Following the period picker: choosing an older month should offer that month's dates, not
   // today's, or every backdated entry has to be corrected by hand.
   useEffect(() => setDate(defaultDate), [defaultDate]);
+
+  const beforeStart = !!cashStartDate && date < cashStartDate;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -424,6 +430,15 @@ function ExpenseForm({
           <input className="form-input" placeholder="Кімге, не үшін" value={comment}
             onChange={(e) => setComment(e.target.value)} />
         </label>
+        {/* Said before the button, not after: an expense dated before the restart is written to
+            the database and then left out of every figure on this page, so without this it looks
+            for all the world like the save simply did nothing. */}
+        {beforeStart && (
+          <p className="cashbox-warn is-wide">
+            ⚠️ Бұл күн есеп басталатын күннен ({formatDateDMY(new Date(`${cashStartDate}T12:00:00+05:00`))}) бұрын —
+            шығын сақталады, бірақ Кассада көрінбейді және есепке кірмейді.
+          </p>
+        )}
         <button type="submit" className="btn btn-primary cashbox-submit" disabled={saving}>
           {saving ? "Сақталуда…" : "🧾 Шығынды жазу"}
         </button>
