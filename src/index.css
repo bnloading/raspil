@@ -9631,6 +9631,21 @@ body {
 .worker-history-summary .worker-quantities span { font-size: 11px; color: #647086; white-space: normal; }
 .worker-history-summary .worker-quantities b { display: block; font-size: 17px; }
 .worker-material small { color: #647086; font-size: 11px; display: block; margin-top: 2px; }
+/* "Прифуговка" is an extra pass on the machine, so it has to read as an instruction sitting right
+   above the button that starts the work — not as one more grey detail beside the metres. A whole
+   band, in the warning colour, is the difference between being noticed and being scrolled past. */
+.worker-material-jointed {
+  margin-top: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-xs, 6px);
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
 .worker-material .cutting-line-row { margin-top: 6px; }
 .worker-details { margin-top: 12px; }
 .worker-details summary { cursor: pointer; min-height: 44px; padding: 12px 0; font-size: 12px; color: var(--station-accent); }

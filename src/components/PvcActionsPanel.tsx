@@ -66,6 +66,9 @@ export function PvcLineActions({
     <span className="cutting-line-material">
       {job.materialName}
       {job.pvcCompletedAt ? "" : ` · ${job.pvcMeters} м ПВХ`}
+      {/* The order page lists materials itself, so the jointing instruction has to travel with
+          the name here too — the dashboard's copy lives in WorkerMaterialSummary. */}
+      {job.pvcJointed && <span className="jt-pill jt-tone-red"> Прифуговка</span>}
     </span>
   ) : null;
 

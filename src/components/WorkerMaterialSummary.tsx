@@ -45,9 +45,13 @@ export function WorkerMaterialSummary({ order, materials, stage, uid, history = 
             {q.pvcMeters > 0 && <span><b>{number(q.pvcMeters)}</b> м ПВХ</span>}
           </span>
         </div>
-        {/* Manager-set on the journal line (ManagerJournal.tsx) — a red flag telling the PVC
-            worker to actually do the extra jointing pass on this material, not just a label. */}
-        {stage === "pvc" && job.pvcJointed && <span className="jt-pill jt-tone-red">Прифуговка</span>}
+        {/* Manager-set on the journal line (ManagerJournal.tsx). This is an instruction to run an
+            extra pass on the machine, not a label — as a small pill among the metres it was being
+            read straight past, so it gets a band of its own directly above the button that starts
+            the work. */}
+        {stage === "pvc" && job.pvcJointed && (
+          <div className="worker-material-jointed">⚠️ ПРИФУГОВКА КЕРЕК</div>
+        )}
         {status && <small>{status}</small>}
         {action?.(job)}
       </div>;
