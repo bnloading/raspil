@@ -7,7 +7,6 @@ import { IconUsers } from "../components/layout/icons";
 import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
-import { PaymentStatusBadge } from "../components/StatusBadge";
 import { useMdfOrders } from "../hooks/useOrders";
 import { useToast } from "../hooks";
 import { ROLE_TO_MDF_STAGE } from "../lib/rbac";
@@ -51,7 +50,7 @@ export default function MdfWorkerDashboard() {
           <button className="station-order-link" onClick={() => navigate(`/${userData.role}/order/${order.id}`)}>{order.orderNumber}</button>
           <div className="station-customer"><IconUsers />{order.customerName}</div>
           <div className="station-facts"><span>{formatMdfArea(order.mdfAreaM2)}</span><span>{order.mdfFilmColor || "Түс көрсетілмеген"}</span></div>
-          <div className="station-status-line"><PaymentStatusBadge status={order.paymentStatus} /><span>{completed ? `${label} дайын` : started ? `${label} басталды` : current ? "Кезекте" : `${order.mdfStage ? MDF_STAGE_LABELS[order.mdfStage] : "Алдыңғы кезең"} күтілуде`}</span></div>
+          <div className="station-status-line"><span>{completed ? `${label} дайын` : started ? `${label} басталды` : current ? "Кезекте" : `${order.mdfStage ? MDF_STAGE_LABELS[order.mdfStage] : "Алдыңғы кезең"} күтілуде`}</span></div>
           {order.adminNote && <p className="station-note">{order.adminNote}</p>}
           {order.productionNote && <p className="station-note">{order.productionNote}</p>}
           {current && <MdfStageActionsPanel order={order} stage={stage} actor={actor} onToast={showToast} />}

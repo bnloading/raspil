@@ -40,7 +40,10 @@ export function OrderView({
         </div>
         <div className="order-view-badges">
           <ProductionStatusBadge status={order.productionStatus} />
-          <PaymentStatusBadge status={order.paymentStatus} />
+          {/* Whether the customer has paid is money, and goes with the rest of it. The Қаржы
+              section below was already gated; this badge was not, so a worker opening an order
+              from their own queue still read "Қарыз" or "Толық төленді" at the top of it. */}
+          {showFinancials && <PaymentStatusBadge status={order.paymentStatus} />}
         </div>
       </div>
 
