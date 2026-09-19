@@ -161,11 +161,16 @@ describe("syncLineJobs — the shop floor's copy follows the ledger", () => {
     expect(synced.cuttingByName).toBe("Олжас");
   });
 
-  it("never rewrites a line that has already been cut", () => {
-    const done = [job({ sheetQty: 10, cuttingCompletedAt: ts(), confirmedSheets: 9, cuttingByName: "Олжас" })];
-    const [synced] = syncLineJobs(done, [work({ sheetQty: 40, materialName: "Басқа материал" })]);
-    // Not one field of it moves: the sheets were counted, charged and paid for as they stand.
-    expect(synced).toEqual(done[0]);
+  it("lets a cut line's quantity be corrected, but never its material", () => {
+    const done = [job({ materialId: "ldsp-ak", sheetQty: 2, cuttingCompletedAt: ts(), confirmedSheets: 2, cuttingByName: "Олжас" })];
+    const [synced] = syncLineJobs(done, [work({ materialId: "hdf", materialName: "ХДФ", sheetQty: 4 })]);
+    // "2 лист деп жаздым, шынында 4" — the correction reaches the shop floor.
+    expect(synced.sheetQty).toBe(4);
+    // But those sheets were charged to ЛДСП Ақ, so the finished job stays pointed at it.
+    expect(synced.materialId).toBe("ldsp-ak");
+    // And the record of who cut it, and when, is untouched.
+    expect(synced.cuttingCompletedAt).toBe(done[0].cuttingCompletedAt);
+    expect(synced.cuttingByName).toBe("Олжас");
   });
 
   it("keeps a finished job even when its line is deleted from the bill", () => {

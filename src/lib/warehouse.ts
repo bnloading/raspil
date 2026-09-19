@@ -392,6 +392,12 @@ export async function consumeLineForCutting(
     lineIndex: number;
     confirmedQty: number;
     cuttingStartedAtMs?: number; // epoch ms, for this line's actual duration
+    /**
+     * Re-settle a line that is already finished, because the agreed quantity was corrected after
+     * the cut. Only the count moves: the completion time and the cutter who did it are kept, so
+     * this reads as the correction it is and never as somebody else re-cutting the job.
+     */
+    recount?: boolean;
   },
 ): Promise<{ alreadyCompleted: boolean; jobs: OrderLineJob[]; orderDone: boolean; needsPvc: boolean }> {
   const orderRef = doc(db, "orders", params.orderId);
@@ -404,7 +410,12 @@ export async function consumeLineForCutting(
     const jobs = jobsOf(orderData);
     const job = jobAt(jobs, params.lineIndex);
     if (!job) throw new Error("Жол табылмады");
-    if (job.cuttingCompletedAt) {
+    // A finished line is normally left alone — the cutter tapping "дайын" twice must not charge
+    // the warehouse twice. `recount` is the one exception: the Manager corrected the sheet count
+    // in the journal after the cut ("2 лист" was really 4), and that correction has to reach the
+    // cutter's pay and the warehouse, not just the bill. The difference is settled below exactly
+    // as a first completion would settle it, and the cut itself — who did it and when — is kept.
+    if (job.cuttingCompletedAt && !params.recount) {
       return { alreadyCompleted: true, jobs, orderDone: allCuttingDone(jobs), needsPvc: orderNeedsPvc(jobs) };
     }
 
@@ -447,13 +458,20 @@ export async function consumeLineForCutting(
       ? Math.max(0, Math.round((Date.now() - params.cuttingStartedAtMs) / 60000))
       : undefined;
 
+    // Correcting a count is not re-cutting the job: on a recount the completion stamp and the
+    // cutter stay exactly as they were, so the history still says who cut it and when.
+    const keepsCredit = params.recount && job.cuttingCompletedAt;
     const newJobs = patchJob(jobs, params.lineIndex, {
       confirmedSheets: params.confirmedQty,
       consumedQty: tracked ? params.confirmedQty : alreadyTaken,
-      cuttingCompletedAt: Timestamp.now(),
-      cuttingByUid: actor.user.uid,
-      cuttingByName: actor.userData.name,
-      ...(actualMinutes !== undefined ? { cuttingActualMinutes: actualMinutes } : {}),
+      ...(keepsCredit
+        ? {}
+        : {
+            cuttingCompletedAt: Timestamp.now(),
+            cuttingByUid: actor.user.uid,
+            cuttingByName: actor.userData.name,
+            ...(actualMinutes !== undefined ? { cuttingActualMinutes: actualMinutes } : {}),
+          }),
     });
 
     const orderDone = allCuttingDone(newJobs);

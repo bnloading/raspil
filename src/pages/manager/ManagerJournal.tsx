@@ -1243,9 +1243,23 @@ export default function ManagerJournal() {
                       <span className="journal-card-chevron" aria-hidden="true">›</span>
                     </button>
 
+                    {/* Taking the money is offered for as long as money is owed, whatever stage
+                        the order is at. It used to appear only before the saw, so an order sent
+                        on credit — precisely the one that gets paid later — left the card with no
+                        way to record the payment at all, and the manager had to open the order to
+                        find one. On the desktop ledger the Статус cell was always there; the
+                        phone had nothing. */}
+                    {cardDebt > 0 && (
+                      <button className="btn btn-primary btn-full journal-card-action"
+                        onClick={() => setPayFor(order)}>
+                        💰 Төлем қабылдау · {formatMoney(cardDebt)}
+                      </button>
+                    )}
+
                     {onGate && (
                       canEnterCuttingQueue(order.paymentStatus) ? (
-                        <button className="btn btn-primary btn-full journal-card-action"
+                        <button
+                          className={`btn ${cardDebt > 0 ? "btn-outline" : "btn-primary"} btn-full journal-card-action`}
                           onClick={() => handleQueueOrder(order)}>
                           Распилға жіберу
                         </button>

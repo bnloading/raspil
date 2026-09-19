@@ -432,6 +432,44 @@ describe("журнал → төлем → распил → ПВХ → дайын
     expect(await readMaterialQty()).toBe(-2);
   });
 
+  it("carries a sheet count corrected after the cut through to the cutter, the pay and the rack", async () => {
+    // "2 лист деп жаздым, шынында 4 лист болатын" — the correction has to reach more than the bill.
+    const draft = journalDraft();
+    draft.lines[0].sheetQty = 2;
+    const orderId = await createJournalOrder(asManager(), manager, draft, catalog);
+    let order = await readOrder(asManager(), orderId);
+    await recordPayment(asManager(), manager, {
+      orderId, amountTiyn: order.totalTiyn, methodId: "nur", methodName: "Нұр",
+    });
+    order = await readOrder(asManager(), orderId);
+    await enterCuttingQueue(asManager(), manager, order, { isAdmin: false, queuePosition: 1 });
+
+    const seen = (await cutterQueue()).find((o) => o.id === orderId)!;
+    await startCuttingLine(asCutter(), cutter, seen, 0, 30);
+    await completeCuttingLine(asCutter(), cutter, await readOrder(asCutter(), orderId), 0, 2);
+    order = await readOrder(asManager(), orderId);
+    expect(jobsOf(order)[0].confirmedSheets).toBe(2);
+    const afterCut = await readMaterialQty();
+    const cutAt = jobsOf(order)[0].cuttingCompletedAt;
+
+    // The Manager fixes the row in the journal, after the saw is done with it.
+    const corrected = draftFromOrder(order);
+    corrected.lines[0].sheetQty = 4;
+    await saveJournalRow(asManager(), manager, order, corrected, catalog);
+
+    order = await readOrder(asManager(), orderId);
+    const job = jobsOf(order)[0];
+    expect(job.sheetQty).toBe(4);
+    // The cutter's own count follows, because that is what his pay is measured on.
+    expect(job.confirmedSheets).toBe(4);
+    expect(order.confirmedSheets).toBe(4);
+    // And the two extra sheets leave the rack, as their own movement.
+    expect(await readMaterialQty()).toBe(afterCut - 2);
+    // A correction is not a re-cut: the record still says who finished it, and when.
+    expect(job.cuttingByName).toBe("Распилшик");
+    expect(job.cuttingCompletedAt?.isEqual(cutAt!)).toBe(true);
+  });
+
   it("queues once, is visible to both stations and its customer, and rejects stale requeue after starting", async () => {
     const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

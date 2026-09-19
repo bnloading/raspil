@@ -7,7 +7,7 @@ import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
-import { PvcActionsPanel } from "../components/PvcActionsPanel";
+import { PvcLineActions } from "../components/PvcActionsPanel";
 import { PaymentStatusBadge } from "../components/StatusBadge";
 import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
@@ -74,10 +74,21 @@ export default function PvcDashboard() {
         <div className="station-job-status"><span className={`station-state ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>{view === "history" ? "ОРЫНДАЛДЫ" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{order.priority + 1}</span></div>
         <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
         <div className="station-customer"><IconUsers />{order.customerName}</div>
-        <WorkerMaterialSummary order={order} materials={materials} stage="pvc" uid={user.uid} history={view === "history"} />
+        {/* Each material's own "Бастау"/"Дайын" sits inside that material's card, exactly as
+            распил does. A separate panel underneath repeated every material name and stacked the
+            buttons below the list, so a two-material order read as four rows of the same thing. */}
+        <WorkerMaterialSummary
+          order={order}
+          materials={materials}
+          stage="pvc"
+          uid={user.uid}
+          history={view === "history"}
+          action={view === "history" || (order.productionStatus !== "pvc_queue" && order.productionStatus !== "pvc_started")
+            ? undefined
+            : (job) => <PvcLineActions order={order} job={job} actor={actor} onToast={showToast} />}
+        />
         <div className="station-status-line"><PaymentStatusBadge status={order.paymentStatus} /><span>{order.productionStatus === "pvc_started" ? "ПВХ жабыстырылуда" : order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "Кезекте"}</span></div>
-        {view !== "history" && <PvcActionsPanel order={order} actor={actor} onToast={showToast} />}
-        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} actor={actor} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
+        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
       </article>)}</div>}
     <Toast message={message} visible={visible} />
   </AppShell>;
@@ -85,13 +96,11 @@ export default function PvcDashboard() {
 
 function CurrentPvcOrder({
   order,
-  actor,
   pvcTypesById,
   onToast,
   onOpen,
 }: {
   order: Order;
-  actor: Actor;
   pvcTypesById: Map<string, PvcType>;
   onToast: (m: string) => void;
   onOpen: () => void;
@@ -186,7 +195,8 @@ function CurrentPvcOrder({
         />
       </div>
 
-      <PvcActionsPanel order={order} actor={actor} onToast={onToast} />
+      {/* No action buttons in here: the card above already carries one per material. This drawer
+          is for the part list, the edges and the note — the things you open it to read. */}
     </section>
   );
 }

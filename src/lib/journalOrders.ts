@@ -4,6 +4,7 @@ import { computeJournalRowTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
 import { syncLineJobs } from "./orderLines";
+import { consumeLineForCutting } from "./warehouse";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
 import type { Material, Order, OrderMaterialLine, PvcType, PvcUsage, UserDoc } from "../types/domain";
@@ -386,6 +387,48 @@ export async function saveJournalRow(
     before: { totalTiyn: order.totalTiyn, sheets: order.confirmedSheets ?? order.estimatedSheets },
     after: { totalTiyn: totals.totalTiyn, sheets: draft.lines.reduce((s, l) => s + l.sheetQty, 0) },
   });
+
+  await resettleCorrectedCuts(db, actor, order, draft);
+}
+
+/**
+ * Pushes a corrected sheet count through to a line that has already been cut.
+ *
+ * "Мен 2 лист деп жаздым, шынында 4 лист болатын" is an ordinary correction at this counter, and
+ * until now it only ever reached the bill: the cutter's card, his pay and the warehouse all kept
+ * the first number. `confirmedSheets` is what the salary engine counts and what the stock was
+ * charged against, so the correction has to reach both — which is exactly what a recount through
+ * consumeLineForCutting does, writing the difference as its own inventory movement.
+ *
+ * Deliberately after the order write and deliberately swallowing its errors: the edit the Manager
+ * made is saved either way. A stock movement that fails is recoverable (correct the number again);
+ * a journal save that fails because of one loses what they typed.
+ */
+async function resettleCorrectedCuts(
+  db: Firestore,
+  actor: Actor,
+  order: Order,
+  draft: JournalDraft,
+): Promise<void> {
+  const jobs = order.lineJobs ?? [];
+  for (let index = 0; index < jobs.length; index += 1) {
+    const job = jobs[index];
+    const line = draft.lines[index];
+    if (!job?.cuttingCompletedAt || !line) continue;
+    // Only when the agreed quantity actually moved. A line whose count was never touched is left
+    // exactly as the cutter left it.
+    if ((job.confirmedSheets ?? job.sheetQty) === line.sheetQty) continue;
+    try {
+      await consumeLineForCutting(db, actor, {
+        orderId: order.id,
+        lineIndex: index,
+        confirmedQty: line.sheetQty,
+        recount: true,
+      });
+    } catch {
+      // Left for the next save to retry — see the note above on why this must not throw.
+    }
+  }
 }
 
 /**

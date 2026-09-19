@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Material, Order, OrderLineJob } from "../types/domain";
-import { jobsOf } from "../lib/orderLines";
+import { jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
 import { jobQuantities, workerJobs, type FloorStage } from "../lib/workerQuantities";
 
 const number = (n: number) => n.toLocaleString("kk-KZ", { maximumFractionDigits: 2 });
@@ -18,7 +18,13 @@ export function WorkerMaterialSummary({ order, materials, stage, uid, history = 
   /** Per-material control (e.g. the cutter's "Бастау" button) rendered inside that material's own card. */
   action?: (job: OrderLineJob) => ReactNode;
 }) {
-  const jobs = history ? workerJobs(order, stage, uid, true) : jobsOf(order);
+  // The ПВХ station only ever handles lines that actually carry edging. A merged order's ХДФ or
+  // МДФ row has no ПВХ on it at all — listing it here put materials on the edge-bander's card
+  // that were never their job, and left them looking for tape to stick on a sheet that needs none.
+  // The cutter, by contrast, cuts every line, so nothing is filtered there.
+  const jobs = history
+    ? workerJobs(order, stage, uid, true)
+    : jobsOf(order).filter((job) => stage !== "pvc" || jobNeedsPvc(job));
   // Raspil is paid per sheet, not per m² — area only matters (and is only shown) on the ПВХ station.
   const showArea = stage !== "cutting";
   return <div className="worker-materials" aria-label="Материалдар мен жұмыс көлемі">

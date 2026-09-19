@@ -263,9 +263,22 @@ export function computeSheetsCutByPeriod(
   now: Date = new Date(),
   /** Restrict to one line's materials (see lib/rbac.ts departmentOf) — omitted counts every material. */
   materialIds?: ReadonlySet<string>,
+  /**
+   * "YYYY-MM-DD" the shop's accounting restarts on (ApplicationSettings.cashStartDate). Sheets cut
+   * before it are not counted, the same way the money that paid for them is not — a Касса that
+   * starts on the 18th reporting a month's worth of sheets beside it is two different periods on
+   * one screen. Unset counts everything, as before.
+   */
+  startDate?: string | null,
 ): { week: number; month: number } {
-  const weekStart = startOfWeekAlmaty(now);
-  const monthStart = startOfMonthAlmaty(now);
+  // The later of the calendar boundary and the restart: whichever actually opened the period.
+  const clamp = (boundary: Date) => {
+    if (!startDate) return boundary;
+    const restart = new Date(`${startDate}T00:00:00+05:00`);
+    return restart > boundary ? restart : boundary;
+  };
+  const weekStart = clamp(startOfWeekAlmaty(now));
+  const monthStart = clamp(startOfMonthAlmaty(now));
   const cuttingMovements = movements.filter(
     (m) => m.type === "cutting_consumption" && (!materialIds || materialIds.has(m.materialId)),
   );

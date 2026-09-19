@@ -94,18 +94,22 @@ export interface LineWork {
  *
  * The split is deliberate. Progress stays with the job — who started it, when, what they
  * confirmed — because that is the record of what a person did. What the work *is* comes from the
- * line, because the journal is where that is decided. And a line whose cutting is already
- * finished is never touched at all: those sheets have been counted, charged to the warehouse and
- * paid for, so rewriting them would be rewriting history rather than correcting a plan.
+ * line, because the journal is where that is decided.
+ *
+ * A line already cut keeps one more thing: its `materialId`. The quantity on it may still be
+ * corrected ("2 лист деп жаздым, шынында 4"), and lib/journalOrders.ts settles that difference
+ * against the rack and the cutter's pay — but the material itself is what those sheets were
+ * charged to, and pointing the finished job at a different one would strand that movement against
+ * a material nothing references any more.
  */
 export function syncLineJobs(existing: OrderLineJob[], lines: LineWork[]): OrderLineJob[] {
   const synced = lines.map((line, index) => {
     const job = existing[index];
-    if (job && isCuttingDone(job)) return job;
+    const cut = job && isCuttingDone(job);
     return {
       ...job,
       index,
-      materialId: line.materialId,
+      ...(cut ? {} : { materialId: line.materialId }),
       materialName: line.materialName,
       sheetQty: line.sheetQty,
       pvcMeters: line.pvcMeters,

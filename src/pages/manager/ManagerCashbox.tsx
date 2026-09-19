@@ -76,11 +76,6 @@ export default function ManagerCashbox() {
     () => new Set(allMaterials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),
     [allMaterials, myDepartment],
   );
-  const sheetsCut = useMemo(
-    () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds),
-    [movements, deptMaterialIds],
-  );
-
   const { settings } = useAppSettings();
   const openingBalanceTiyn = useMemo(
     () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
@@ -109,6 +104,11 @@ export default function ManagerCashbox() {
   // The day this line's money accounting starts over — everything before it stays in the order
   // history but is left out of every figure here (see ApplicationSettings.cashStartDate).
   const cashStartDate = settings.cashStartDate ?? null;
+  // Counted from the same day the money is: sheets cut before the restart belong to the old books.
+  const sheetsCut = useMemo(
+    () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds, cashStartDate),
+    [movements, deptMaterialIds, cashStartDate],
+  );
 
   const cashbox = useMemo(
     () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate }),

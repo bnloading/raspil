@@ -11,10 +11,15 @@ type Actor = { user: User; userData: UserDoc };
 type Mode = "idle" | "start" | "reestimate";
 
 /**
- * PVC worker's "ПВХ жұмысын бастау" / "ПВХ дайын" action block — mirror of
- * CuttingActionsPanel, one row per banded material line. Lines with no ПВХ metres are never a
- * PVC worker's business and are skipped entirely (see lib/orderLines.needsPvc). PVC work consumes
- * no warehouse stock, so completion needs no quantity, just a confirmation.
+ * PVC worker's "ПВХ жұмысын бастау" / "ПВХ дайын" action block for the order-detail page — one
+ * row per banded material line, each labelled with what it is since nothing else on that page
+ * lists the materials. The dashboard card gets the same per-line control straight from
+ * PvcLineActions instead, threaded into WorkerMaterialSummary's `action` slot and unlabelled,
+ * because the material card it sits in already says what it is — the same shape распил has.
+ *
+ * Lines with no ПВХ metres are never a PVC worker's business and are skipped entirely (see
+ * lib/orderLines.needsPvc). PVC work consumes no warehouse stock, so completion needs no
+ * quantity, just a confirmation.
  */
 export function PvcActionsPanel({
   order,
@@ -33,30 +38,42 @@ export function PvcActionsPanel({
   return (
     <div className="cutting-actions-panel">
       {jobs.map((job) => (
-        <PvcLineRow key={job.index} order={order} job={job} actor={actor} onToast={onToast} />
+        <PvcLineActions key={job.index} order={order} job={job} actor={actor} onToast={onToast} showLabel />
       ))}
     </div>
   );
 }
 
-function PvcLineRow({
+export function PvcLineActions({
   order,
   job,
   actor,
   onToast,
+  showLabel = false,
 }: {
   order: Order;
   job: OrderLineJob;
   actor: Actor;
   onToast: (msg: string) => void;
+  /** Include the material name — for a context, like the order-detail page, where nothing else
+   *  already lists the materials. */
+  showLabel?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
 
+  const label = showLabel ? (
+    <span className="cutting-line-material">
+      {job.materialName}
+      {job.pvcCompletedAt ? "" : ` · ${job.pvcMeters} м ПВХ`}
+    </span>
+  ) : null;
+
   if (job.pvcCompletedAt) {
+    if (!showLabel) return null;
     return (
       <div className="cutting-line-row is-done">
-        <span className="cutting-line-material">{job.materialName}</span>
+        {label}
         <span className="jt-pill jt-tone-green">✓ ПВХ дайын</span>
       </div>
     );
@@ -66,7 +83,7 @@ function PvcLineRow({
     if (mode === "start") {
       return (
         <div className="cutting-line-row">
-          <span className="cutting-line-material">{job.materialName} · {job.pvcMeters} м ПВХ</span>
+          {label}
           <DurationPicker
             confirmLabel="Бастау"
             busy={busy}
@@ -88,7 +105,7 @@ function PvcLineRow({
     }
     return (
       <div className="cutting-line-row">
-        <span className="cutting-line-material">{job.materialName} · {job.pvcMeters} м ПВХ</span>
+        {label}
         <button className="btn btn-primary btn-sm" onClick={() => setMode("start")}>
           🧩 Бастау
         </button>
@@ -99,7 +116,7 @@ function PvcLineRow({
   if (mode === "reestimate") {
     return (
       <div className="cutting-line-row">
-        <span className="cutting-line-material">{job.materialName}</span>
+        {label}
         <DurationPicker
           confirmLabel="Сақтау"
           busy={busy}
@@ -136,12 +153,14 @@ function PvcLineRow({
 
   return (
     <div className="cutting-line-row is-active">
-      <div className="cutting-line-head">
-        <span className="cutting-line-material">{job.materialName}</span>
-        {job.pvcExpectedCompletionAt && (
-          <span className="otable-sub">Мерзімі: {formatDateTimeDMY(job.pvcExpectedCompletionAt)}</span>
-        )}
-      </div>
+      {(label || job.pvcExpectedCompletionAt) && (
+        <div className="cutting-line-head">
+          {label}
+          {job.pvcExpectedCompletionAt && (
+            <span className="otable-sub">Мерзімі: {formatDateTimeDMY(job.pvcExpectedCompletionAt)}</span>
+          )}
+        </div>
+      )}
       <div className="wizard-actions">
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={handleComplete}>
           ✅ Дайын
