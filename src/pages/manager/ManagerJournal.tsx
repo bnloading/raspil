@@ -78,7 +78,7 @@ import {
 import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
 import { correctPaymentAmount, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
-import { enterCuttingQueue } from "../../lib/orderStatus";
+import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
 import {
   canEnterCuttingQueue,
   computePaymentStatus,
@@ -500,6 +500,10 @@ export default function ManagerJournal() {
     return orders.filter((o) => {
       if (departmentOfOrder(o) !== myDepartment) return false; // МДФ/ЛДСП journals stay separate
       if (o.productionStatus === "draft") return false; // never submitted — not journal material
+      // Struck off the ledger ("🗑 Жолды өшіру"). The order itself is kept — its payments, history
+      // and audit trail all hang off it — but a cancelled row is not part of the day's work and
+      // must not be counted in the totals at the foot of this page.
+      if (o.productionStatus === "cancelled") return false;
       // Folded into another order by "Біріктіру": kept in the database, but it is that order's
       // business now, not a row of its own.
       if (o.mergedIntoOrderId) return false;
@@ -871,6 +875,34 @@ export default function ManagerJournal() {
       showToast("Қате: " + (err as Error).message);
     } finally {
       queuePending.current.delete(order.id);
+    }
+  };
+
+  /**
+   * "🗑 Жолды өшіру" — strikes a row off the ledger.
+   *
+   * The everyday case is a row written down at the counter for a customer who then never brought
+   * the job in: it sits in the journal for good, counted in every total, because nothing ever
+   * happened to it. The row is cancelled rather than deleted — an order carries payments, status
+   * history and audit entries that a real delete would orphan, and firestore.rules refuses one
+   * outright — but a cancelled row is out of the journal, out of the debt ledger and off the
+   * workshop board, which is what "өшіру" means at this counter.
+   *
+   * Sheets come back to the rack only if they ever left it: cancelOrder returns the lines that
+   * were taken at queue time and are not yet cut. A row that never reached распил moved no stock
+   * and gets none back — nothing to undo.
+   */
+  const handleDeleteOrder = async (order: Order) => {
+    const paid = netPaidTiyn(livePaymentsFor(order.id));
+    const warning = paid > 0
+      ? `\n\n⚠️ Бұл заказға ${formatMoney(paid)} төлем тіркелген. Өшірсеңіз де төлем жазбасы сақталады — қажет болса алдымен оны қайтарыңыз.`
+      : "";
+    if (!confirm(`${order.orderNumber} — ${order.customerName}\n\nОсы жолды өшіресіз бе?${warning}`)) return;
+    try {
+      await cancelOrder(db, actor, order, "Журналдан өшірілді — клиент кестірмеді");
+      showToast(`🗑 ${order.orderNumber} өшірілді`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
     }
   };
 
@@ -1271,6 +1303,13 @@ export default function ManagerJournal() {
                         </button>
                       )
                     )}
+
+                    {/* Same on the phone as on the ledger: a row written down for a job that never
+                        came in has to be strikeable from wherever it is being read. */}
+                    <button className="btn btn-outline btn-full journal-card-action journal-card-delete"
+                      onClick={() => handleDeleteOrder(order)}>
+                      🗑 Жолды өшіру
+                    </button>
                   </div>
                 );
               })
@@ -1352,6 +1391,7 @@ export default function ManagerJournal() {
                       onSetPaid={(amountTiyn) => handleSetPaid(order, amountTiyn)}
                       onQueue={() => handleQueueOrder(order)}
                       onOverrideQueue={() => handleOverrideQueueOrder(order)}
+                      onDelete={() => handleDeleteOrder(order)}
                       onError={showToast}
                     />
                   ))}
@@ -1851,7 +1891,7 @@ function JournalRow({
   order, hidden, pvcTypesById, directory, absorbed, isExpanded, onToggleExpand, onPickRange,
   materials, methods, payments, actor, selected, isOpen,
   onToggleSelect, onOpenPanel, onOpen,
-  onAddPayment, onSetPaymentState, onSetPaid, onQueue, onOverrideQueue, onError,
+  onAddPayment, onSetPaymentState, onSetPaid, onQueue, onOverrideQueue, onDelete, onError,
 }: {
   order: Order;
   /** Columns the manager has put away — the header and the colSpan are driven off the same set. */
@@ -1883,6 +1923,8 @@ function JournalRow({
   onSetPaid: (amountTiyn: number) => void;
   onQueue: () => void;
   onOverrideQueue: () => void;
+  /** Strikes the row off: a written-down order the customer never came back for. */
+  onDelete: () => void;
   onError: (message: string) => void;
 }) {
   const materialsById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -2160,6 +2202,7 @@ function JournalRow({
                   ? { label: "Распилге жіберу", onClick: onQueue }
                   : { label: "Қарызға жіберу", onClick: onOverrideQueue, danger: true }]
               : []),
+            { label: "🗑 Жолды өшіру", onClick: onDelete, danger: true },
           ]}
         />
       </td>

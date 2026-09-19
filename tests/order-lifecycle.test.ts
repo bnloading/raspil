@@ -14,6 +14,7 @@ import {
   startPvcLine,
   completePvcLine,
   markDelivered,
+  cancelOrder,
 } from "../src/lib/orderStatus";
 import { jobsOf, allCuttingDone, allPvcDone } from "../src/lib/orderLines";
 import { canEnterCuttingQueue } from "../src/lib/statuses";
@@ -468,6 +469,35 @@ describe("журнал → төлем → распил → ПВХ → дайын
     // A correction is not a re-cut: the record still says who finished it, and when.
     expect(job.cuttingByName).toBe("Распилшик");
     expect(job.cuttingCompletedAt?.isEqual(cutAt!)).toBe(true);
+  });
+
+  it("striking a row off before распил leaves the rack untouched", async () => {
+    // "Жазып алып, клиент кестірмесе тұрып қалады" — the row is written at the counter and the
+    // job never comes in. Deleting it must not put back sheets that never left.
+    const before = await readMaterialQty();
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    expect(await readMaterialQty()).toBe(before); // writing a row moves nothing on its own
+
+    await cancelOrder(asManager(), manager, await readOrder(asManager(), orderId), "Журналдан өшірілді");
+    const order = await readOrder(asManager(), orderId);
+    expect(order.productionStatus).toBe("cancelled");
+    expect(await readMaterialQty()).toBe(before);
+  });
+
+  it("striking a row off after распил puts its uncut sheets back", async () => {
+    const before = await readMaterialQty();
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    let order = await readOrder(asManager(), orderId);
+    await recordPayment(asManager(), manager, {
+      orderId, amountTiyn: order.totalTiyn, methodId: "nur", methodName: "Нұр",
+    });
+    order = await readOrder(asManager(), orderId);
+    await enterCuttingQueue(asManager(), manager, order, { isAdmin: false, queuePosition: 1 });
+    // The sheets are off the rack from the moment the order reaches the saw.
+    expect(await readMaterialQty()).toBe(before - SHEETS);
+
+    await cancelOrder(asManager(), manager, await readOrder(asManager(), orderId), "Журналдан өшірілді");
+    expect(await readMaterialQty()).toBe(before);
   });
 
   it("queues once, is visible to both stations and its customer, and rejects stale requeue after starting", async () => {
