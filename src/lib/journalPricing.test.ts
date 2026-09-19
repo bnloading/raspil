@@ -10,6 +10,7 @@ import {
   PVC_PRICE_OTHER_TIYN,
   EXTERNAL_PVC_PER_METER_TIYN,
   countertopLengthM,
+  cuttingCostForLines,
   externalCountertopPriceTiyn,
 } from "./journalPricing";
 
@@ -259,5 +260,48 @@ describe("journalDefaultsFor — customer's own countertop", () => {
   it("still prices the ПВХ at the external rate either way", () => {
     expect(journalDefaultsFor(top("Сырттан келетін столешница 4м")).pvcPricePerMeterTiyn)
       .toBe(EXTERNAL_PVC_PER_METER_TIYN);
+  });
+});
+
+describe("cuttingCostForLines — labour is charged per board, not per row", () => {
+  const catalog = new Map([
+    ["kashemir", m("ЛДСП Кашемир")],
+    ["hdf", m("ХДФ")],
+    ["ext3", m("Сырттан келетін столешница 3м")],
+    ["ext4", m("Сырттан келетін столешница 4м")],
+  ]);
+
+  it("charges a customer's countertop against its own sheet, not the whole order", () => {
+    // ORD-2026-000151 exactly: 7 ЛДСП + 2 ХДФ + one 3 m countertop. Picking the countertop used
+    // to bill 2 000 ₸ × all 10 sheets = 20 000 ₸ of cutting.
+    const lines = [
+      { materialId: "kashemir", sheetQty: 7 },
+      { materialId: "hdf", sheetQty: 2 },
+      { materialId: "ext3", sheetQty: 1 },
+    ];
+    expect(cuttingCostForLines(lines, catalog)).toBe(2000_00);
+  });
+
+  it("charges nothing at all for a row of shop sheets", () => {
+    expect(cuttingCostForLines([{ materialId: "kashemir", sheetQty: 7 }], catalog)).toBe(0);
+  });
+
+  it("charges each customer board at its own rate", () => {
+    const lines = [
+      { materialId: "ext3", sheetQty: 2 },
+      { materialId: "ext4", sheetQty: 1 },
+    ];
+    expect(cuttingCostForLines(lines, catalog)).toBe(2000_00 * 2 + 3000_00);
+  });
+
+  it("drops the fee when a line is switched back to a shop sheet", () => {
+    const before = cuttingCostForLines([{ materialId: "ext3", sheetQty: 1 }], catalog);
+    const after = cuttingCostForLines([{ materialId: "kashemir", sheetQty: 1 }], catalog);
+    expect(before).toBe(2000_00);
+    expect(after).toBe(0);
+  });
+
+  it("follows the quantity, so correcting it reprices the labour", () => {
+    expect(cuttingCostForLines([{ materialId: "ext3", sheetQty: 3 }], catalog)).toBe(2000_00 * 3);
   });
 });

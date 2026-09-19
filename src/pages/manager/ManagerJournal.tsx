@@ -17,7 +17,7 @@ import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { PVC_JOINTING_SURCHARGE_TIYN, computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
 import { departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
-import { isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
+import { cuttingCostForLines, isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
   journalCutState,
@@ -2338,12 +2338,16 @@ function JournalDetailPanel({
   };
   const patchLine = (index: number, p: Partial<JournalDraftLine>) => {
     touch();
-    setDraft((prev) => ({ ...prev, lines: prev.lines.map((l, i) => (i === index ? { ...l, ...p } : l)) }));
+    setDraft((prev) => {
+      const lines = prev.lines.map((l, i) => (i === index ? { ...l, ...p } : l));
+      // Кесу is derived, never typed, so it follows the sheet count as well as the material:
+      // picking a 3 m countertop and then correcting its quantity has to reprice the labour too.
+      return { ...prev, lines, cuttingCostTiyn: cuttingCostForLines(lines, materialsById) };
+    });
   };
 
   const pickMaterial = (index: number, materialId: string) => {
     const m = materialsById.get(materialId);
-    const rates = journalDefaultsFor(m);
     touch();
     setDraft((prev) => {
       const lines = prev.lines.map((line, i) => {
@@ -2362,15 +2366,13 @@ function JournalDetailPanel({
           ...(pvc.pvcMeters !== undefined ? { pvcMeters: pvc.pvcMeters } : {}),
         };
       });
-      const sheets = lines.reduce((sum, l) => sum + l.sheetQty, 0);
       return {
         ...prev,
         lines,
-        // Unconditional, like the new-row form below: switching a line FROM a customer's own
-        // board (кесу-priced) BACK to a shop sheet must zero the стale cutting fee, not leave it
-        // stacked on top of the shop sheet's own selling price — that was the bug (a shop
-        // material's price plus a leftover кесу charge quietly summed into "артық" total).
-        cuttingCostTiyn: rates.cuttingPerSheetTiyn * sheets,
+        // Recomputed from every line, each at its own rate: the picked line's rate used to be
+        // charged against the whole row's sheets, so one 2 000 ₸ countertop added to 7 ЛДСП and
+        // 2 ХДФ billed 20 000 ₸ of cutting. See lib/journalPricing.ts cuttingCostForLines.
+        cuttingCostTiyn: cuttingCostForLines(lines, materialsById),
       };
     });
   };

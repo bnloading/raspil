@@ -242,6 +242,30 @@ export interface JournalDefaults {
  * The external case is checked first: a customer's own white board is still labour-priced, so the
  * white rule must not shadow it.
  */
+/**
+ * The cutting labour a journal row owes, line by line.
+ *
+ * A customer's own board is not sold, so the shop charges to cut it, at that board's own rate — a
+ * 3 m countertop is 2 000 ₸, a 4 m one 3 000. Every other line is a shop sheet sold at its
+ * catalogue price and carries no separate cutting fee at all.
+ *
+ * Per line, never per row: picking a countertop used to charge its rate against every sheet on
+ * the order, so adding one 2 000 ₸ countertop to a row already holding 7 ЛДСП and 2 ХДФ billed
+ * 20 000 ₸ of cutting instead of 2 000. Summing each line's own rate against its own sheets also
+ * settles the other two cases for free — a row with two customer boards is charged for both, and
+ * switching a line back to a shop sheet drops its fee instead of leaving it stacked on the price.
+ */
+export function cuttingCostForLines(
+  lines: readonly { materialId: string; sheetQty: number }[],
+  materials: ReadonlyMap<string, Pick<Material, "name" | "color">>,
+): number {
+  return lines.reduce(
+    (sum, line) =>
+      sum + journalDefaultsFor(materials.get(line.materialId)).cuttingPerSheetTiyn * (line.sheetQty || 0),
+    0,
+  );
+}
+
 export function journalDefaultsFor(material: Pick<Material, "name" | "color"> | undefined): JournalDefaults {
   if (isExternalMaterial(material)) {
     // A countertop is quoted by its length, not per sheet — see EXTERNAL_COUNTERTOP_PRICES_TIYN.
