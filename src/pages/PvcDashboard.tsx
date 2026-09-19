@@ -8,7 +8,6 @@ import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { PvcLineActions } from "../components/PvcActionsPanel";
-import { PaymentStatusBadge } from "../components/StatusBadge";
 import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
@@ -87,7 +86,10 @@ export default function PvcDashboard() {
             ? undefined
             : (job) => <PvcLineActions order={order} job={job} actor={actor} onToast={showToast} />}
         />
-        <div className="station-status-line"><PaymentStatusBadge status={order.paymentStatus} /><span>{order.productionStatus === "pvc_started" ? "ПВХ жабыстырылуда" : order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "Кезекте"}</span></div>
+        {/* No payment badge: whether the customer has paid is none of the edge-bander's business
+            and nothing they can act on, the same rule распил already follows. What is left is the
+            one thing they need — where the order is. */}
+        <div className="station-status-line"><span>{order.productionStatus === "pvc_started" ? "ПВХ жабыстырылуда" : order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "Кезекте"}</span></div>
         <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
       </article>)}</div>}
     <Toast message={message} visible={visible} />
