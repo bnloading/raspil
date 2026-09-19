@@ -1892,6 +1892,103 @@ textarea.form-input {
   border-radius: 4px;
   margin: 0 auto 20px;
 }
+
+/* ── Material picker ─────────────────────────────────────────────────────────────────────────
+   Replaces a flat <select> of the whole catalogue. Wider than the default modal because the
+   point of it is seeing several groups at once rather than scrolling one long list. */
+.material-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs, 6px);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.material-picker-btn:hover:not(:disabled) { border-color: var(--primary); }
+.material-picker-btn:disabled { opacity: 0.55; cursor: default; }
+.material-picker-btn.is-empty { color: var(--text-light); }
+.material-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-picker-caret { flex: none; color: var(--text-light); font-size: 0.7rem; }
+
+.material-picker-overlay { align-items: center; }
+/* Both classes, deliberately: the desktop breakpoint further down this file re-caps `.modal` at
+   500px, and a single-class rule here would lose to it — which is what collapsed the two columns
+   this picker exists to show back into one. */
+.modal.material-picker-modal {
+  max-width: 760px;
+  border-radius: 20px;
+  transform: none;
+  padding: 20px 18px 24px;
+  margin: 0 12px;
+}
+.material-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.material-picker-head h2 { margin: 0; font-size: 1.1rem; }
+.material-picker-search { margin: 14px 0 6px; }
+.material-picker-empty { color: var(--text-light); text-align: center; padding: 20px 0; }
+.material-picker-group { margin-top: 14px; }
+.material-picker-group h3 {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+}
+/* Two columns where there is room: the catalogue is mostly short names, and one per row turned a
+   five-board group into a scroll of its own. */
+.material-picker-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.material-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+.material-picker-item:hover { border-color: var(--primary); background: var(--primary-soft, rgba(99, 102, 241, 0.06)); }
+.material-picker-item.is-active { border-color: var(--primary); background: var(--primary-soft, rgba(99, 102, 241, 0.1)); font-weight: 700; }
+.material-picker-item-name { overflow-wrap: anywhere; }
+.material-picker-qty {
+  flex: none;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A board with nothing left still gets picked — it is ordered in — but it says so first. */
+.material-picker-qty.is-out { color: var(--danger); }
+
+@media (max-width: 767px) {
+  .material-picker-overlay { align-items: flex-end; }
+  .modal.material-picker-modal { margin: 0; border-radius: 20px 20px 0 0; max-height: 88vh; max-width: 100%; }
+  .material-picker-list { grid-template-columns: 1fr; }
+}
 .modal h2 {
   margin-bottom: 20px;
 }

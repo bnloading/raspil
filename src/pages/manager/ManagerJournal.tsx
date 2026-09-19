@@ -10,6 +10,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { NumberField } from "../../components/NumberField";
+import { MaterialPicker } from "../../components/MaterialPicker";
 import { formatMoney, formatMoneyBare } from "../../lib/money";
 import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
@@ -2385,11 +2386,13 @@ function JournalDetailPanel({
           {draft.lines.map((line, index) => (
             <div className="journal-line" key={index}>
               <div className="journal-line-top">
-                <select className="form-input" value={line.materialId} aria-label="Материал"
-                  onChange={(e) => pickMaterial(index, e.target.value)}>
-                  <option value="">{line.materialName || "Лист түрі"}</option>
-                  {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <MaterialPicker
+                  materials={materials}
+                  value={line.materialId}
+                  fallbackName={line.materialName}
+                  ariaLabel="Материал"
+                  onPick={(id) => pickMaterial(index, id)}
+                />
                 {draft.lines.length > 1 && (
                   <button className="jt-icon-btn" onClick={() => removeLine(index)} disabled={!structuralEditsAllowed}
                     title="Материалды өшіру" aria-label={`${index + 1}-материалды өшіру`}>✕</button>
@@ -2657,9 +2660,13 @@ function NewJournalRow({
 
       {/* The board and its count, under the same header the saved rows use. */}
       <td className="jt-w-sheets">
-        <select className="jt-input" value={line.materialId} aria-label="Лист түрі"
-          onChange={(e) => {
-            const m = materials.find((x) => x.id === e.target.value);
+        <MaterialPicker
+          materials={materials}
+          value={line.materialId}
+          fallbackName={line.materialName}
+          className="jt-input"
+          onPick={(materialId) => {
+            const m = materials.find((x) => x.id === materialId);
             // Picking a material fills in the shop's standing rates: ПВХ 200 for Ақ, 220 for the
             // rest, and 1600/лист + 160/м of labour on a customer's own board. It also picks the
             // edge to match the board — Ақ board, Ақ edge — and clears ПВХ entirely for ХДФ.
@@ -2670,7 +2677,7 @@ function NewJournalRow({
               ...draft,
               lines: [{
                 ...line,
-                materialId: e.target.value,
+                materialId,
                 materialName: m?.name ?? "",
                 sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
                 pvcTypeId: pvc.pvcTypeId,
@@ -2680,10 +2687,8 @@ function NewJournalRow({
               }, ...draft.lines.slice(1)],
               cuttingCostTiyn: rates.cuttingPerSheetTiyn * (line.sheetQty || 0),
             });
-          }}>
-          <option value="">Лист түрін таңдаңыз</option>
-          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+          }}
+        />
         <div className="jt-new-grid">
           <NumberField className="jt-input jt-input-num" value={line.sheetQty} min={0} ariaLabel="Лист саны"
             placeholder="лист" onChange={(v) => patchLine({ sheetQty: v })} />
