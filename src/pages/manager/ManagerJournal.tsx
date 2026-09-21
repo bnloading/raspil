@@ -841,20 +841,25 @@ export default function ManagerJournal() {
    * A line typed with no sheet count on it — a slip at the counter, never a real order (a
    * customer's own board still needs a quantity; see journalPricing.ts). Queueing one anyway is
    * how a cutter ends up stuck: "Бастау" works, but the shop floor has nothing above zero to
-   * confirm, so the line — and the order behind it — never reaches "Дайын".
+   * confirm, so the line — and the order behind it — never reaches "Дайын". A dismissible warning
+   * here used to let it through anyway; the owner asked for it to refuse outright instead, so the
+   * line gets fixed in the Journal before it can reach the saw at all.
    */
-  const zeroSheetWarning = (order: Order): string | null => {
+  const zeroSheetBlockReason = (order: Order): string | null => {
     const empty = linesOf(order).filter((l) => l.sheetQty <= 0);
     if (empty.length === 0) return null;
     const names = empty.map((l) => l.materialName || "материал").join(", ");
-    return `«${order.orderNumber}»: ${names} жолында лист саны жазылмаған (0). Осылай жіберсеңіз, распилшы оны «Дайын» деп белгілей алмайды. Бәрібір жібересіз бе?`;
+    return `«${order.orderNumber}»: ${names} жолында лист саны жазылмаған (0). Алдымен Журналда түзетіңіз — распилге солай жіберуге болмайды.`;
   };
 
   /** "📦 Кесуге" — the order is already fully paid, so nothing more needs to be asked. */
   const handleQueueOrder = async (order: Order) => {
     if (queuePending.current.has(order.id)) return;
-    const warning = zeroSheetWarning(order);
-    if (warning && !confirm(warning)) return;
+    const blockReason = zeroSheetBlockReason(order);
+    if (blockReason) {
+      showToast("⚠️ " + blockReason);
+      return;
+    }
     queuePending.current.add(order.id);
     showToast("Распилға жіберілуде…");
     try {
@@ -885,8 +890,11 @@ export default function ManagerJournal() {
    */
   const handleOverrideQueueOrder = async (order: Order) => {
     if (queuePending.current.has(order.id)) return;
-    const warning = zeroSheetWarning(order);
-    if (warning && !confirm(warning)) return;
+    const blockReason = zeroSheetBlockReason(order);
+    if (blockReason) {
+      showToast("⚠️ " + blockReason);
+      return;
+    }
     queuePending.current.add(order.id);
     const owed = Math.max(0, order.totalTiyn - netPaidTiyn(livePaymentsFor(order.id)));
     try {
