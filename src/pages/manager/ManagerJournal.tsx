@@ -927,10 +927,19 @@ export default function ManagerJournal() {
    */
   const handleDeleteOrder = async (order: Order) => {
     const paid = netPaidTiyn(livePaymentsFor(order.id));
-    const warning = paid > 0
-      ? `\n\n⚠️ Бұл заказға ${formatMoney(paid)} төлем тіркелген. Өшірсеңіз де төлем жазбасы сақталады — қажет болса алдымен оны қайтарыңыз.`
-      : "";
-    if (!confirm(`${order.orderNumber} — ${order.customerName}\n\nОсы жолды өшіресіз бе?${warning}`)) return;
+    // A dismissible warning here used to let a row get struck off with its money still live —
+    // cancelled is off every screen that would ever prompt someone to notice and reverse it (the
+    // Journal itself hides cancelled rows outright), so that money just sits in Касса forever with
+    // nothing pointing at it. Refuse outright instead: the payment has to be reversed — "Қарыз" in
+    // this same row's Төлем dropdown does exactly that — before the row can be struck off.
+    if (paid > 0) {
+      showToast(
+        `⚠️ ${order.orderNumber}: ${formatMoney(paid)} төлем тіркелген. Алдымен осы жолдың Төлем ` +
+        `ұяшығынан «Қарыз» таңдап, төлемді қайтарыңыз — содан кейін ғана өшіруге болады.`,
+      );
+      return;
+    }
+    if (!confirm(`${order.orderNumber} — ${order.customerName}\n\nОсы жолды өшіресіз бе?`)) return;
     try {
       await cancelOrder(db, actor, order, "Журналдан өшірілді — клиент кестірмеді");
       showToast(`🗑 ${order.orderNumber} өшірілді`);
