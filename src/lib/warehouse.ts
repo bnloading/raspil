@@ -419,13 +419,17 @@ export async function consumeLineForCutting(
       return { alreadyCompleted: true, jobs, orderDone: allCuttingDone(jobs), needsPvc: orderNeedsPvc(jobs) };
     }
 
-    const matSnap = await tx.get(doc(db, "materials", job.materialId));
-    // A line with no material, or one whose material has since been deleted: there is no balance
-    // to settle, and the cutter must still be able to report the job finished.
-    const material = matSnap.exists()
+    // A line the Journal sent down with no material ever picked for it, or one whose material has
+    // since been deleted: there is no balance to settle, and the cutter must still be able to
+    // report the job finished. `doc()` throws on an empty id rather than returning a snapshot that
+    // doesn't exist — consumeStockOnQueue already skips these lines by the same `job.materialId`
+    // check when the order enters the queue — so the lookup here is skipped entirely instead of
+    // asking Firestore for "materials/", and reads exactly like the material-was-deleted case.
+    const matSnap = job.materialId ? await tx.get(doc(db, "materials", job.materialId)) : null;
+    const material = matSnap?.exists()
       ? (matSnap.data() as { name: string; qtyOnHand: number; stockTracked?: boolean })
       : { name: "", qtyOnHand: 0, stockTracked: false };
-    const tracked = matSnap.exists() && isStockTracked(material);
+    const tracked = !!matSnap?.exists() && isStockTracked(material);
 
     const alreadyTaken = job.consumedQty ?? 0;
     const delta = tracked ? params.confirmedQty - alreadyTaken : 0;
