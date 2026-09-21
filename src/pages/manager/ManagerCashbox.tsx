@@ -49,7 +49,7 @@ export default function ManagerCashbox() {
   const { user, userData } = useAuth();
   const isAdmin = userData?.role === "admin";
   const myDepartment = userData ? departmentOf(userData) : "ldsp";
-  const { orders } = useAllOrders();
+  const { orders, loading: ordersLoading } = useAllOrders();
   const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
   const { expenses: allExpenses, loading: expensesLoading } = useExpenses();
   const { message, visible, showToast } = useToast();
@@ -76,7 +76,7 @@ export default function ManagerCashbox() {
     () => new Set(allMaterials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),
     [allMaterials, myDepartment],
   );
-  const { settings } = useAppSettings();
+  const { settings, loading: settingsLoading } = useAppSettings();
   const openingBalanceTiyn = useMemo(
     () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
     [settings.cashOpeningBalanceTiyn, myDepartment],
@@ -120,7 +120,13 @@ export default function ManagerCashbox() {
   );
   const groups = useMemo(() => groupExpensesByName(rows), [rows]);
 
-  const loading = paymentsLoading || expensesLoading;
+  // `cashStartDate`/`cashOpeningBalanceTiyn` (from settings) and each payment's department (from
+  // orders) both feed computeCashbox below directly — settings defaults to no restart date at all
+  // before its own listener resolves, so a page load used to compute and show one total (counting
+  // from the very beginning, no restart applied) and then silently replace it with the real one the
+  // moment settings caught up. Waiting on every input this page's own number depends on is what
+  // makes the Spinner honest instead of a number that quietly changes under the reader.
+  const loading = paymentsLoading || expensesLoading || ordersLoading || settingsLoading;
 
   const handleDelete = async (expense: Expense) => {
     if (!user || !userData) return;
