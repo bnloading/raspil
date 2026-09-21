@@ -433,24 +433,36 @@ export function OrderActionPanels({
           <button className="btn btn-primary btn-full" onClick={handleRecordPayment}>
             💰 Төлем тіркеу
           </button>
-          {isAdmin && payments.filter((p) => !p.reversed).length > 0 && (
-            <div className="data-list" style={{ marginTop: 12 }}>
-              {payments
-                .filter((p) => !p.reversed)
-                .map((p) => (
-                  <div key={p.id} className="data-row">
-                    <div className="data-row-main">
-                      <strong>
-                        {formatMoney(p.amountTiyn)} · {p.methodName}
-                      </strong>
-                    </div>
-                    <button className="btn btn-danger-outline btn-sm" onClick={() => handleReversePayment(p.id)}>
-                      Қайтару
-                    </button>
+        </section>
+      )}
+
+      {/* Correcting or reversing money already taken is not the same job as collecting more of
+          it — the section above only opens while an order is still waiting to be paid, but a
+          payment can need reversing at any later stage, including a cancelled order that still
+          shows live money (nothing else in the app offers this once a row is cancelled — see
+          ManagerJournal's Journal list, which hides cancelled rows outright). Admin-only, exactly
+          as before; only what gates it has changed. */}
+      {isAdmin && payments.filter((p) => !p.reversed).length > 0 && (
+        <section className="panel-card">
+          <div className="panel-head">
+            <h3>Тіркелген төлемдер</h3>
+          </div>
+          <div className="data-list">
+            {payments
+              .filter((p) => !p.reversed)
+              .map((p) => (
+                <div key={p.id} className="data-row">
+                  <div className="data-row-main">
+                    <strong>
+                      {formatMoney(p.amountTiyn)} · {p.methodName}
+                    </strong>
                   </div>
-                ))}
-            </div>
-          )}
+                  <button className="btn btn-danger-outline btn-sm" onClick={() => handleReversePayment(p.id)}>
+                    Қайтару
+                  </button>
+                </div>
+              ))}
+          </div>
         </section>
       )}
 
