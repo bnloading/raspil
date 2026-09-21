@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import { EDGE_KEYS } from "../types/domain";
 import type {
   CsvColumnKey,
@@ -30,8 +29,16 @@ export function exportCsv(filename: string, rows: Record<string, string | number
   triggerDownload(blob, filename.endsWith(".csv") ? filename : `${filename}.csv`);
 }
 
-/** Exports rows of plain objects to a downloaded XLSX file via SheetJS. */
-export function exportXlsx(filename: string, rows: Record<string, string | number>[], sheetName = "Sheet1"): void {
+/**
+ * Exports rows of plain objects to a downloaded XLSX file via SheetJS.
+ *
+ * SheetJS is ~400 KB — every page that can export to Excel (Journal, Debt, Cashbox, Reports, …)
+ * used to pay that cost on load whether or not anyone ever clicked "Excel", the same way
+ * invoicePdf.ts keeps pdfmake out of the main bundle. Loaded on demand instead, so opening the
+ * Journal to work an order stays fast.
+ */
+export async function exportXlsx(filename: string, rows: Record<string, string | number>[], sheetName = "Sheet1"): Promise<void> {
+  const XLSX = await import("xlsx");
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);

@@ -9,7 +9,6 @@ import {
   setDoc,
   writeBatch,
 } from "firebase/firestore";
-import * as XLSX from "xlsx";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Toast, Spinner } from "../../components";
@@ -238,10 +237,12 @@ export default function OrderBuilder() {
     showToast(`✅ ${imported.length} бөлшек қосылды`);
   };
 
+  // SheetJS is ~400 KB, only for the "XLSX импорт" file picker below — loaded on demand so every
+  // customer building an order (the busiest page in the app) does not pay for it up front.
   const handleXlsxImport = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const buf = await file.arrayBuffer();
+    const [buf, XLSX] = await Promise.all([file.arrayBuffer(), import("xlsx")]);
     const wb = XLSX.read(buf);
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });

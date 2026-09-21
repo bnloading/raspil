@@ -146,10 +146,20 @@ export function CuttingLineActions({
     );
   }
 
+  // A line the journal sent down with 0 sheets on it (a data-entry slip — see journalPricing.ts's
+  // doc comment: no line is ever legitimately zero) has nothing to confirm above zero, and without
+  // this the cutter is stuck forever: "Бастау" works, but "Дайын" refuses every number they can
+  // honestly type. Every real line still has to confirm at least 1.
+  const minSheets = job.sheetQty > 0 ? 1 : 0;
+
   const handleComplete = async () => {
     const sheets = parseInt(confirmedSheets, 10);
-    if (!Number.isFinite(sheets) || sheets <= 0) {
-      onToast("Расталған лист санын дұрыс енгізіңіз");
+    if (!Number.isFinite(sheets) || sheets < minSheets) {
+      onToast(
+        minSheets === 0
+          ? "Расталған лист санын енгізіңіз (0 болуы мүмкін — журналда лист саны жазылмаған)"
+          : "Расталған лист санын дұрыс енгізіңіз",
+      );
       return;
     }
     if (!confirm(`${job.materialName}: ${sheets} лист кесілді деп белгілейсіз бе?`)) return;
@@ -183,7 +193,7 @@ export function CuttingLineActions({
         <input
           type="number"
           className="form-input"
-          min={1}
+          min={minSheets}
           value={confirmedSheets}
           onChange={(e) => setConfirmedSheets(e.target.value)}
         />

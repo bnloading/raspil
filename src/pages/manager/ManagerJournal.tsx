@@ -681,15 +681,23 @@ export default function ManagerJournal() {
 
       if (choice === "paid") {
         if (remaining < 0) {
+          // Keep the money where it came in by: the correction is about the amount, not the
+          // method — and this order's own last payment is the only honest source for that. If
+          // that method can no longer be resolved (deleted/renamed since), there is nothing
+          // safe to replay it as — reversing anyway would wipe the payment and leave the order
+          // looking unpaid, so this falls back to the dialog exactly as a payment-less order
+          // does, instead of touching anything.
+          const live = livePaymentsFor(order.id);
+          const method = methods.find((m) => m.id === live[live.length - 1]?.methodId);
+          if (!method) {
+            setPayFor(order);
+            return;
+          }
           if (!confirm(
             `Артық төленген: ${formatMoney(-remaining)}. Тіркелген төлемдер қайтарылып, орнына дәл ${formatMoney(order.totalTiyn)} жазылады. Жалғастырасыз ба?`,
           )) return;
-          // Keep the money where it came in by: the correction is about the amount, not the
-          // method — and this order's own last payment is the only honest source for that.
-          const live = livePaymentsFor(order.id);
-          const method = methods.find((m) => m.id === live[live.length - 1]?.methodId);
           await reverseLivePayments(order, "Артық төлем түзетілді");
-          if (order.totalTiyn > 0 && method) {
+          if (order.totalTiyn > 0) {
             await recordPayment(db, actor, {
               orderId: order.id,
               amountTiyn: order.totalTiyn,
@@ -829,9 +837,24 @@ export default function ManagerJournal() {
   const computeQueuePosition = (orderId: string) =>
     orders.filter((o) => o.productionStatus === "cutting_queue" && o.id !== orderId).length + 1;
 
+  /**
+   * A line typed with no sheet count on it — a slip at the counter, never a real order (a
+   * customer's own board still needs a quantity; see journalPricing.ts). Queueing one anyway is
+   * how a cutter ends up stuck: "Бастау" works, but the shop floor has nothing above zero to
+   * confirm, so the line — and the order behind it — never reaches "Дайын".
+   */
+  const zeroSheetWarning = (order: Order): string | null => {
+    const empty = linesOf(order).filter((l) => l.sheetQty <= 0);
+    if (empty.length === 0) return null;
+    const names = empty.map((l) => l.materialName || "материал").join(", ");
+    return `«${order.orderNumber}»: ${names} жолында лист саны жазылмаған (0). Осылай жіберсеңіз, распилшы оны «Дайын» деп белгілей алмайды. Бәрібір жібересіз бе?`;
+  };
+
   /** "📦 Кесуге" — the order is already fully paid, so nothing more needs to be asked. */
   const handleQueueOrder = async (order: Order) => {
     if (queuePending.current.has(order.id)) return;
+    const warning = zeroSheetWarning(order);
+    if (warning && !confirm(warning)) return;
     queuePending.current.add(order.id);
     showToast("Распилға жіберілуде…");
     try {
@@ -862,6 +885,8 @@ export default function ManagerJournal() {
    */
   const handleOverrideQueueOrder = async (order: Order) => {
     if (queuePending.current.has(order.id)) return;
+    const warning = zeroSheetWarning(order);
+    if (warning && !confirm(warning)) return;
     queuePending.current.add(order.id);
     const owed = Math.max(0, order.totalTiyn - netPaidTiyn(livePaymentsFor(order.id)));
     try {
