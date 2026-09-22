@@ -11,6 +11,10 @@ export interface ScannedPart {
   lengthMm: number;
   widthMm: number;
   qty: number;
+  /** True when either dimension only parsed after digit-lookalike repair or the doubled-digit
+   *  trim — a real number came out, but the token itself wasn't already clean digits, which is a
+   *  weaker read than one that needed no repair at all. Worth a glance before trusting it. */
+  uncertain?: boolean;
 }
 
 /** Furniture parts outside this range are misreads, not parts — a 4-digit year, a price, a total. */
@@ -49,11 +53,18 @@ function repairDigits(token: string): string {
  * word slipping through is what follows — the token must repair to 2–4 clean digits inside a
  * plausible millimetre range, which "ЛДСП" and "шт" never do.
  */
-function toMm(token: string): number | null {
+/** A parsed dimension, plus whether it took any repair to get there — see `ScannedPart.uncertain`. */
+interface ParsedMm {
+  value: number;
+  repaired: boolean;
+}
+
+function toMm(token: string): ParsedMm | null {
   const repaired = repairDigits(token);
   if (!/^\d{2,4}$/.test(repaired)) return null;
+  const wasRepaired = repaired !== token;
   const n = parseInt(repaired, 10);
-  if (n >= MIN_MM && n <= MAX_MM) return n;
+  if (n >= MIN_MM && n <= MAX_MM) return { value: n, repaired: wasRepaired };
 
   /*
    * TrOCR repeats digits when it is unsure — a handwritten "600 x 450" comes back as
@@ -67,7 +78,7 @@ function toMm(token: string): number | null {
    */
   if (repaired.length === 4) {
     const trimmed = parseInt(repaired.slice(0, 3), 10);
-    if (trimmed >= MIN_MM && trimmed <= MAX_MM) return trimmed;
+    if (trimmed >= MIN_MM && trimmed <= MAX_MM) return { value: trimmed, repaired: true };
   }
   return null;
 }
@@ -118,10 +129,18 @@ export function parseScannedParts(text: string): ScannedPart[] {
     const found: { part: ScannedPart; end: number }[] = [];
 
     while ((m = pattern.exec(line)) !== null) {
-      const lengthMm = toMm(m[1]);
-      const widthMm = toMm(m[2]);
-      if (lengthMm === null || widthMm === null) continue;
-      found.push({ part: { lengthMm, widthMm, qty: 1 }, end: m.index + m[0].length });
+      const length = toMm(m[1]);
+      const width = toMm(m[2]);
+      if (length === null || width === null) continue;
+      found.push({
+        part: {
+          lengthMm: length.value,
+          widthMm: width.value,
+          qty: 1,
+          ...(length.repaired || width.repaired ? { uncertain: true } : {}),
+        },
+        end: m.index + m[0].length,
+      });
       lastIndex = m.index + m[0].length;
     }
 

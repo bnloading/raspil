@@ -20,11 +20,11 @@ describe("parseScannedParts — reading a photographed cut list", () => {
     expect(parseScannedParts("600 x 450")).toEqual([{ lengthMm: 600, widthMm: 450, qty: 1 }]);
   });
 
-  it("repairs digits misread as letters", () => {
+  it("repairs digits misread as letters, and flags the row uncertain", () => {
     // 6OO×45O — the zeros came back as capital O.
-    expect(parseScannedParts("6OO x 45O")).toEqual([{ lengthMm: 600, widthMm: 450, qty: 1 }]);
+    expect(parseScannedParts("6OO x 45O")).toEqual([{ lengthMm: 600, widthMm: 450, qty: 1, uncertain: true }]);
     // 1O0×2З0 — mixed Latin O and Cyrillic З.
-    expect(parseScannedParts("1O0 x 2З0")).toEqual([{ lengthMm: 100, widthMm: 230, qty: 1 }]);
+    expect(parseScannedParts("1O0 x 2З0")).toEqual([{ lengthMm: 100, widthMm: 230, qty: 1, uncertain: true }]);
   });
 
   it("reads an explicit quantity", () => {
@@ -77,12 +77,12 @@ describe("parseScannedParts — reading a photographed cut list", () => {
     ]);
   });
 
-  it("recovers TrOCR's repeated-digit misreads", () => {
+  it("recovers TrOCR's repeated-digit misreads, and flags only the recovered row", () => {
     // Captured verbatim from Xenova/trocr-small-handwritten reading a handwritten list: the model
     // doubled the trailing digits of the first row and appended a stray "000".
     const real = "6000x4500 000\n720x380 000\n1200x600";
     expect(parseScannedParts(real)).toEqual([
-      { lengthMm: 600, widthMm: 450, qty: 1 },
+      { lengthMm: 600, widthMm: 450, qty: 1, uncertain: true },
       { lengthMm: 720, widthMm: 380, qty: 1 },
       { lengthMm: 1200, widthMm: 600, qty: 1 },
     ]);
@@ -106,7 +106,7 @@ describe("parseScannedParts — reading a photographed cut list", () => {
       "барлыгы: 7",
     ].join("\n");
     expect(parseScannedParts(ocr)).toEqual([
-      { lengthMm: 600, widthMm: 450, qty: 2 },
+      { lengthMm: 600, widthMm: 450, qty: 2, uncertain: true },
       { lengthMm: 720, widthMm: 380, qty: 1 },
       { lengthMm: 1200, widthMm: 600, qty: 4 },
     ]);

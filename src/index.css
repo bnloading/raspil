@@ -5745,6 +5745,10 @@ body {
   color: var(--text-secondary);
   margin-bottom: 12px;
 }
+.scan-hint.is-uncertain-hint {
+  color: var(--warning);
+  font-weight: 600;
+}
 .scan-pick-btn {
   display: block;
   text-align: center;
@@ -5784,6 +5788,14 @@ body {
   border-radius: var(--radius-xs);
 }
 .scan-row-del:hover { background: var(--danger-light); color: var(--danger); }
+.scan-row.is-uncertain {
+  background: var(--warning-light);
+  border-radius: var(--radius-xs);
+  margin: 2px 0;
+}
+.scan-row.is-uncertain .scan-row-num {
+  color: var(--warning);
+}
 .scan-raw {
   margin-top: 12px;
   font-size: 0.78rem;

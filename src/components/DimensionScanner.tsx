@@ -18,16 +18,78 @@ type Engine = "handwritten" | "printed";
 const BLANK_ROW = (): ScannedPart => ({ lengthMm: 0, widthMm: 0, qty: 1 });
 
 /**
- * Straightens a phone photo out into something Tesseract can actually read.
+ * Renders `bitmap` into a w×h canvas, rotated by `deg` about its own centre — the one place both
+ * the skew search below and the real correction draw a rotated frame, so whatever sign convention
+ * canvas rotation happens to use, the angle the search picks straightens the same way when applied
+ * for real.
+ */
+function drawRotated(bitmap: ImageBitmap, w: number, h: number, deg: number): CanvasRenderingContext2D {
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas unavailable");
+  ctx.imageSmoothingQuality = "high";
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  ctx.drawImage(bitmap, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return ctx;
+}
+
+/**
+ * Estimates the small rotation (degrees) that straightens a tilted photo of a written list.
  *
- * Raw camera images fail OCR for mundane reasons: the digits are small relative to the frame, the
- * paper is grey rather than white, and JPEG noise blurs thin strokes. Upscaling to a target width,
- * converting to greyscale and then hard-stretching the contrast fixes all three, and is the single
- * biggest difference between "танымады" and a clean read. Returns a PNG blob because re-encoding
- * as JPEG would put back the compression artefacts this just removed.
+ * Level text rows produce a horizontal projection (dark-pixel count per row) with sharp peaks
+ * where ink sits and troughs where it doesn't; tilting the page smears every row's ink across its
+ * neighbours and flattens that profile. So the angle that maximises the projection's variance is
+ * the angle that best undoes the tilt — no line detection or geometry needed, just try angles and
+ * keep the sharpest one. Runs on a small downsampled copy (a phone can afford ~30 of these; it
+ * could not afford 30 passes at full photo resolution) and returns the angle for the real draw.
+ */
+function detectSkewDeg(bitmap: ImageBitmap): number {
+  const SEARCH_W = 300;
+  const w = SEARCH_W;
+  const h = Math.max(1, Math.round((bitmap.height / bitmap.width) * SEARCH_W));
+
+  let bestDeg = 0;
+  let bestVariance = -Infinity;
+  for (let deg = -8; deg <= 8; deg += 0.5) {
+    const { data } = drawRotated(bitmap, w, h, deg).getImageData(0, 0, w, h);
+    const rowDarkCount = new Float64Array(h);
+    for (let y = 0; y < h; y++) {
+      let count = 0;
+      for (let x = 0; x < w; x += 2) {
+        const i = (y * w + x) * 4;
+        const grey = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        if (grey < 150) count++;
+      }
+      rowDarkCount[y] = count;
+    }
+    const mean = rowDarkCount.reduce((s, v) => s + v, 0) / h;
+    const variance = rowDarkCount.reduce((s, v) => s + (v - mean) ** 2, 0) / h;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      bestDeg = deg;
+    }
+  }
+  return bestDeg;
+}
+
+/**
+ * Straightens a phone photo out into something Tesseract (or TrOCR) can actually read.
+ *
+ * Raw camera images fail OCR for mundane reasons: the photo is tilted a few degrees off the page,
+ * the digits are small relative to the frame, the paper is grey rather than white, and JPEG noise
+ * blurs thin strokes. Deskewing, upscaling to a target width, converting to greyscale and then
+ * hard-stretching the contrast fixes all four, and is the single biggest difference between
+ * "танымады" and a clean read. Returns a PNG blob because re-encoding as JPEG would put back the
+ * compression artefacts this just removed.
  */
 async function preprocess(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
+  const skewDeg = detectSkewDeg(bitmap);
 
   // Tesseract wants roughly 30px-tall glyphs; on a list of ~20 rows, 1800px of width gets there
   // for a typical phone photo. Never downscale — that would destroy detail we need.
@@ -36,13 +98,11 @@ async function preprocess(file: File): Promise<Blob> {
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("canvas unavailable");
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, w, h);
+  // A rotation this small (≤8°) only clips a thin sliver at the corners, which is empty margin on
+  // every real cut-list photo — never worth the complexity of expanding the canvas to fit it.
+  // Below that threshold the estimate is noise, not a real tilt, so it's left alone rather than
+  // applied.
+  const ctx = drawRotated(bitmap, w, h, Math.abs(skewDeg) >= 0.5 ? skewDeg : 0);
   bitmap.close();
 
   const img = ctx.getImageData(0, 0, w, h);
@@ -70,7 +130,7 @@ async function preprocess(file: File): Promise<Blob> {
   ctx.putImageData(img, 0, 0);
 
   return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/png");
+    ctx.canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/png");
   });
 }
 
@@ -160,7 +220,7 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
   };
 
   /** Handwritten lists: TrOCR, which is what Tesseract's printed-text models cannot do. */
-  const runHandwritten = async (source: Blob) => {
+  const runHandwritten = async (source: Blob, qualityOverride?: HandwritingQuality) => {
     return await recognizeHandwriting(source, (p) => {
       if (p.stage === "download") {
         setProgress(Math.round((p.progress ?? 0) * 100));
@@ -171,7 +231,7 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
         setProgress(Math.round((p.progress ?? 0) * 100));
         setProgressNote(p.detail ?? "Оқылуда…");
       }
-    }, quality);
+    }, qualityOverride ?? quality);
   };
 
   const handleRecognize = async () => {
@@ -181,7 +241,29 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
     setProgressNote("");
     try {
       const source = await preprocess(file).catch(() => file); // preprocessing failure must not lose the scan
-      const text = engine === "handwritten" ? await runHandwritten(source) : await runPrinted(source);
+      let text = engine === "handwritten" ? await runHandwritten(source) : await runPrinted(source);
+
+      // Neither engine reads the other's kind of writing — a printed list run through TrOCR (or a
+      // handwritten one through Tesseract) comes back as noise, which looks identical from here
+      // to "no list in the photo". Trying the other engine once before giving up turns a manual
+      // "switch and rescan" into a single tap, at the cost of one extra pass only when the first
+      // one actually found nothing.
+      if (parseScannedParts(text).length === 0) {
+        const fallbackEngine: Engine = engine === "handwritten" ? "printed" : "handwritten";
+        setProgressNote(
+          fallbackEngine === "handwritten"
+            ? "Ештеңе табылмады, қолжазба режиммен қайталануда…"
+            : "Ештеңе табылмады, басылған режиммен қайталануда…",
+        );
+        // Not asked for, so it shouldn't force the big download either — reuse whatever quality
+        // is already in memory, or fall back to the small model rather than the large one.
+        const fallbackQuality: HandwritingQuality = isHandwritingModelLoaded("accurate") ? "accurate" : "fast";
+        const fallbackText = fallbackEngine === "handwritten"
+          ? await runHandwritten(source, fallbackQuality)
+          : await runPrinted(source);
+        if (parseScannedParts(fallbackText).length > 0) text = fallbackText;
+      }
+
       finish(text);
     } catch (err) {
       setRawText(err instanceof Error ? err.message : "");
@@ -193,7 +275,13 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
   };
 
   const patchRow = (index: number, patch: Partial<ScannedPart>) =>
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setRows((prev) => prev.map((r, i) => {
+      if (i !== index) return r;
+      // Touching either dimension is the "glance" the ⚠ was asking for — cleared whether the
+      // number changed or was retyped the same, since either way it's now been looked at.
+      const clearsUncertain = "lengthMm" in patch || "widthMm" in patch;
+      return { ...r, ...patch, ...(clearsUncertain ? { uncertain: false } : {}) };
+    }));
 
   const removeRow = (index: number) => setRows((prev) => prev.filter((_, i) => i !== index));
 
@@ -201,6 +289,7 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
 
   const valid = rows.filter((r) => r.lengthMm > 0 && r.widthMm > 0);
   const totalPieces = valid.reduce((s, r) => s + Math.max(1, r.qty), 0);
+  const uncertainCount = rows.filter((r) => r.uncertain).length;
 
   const handleConfirm = () => {
     if (valid.length === 0) return;
@@ -212,8 +301,12 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
     <>
       <div className="scan-rows">
         {rows.map((row, i) => (
-          <div key={i} className="scan-row">
-            <span className="scan-row-num">{i + 1}</span>
+          <div
+            key={i}
+            className={`scan-row${row.uncertain ? " is-uncertain" : ""}`}
+            title={row.uncertain ? "Бұл жолдың сандары анық танылмаған — тексеріп алыңыз" : undefined}
+          >
+            <span className="scan-row-num">{row.uncertain ? "⚠" : i + 1}</span>
             <NumberField
               className="form-input bulk-num"
               value={row.lengthMm}
@@ -383,6 +476,12 @@ export function DimensionScanner({ onDetected, onClose }: DimensionScannerProps)
             <p className="scan-hint">
               ✅ {rows.length} жол танылды. Қатесін түзетіп, «Қосу» батырмасын басыңыз.
             </p>
+            {uncertainCount > 0 && (
+              <p className="scan-hint is-uncertain-hint">
+                ⚠ {uncertainCount} жол анық танылмаған (⚠ белгісімен көрсетілген) — сандарын
+                тексеріп алыңыз.
+              </p>
+            )}
             {rowTable}
             <p className="scan-raw">
               <button type="button" className="link-button" onClick={() => setShowRaw((v) => !v)}>
