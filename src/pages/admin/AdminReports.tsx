@@ -1,6 +1,7 @@
 import { IconReports, IconOrders, IconAudit, IconWarehouse, IconCut, IconPvc } from "../../components/layout/icons";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
@@ -28,9 +29,9 @@ import {
   MACHINE_WASTE_PCT,
   type FinanceSummary,
 } from "../../lib/finance";
-import { CASH_ACCOUNTS, CASH_ACCOUNT_LABELS, accountForExpense } from "../../lib/cashbox";
+import { CASH_ACCOUNTS, CASH_ACCOUNT_LABELS, accountForExpense, computeCashbox } from "../../lib/cashbox";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder } from "../../lib/rbac";
-import type { CashAccount, Expense, ExpenseCategory } from "../../types/domain";
+import type { CashAccount, Department, Expense, ExpenseCategory, PaymentMethodDef } from "../../types/domain";
 import {
   computeCutterProductivity,
   computeKpis,
@@ -133,7 +134,9 @@ export default function AdminReports() {
               productionHref={isAdmin ? "/admin/orders" : "/manager/orders"}
             />
           )}
-          {tab === "finance" && <FinanceTab orders={orders} payments={payments} categories={categories} expenses={expenses} />}
+          {tab === "finance" && (
+            <FinanceTab orders={orders} payments={payments} categories={categories} expenses={expenses} department={myDepartment} />
+          )}
           {tab === "pvc" && <PvcTab orders={orders} pvcTypes={pvcTypes} />}
           {tab === "sales" && <SalesTab orders={orders} />}
           {tab === "payments" && <PaymentsTab payments={payments} orders={orders} />}
@@ -559,14 +562,19 @@ function FinanceTab({
   payments,
   categories,
   expenses,
+  department,
 }: {
   orders: ReturnType<typeof useAllOrders>["orders"];
   payments: ReturnType<typeof useAllPayments>["payments"];
   categories: ExpenseCategory[];
   expenses: Expense[];
+  department: Department;
 }) {
   const months = useMemo(() => availableMonths(orders), [orders]);
-  const [period, setPeriod] = useState<string | null>(() => months[0] ?? null);
+  // Opens on "Барлық уақыт" (null), not the latest month — the owner reads Таза пайда as a running
+  // total, not a monthly snapshot, and having to remember to switch the dropdown every visit was
+  // showing a partial figure by default.
+  const [period, setPeriod] = useState<string | null>(null);
   const { costs: purchaseByMaterialId, available: costsVisible } = useMaterialCosts();
   // The same accounting restart Касса runs on: money that moved before it is history, and a
   // profit figure that counted the old expenses against the new revenue would be neither.
@@ -581,6 +589,25 @@ function FinanceTab({
     () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null, startDate }),
     [orders, payments, purchaseByMaterialId, categories, expenses, startDate],
   );
+
+  // Депозиттегі ақша — Admin-only, same as the purchase-cost margin above: a Manager already has
+  // this same figure on their own Касса page, but the owner asked to see it sitting right next to
+  // Таза пайда instead of a separate page, always as a running total (never split by ай/апта).
+  const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
+  useEffect(() => {
+    getDocs(collection(db, "paymentMethods"))
+      .then((snap) => setMethods(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PaymentMethodDef, "id">) }))))
+      .catch(() => setMethods([]));
+  }, []);
+  const openingBalanceTiyn = useMemo(
+    () => settings.cashOpeningBalanceTiyn?.[department] ?? {},
+    [settings.cashOpeningBalanceTiyn, department],
+  );
+  const cashbox = useMemo(
+    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate }),
+    [payments, expenses, methods, openingBalanceTiyn, startDate],
+  );
+  const depositTiyn = cashbox.accounts.find((a) => a.account === "deposit")?.balanceTiyn ?? 0;
 
   const periodName = period ? monthName(period) : "Барлық уақыт";
 
@@ -716,6 +743,15 @@ function FinanceTab({
           <span>Барлық қарыз</span>
           <strong className="jt-debt">{formatMoney(allTime.debtTiyn)}</strong>
         </div>
+        {/* Purchase prices gate the profit split above by the same rule (firestore.rules: Admin
+            only) — the деpozit balance itself isn't a purchase-price secret, but the owner asked
+            for it to sit here, next to Таза пайда, rather than on the shared Manager Касса page. */}
+        {costsVisible && (
+          <div className="summary-row is-final">
+            <span>Депозиттегі ақша</span>
+            <strong className="jt-total">{formatMoney(depositTiyn)}</strong>
+          </div>
+        )}
       </div>
 
       <div className="wizard-actions" style={{ marginTop: 12 }}>
