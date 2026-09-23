@@ -1,8 +1,8 @@
-/* Worker (cutter/PVC) shop-floor pages — CutterDashboard, PvcDashboard.
-   Not wired into main.tsx/index.css yet; orchestrator adds the import once all
-   parallel redesign agents are done (see task instructions).
+/* Worker (shop-floor) pages — CutterDashboard, PvcDashboard, MdfWorkerDashboard, MySalary.
+   Everything here is scoped to .station-shell (AppShell variant="station"), so no other page
+   (Manager/Admin/Customer) is touched. */
 
-   The shared .card-grid primitive (src/index.css) always renders at least
+/* The shared .card-grid primitive (src/index.css) always renders at least
    var(--cols, 2) columns, even below its own first breakpoint — so a page that
    passes --cols:2 still gets 2 (cramped) columns on small phones. The worker
    job-queue cards carry an inline minutes input, a note field and an action
@@ -12,4 +12,192 @@
   .worker-card-grid.card-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================================================
+   Dark theme — reference: the "Айлық" mockup the owner sent (dark background,
+   rounded cards, bold hero figure, green/blue status pills).
+
+   Redefining the theme's own custom properties on .station-shell, rather than
+   hand-overriding every component, is deliberate: most of this app's cards,
+   pills, tiles and text already read their colour from var(--card)/var(--text)/
+   var(--border)/etc, so they re-theme for free the moment those variables
+   change here — the same reason a light/dark toggle elsewhere only ever needs
+   to touch :root. Only the handful of rules below that hardcode an actual
+   colour (`#fff`, `#687386`, …) instead of a variable need a line of their own.
+
+   Every selector here is written as `.app-shell.station-shell` (both classes
+   the element already carries), not just `.station-shell` — the mobile
+   `:has(.station-stats)`/`:has(.rdash)` rules further down index.css hardcode
+   the *light* theme's own backgrounds at the same 3-class specificity a bare
+   `.station-shell …` selector would have, and being later in the cascade only
+   wins a tie, not a lower-specificity match. The extra class is what actually
+   wins outright rather than by import order. */
+.app-shell.station-shell {
+  --bg: #0b1120;
+  --card: #161d33;
+  --bg-card: #161d33;
+  --surface: #161d33;
+
+  --text: #f3f5fb;
+  --text-secondary: #9aa3c2;
+  --text-light: #6c7495;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --primary-soft: rgba(91, 141, 255, 0.16);
+
+  --success: #34d399;
+  --success-light: rgba(52, 211, 153, 0.16);
+  --danger: #f87171;
+  --danger-light: rgba(248, 113, 113, 0.16);
+  --warning: #fbbf24;
+  --warning-light: rgba(251, 191, 36, 0.16);
+  --info: #60a5fa;
+  --info-light: rgba(96, 165, 250, 0.16);
+  --emerald: #34d399;
+  --emerald-light: rgba(52, 211, 153, 0.16);
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.4);
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Brighter per-role accents — the light theme's deep blues/greens (chosen for
+   contrast on white) read as muddy on a dark card, so each gets a lighter
+   step of the same hue rather than a different colour entirely. */
+.app-shell.station-shell[data-worker-role="raspil"] { --station-accent: #5b8dff; --station-soft: rgba(91, 141, 255, 0.16); }
+.app-shell.station-shell[data-worker-role="pvh"] { --station-accent: #34d399; --station-soft: rgba(52, 211, 153, 0.16); }
+.app-shell.station-shell[data-worker-role="cnc"] { --station-accent: #5b8dff; --station-soft: rgba(91, 141, 255, 0.16); }
+.app-shell.station-shell[data-worker-role="sanding"] { --station-accent: #34d399; --station-soft: rgba(52, 211, 153, 0.16); }
+.app-shell.station-shell[data-worker-role="painting"] { --station-accent: #b794fc; --station-soft: rgba(183, 148, 252, 0.16); }
+.app-shell.station-shell[data-worker-role="vacuum"] { --station-accent: #fb923c; --station-soft: rgba(251, 146, 60, 0.16); }
+
+/* Bar chrome — these hardcode a light-glass colour rather than reading
+   var(--card), so they need their own dark-glass equivalent, both at desktop
+   width and inside the mobile :has() block index.css sets its own light
+   background in (see the comment above). */
+.app-shell.station-shell .app-topbar,
+.app-shell.station-shell .app-main,
+.app-shell.station-shell .bottom-nav {
+  background: rgba(11, 17, 32, 0.94);
+}
+.app-shell.station-shell .app-topbar {
+  border-bottom-color: var(--border);
+}
+.app-shell.station-shell .bottom-nav {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+}
+@media (max-width: 767px) {
+  .app-shell.station-shell .app-topbar,
+  .app-shell.station-shell .app-main {
+    background: rgba(11, 17, 32, 0.94);
+  }
+  .app-shell.station-shell .bottom-nav {
+    background: rgba(22, 29, 51, 0.94);
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+  /* :has(.rdash) (MySalary's own tiles carry that class) sets a light
+     --primary/report-period/tab-pill trio at this same breakpoint. */
+  .app-shell.station-shell {
+    --primary: var(--station-accent, #5b8dff);
+    --primary-soft: var(--station-soft, rgba(91, 141, 255, 0.16));
+  }
+  .app-shell.station-shell .report-period {
+    background: var(--card);
+    border-color: var(--border);
+  }
+}
+.app-shell.station-shell .topbar-back:hover {
+  background: var(--primary-soft);
+}
+
+/* Text inputs (the "Клиент немесе заказ №" search, journal-style number fields, …) default to a
+   warm off-white regardless of theme — the one other place besides the bar chrome that hardcodes
+   a light colour instead of reading var(--card). */
+.app-shell.station-shell .form-input {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+.app-shell.station-shell .form-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+
+/* Salary page's own hardcoded white (the month-nav arrows). */
+.app-shell.station-shell .salary-month-arrow {
+  background: var(--card);
+  color: var(--text);
+}
+
+/* .station-* rules below hardcode their colours too (they predate this dark
+   theme), so each gets its dark-card equivalent explicitly. */
+.app-shell.station-shell .station-stats {
+  background: var(--card);
+  border-color: var(--border);
+}
+.app-shell.station-shell .station-stats > div + div {
+  border-left-color: var(--border);
+}
+.app-shell.station-shell .station-stats span {
+  color: var(--text-light);
+}
+.app-shell.station-shell .station-tabs {
+  background: rgba(255, 255, 255, 0.05);
+}
+.app-shell.station-shell .station-tabs button {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .station-job {
+  background: var(--card);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.app-shell.station-shell .station-job.is-active {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.app-shell.station-shell .station-job-status,
+.app-shell.station-shell .station-status-line {
+  color: var(--text-light);
+}
+.app-shell.station-shell .station-state {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+.app-shell.station-shell .station-state.is-done {
+  background: var(--success-light);
+  color: var(--success);
+}
+.app-shell.station-shell .station-order-link {
+  color: var(--text);
+}
+.app-shell.station-shell .station-customer {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .station-facts {
+  border-color: var(--border);
+}
+.app-shell.station-shell .station-facts span + span {
+  border-left-color: var(--border);
+}
+.app-shell.station-shell .station-note {
+  color: var(--text-light);
+}
+.app-shell.station-shell .station-job .cutting-line-row > .btn {
+  background: var(--card);
+}
+
+/* Admin/МДФ department switcher, when a worker page happens to carry one. */
+.app-shell.station-shell .topbar-department {
+  background: rgba(255, 255, 255, 0.05);
+}
+.app-shell.station-shell .topbar-department button {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .topbar-department button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--station-accent, var(--primary));
+  box-shadow: none;
 }

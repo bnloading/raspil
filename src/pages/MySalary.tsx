@@ -31,6 +31,10 @@ const STATUS_TONE: Record<SalaryStatus, string> = {
 export default function MySalary() {
   const { user, userData } = useAuth();
   const role = userData?.role;
+  // The dark, card-based look is for the shop floor's own page — Admin/Manager can open this
+  // same page for themselves, but they live in the light theme everywhere else, so it would be a
+  // jarring one-page swap rather than a look their workflow already speaks.
+  const isWorkerRole = role === "raspil" || role === "pvh" || role === "cnc" || role === "sanding" || role === "painting" || role === "vacuum";
   const { entries, loading } = useSalaryEntries(user?.uid);
   const { adjustments } = useSalaryAdjustments(user?.uid);
   const { advances } = useAdvances(user?.uid);
@@ -120,7 +124,7 @@ export default function MySalary() {
   if (loading) return <Spinner />;
 
   return (
-    <AppShell title="Менің айлығым" subtitle={userData.name}>
+    <AppShell title="Менің айлығым" subtitle={userData.name} variant={isWorkerRole ? "station" : "default"}>
       <div className="salary-month-nav">
         <button type="button" className="salary-month-arrow" onClick={() => setPeriod(shiftPeriod(period, -1))} aria-label={backLabel}>‹</button>
         <button type="button" className="salary-month-label" onClick={() => setPeriod(currentPeriodKey(periodKind))}>
