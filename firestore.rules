@@ -185,6 +185,16 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isManager() && resource.data.createdByUid == uid());
     }
 
+    match /birthdays/{userId} {
+      // The shop-wide "whose birthday is it today" alert (AppShell) needs every signed-in user to
+      // read every other user's entry — /users itself is tightly role-scoped and carries a phone
+      // number, so this is its own minimal projection instead: a name and a month-day, nothing
+      // that answers "how old" or "how do I reach them". Each account may only ever write its own
+      // document, same shape as /users' own self-update rule below.
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && uid() == userId;
+    }
+
     match /workshopActivity/{id} {
       // The "currently being worked on" feed behind the customer-facing "Цехта қазір" board. Any
       // signed-in user may read it, not just the order's owner.

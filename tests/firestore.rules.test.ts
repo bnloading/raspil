@@ -1418,6 +1418,43 @@ describe("public workshop board hides customer identities", () => {
   });
 });
 
+describe("shop-wide birthday alert reads narrowly, writes only your own", () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "birthdays", CUTTER_UID), { name: "Олжас", monthDay: "03-15" });
+    });
+  });
+
+  it("any signed-in user CAN read another worker's birthday entry", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "birthdays", CUTTER_UID)));
+    if (snap.data()?.monthDay !== "03-15") throw new Error("expected the seeded monthDay to come back unchanged");
+  });
+
+  it("a customer CAN read it too — no phone/role/anything else identifying lives here", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "birthdays", CUTTER_UID)));
+    for (const forbidden of ["phone", "role", "email", "authEmail"]) {
+      if (snap.data() && forbidden in snap.data()!) throw new Error(`birthdays leaked "${forbidden}"`);
+    }
+  });
+
+  it("a worker CAN write their own entry", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "birthdays", PVC_UID), { name: "Асхат", monthDay: "07-02" }));
+  });
+
+  it("a worker CANNOT write someone else's entry", async () => {
+    const db = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertFails(setDoc(doc(db, "birthdays", CUTTER_UID), { name: "Forged", monthDay: "01-01" }));
+  });
+
+  it("an unauthenticated visitor CANNOT read it", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "birthdays", CUTTER_UID)));
+  });
+});
+
 describe("admin has full access", () => {
   it("admin can read any order", async () => {
     const db = testEnv.authenticatedContext(ADMIN_UID).firestore();

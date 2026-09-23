@@ -6,6 +6,7 @@ import { getNavForRole, matchNavKey } from "./navConfig";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
+import { BirthdayBanner } from "./BirthdayBanner";
 
 interface AppShellProps {
   title: string;
@@ -86,6 +87,9 @@ export function AppShell({
             contentWidth === "full" ? " full" : ""
           }`}
         >
+          {/* A customer has no reason to be told a workshop employee's birthday — everyone else
+              (Admin/Manager/every worker role) sees it, wherever they are in the app. */}
+          {userData?.role !== "customer" && <BirthdayBanner />}
           {children}
         </main>
         <BottomNav items={items} activeKey={activeKey} fab={fab} />

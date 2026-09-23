@@ -39,8 +39,28 @@ export interface UserDoc {
    *  still runs and Admin still sees/pays it on АдминSalary, this worker just never sees the
    *  figure. Meaningless for admin/manager/customer; only ever set on a worker role. */
   hideSalary?: boolean;
+  /** "YYYY-MM-DD", typed on the owner's own Профиль page. The year is kept here (private — only
+   *  this account and Admin can ever read this document, per firestore.rules) purely so the date
+   *  input has something to show back; the shop-wide birthday alert never needs it and reads the
+   *  month-day pair from the separate, narrowly-scoped /birthdays/{uid} document instead — see
+   *  lib/birthdays.ts for why that split exists. */
+  birthDate?: string;
   blocked: boolean;
   createdAt?: Timestamp;
+}
+
+/**
+ * The one thing every signed-in user (any role, including customers) is allowed to know about a
+ * colleague they've never otherwise have read access to: that today is their birthday. Deliberately
+ * not a query against /users — that collection carries phone numbers and is tightly role-scoped
+ * (see firestore.rules) — this is its own minimal, publicly-readable projection, the same reasoning
+ * /workshopActivity carries only a customer's name and nothing else identifying.
+ */
+export interface BirthdayDoc {
+  name: string;
+  /** "MM-DD", derived from UserDoc.birthDate — never the year, so this document alone can never
+   *  answer "how old is this person". */
+  monthDay: string;
 }
 
 export type GrainDirection = "vertical" | "horizontal" | "any";

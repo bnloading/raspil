@@ -8,6 +8,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { PhoneInput } from "../../components/PhoneInput";
 import { useToast } from "../../hooks";
 import { normalizePhone } from "../../lib/phone";
+import { clearBirthday, saveBirthday } from "../../lib/birthdays";
 
 export default function Profile() {
   const { user, userData } = useAuth();
@@ -15,6 +16,7 @@ export default function Profile() {
   const [name, setName] = useState(userData?.name ?? "");
   const [phone, setPhone] = useState(userData?.phone ?? "");
   const [email, setEmail] = useState(userData?.email ?? "");
+  const [birthDate, setBirthDate] = useState(userData?.birthDate ?? "");
   const [newPassword, setNewPassword] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -35,6 +37,16 @@ export default function Profile() {
         phone: normalized,
         email: email.trim() || null,
       });
+      // A separate write, not folded into the update above: it goes to a different document
+      // (/birthdays/{uid}, not /users/{uid}) — see lib/birthdays.ts on why the shop-wide alert
+      // reads from its own narrow collection instead of /users directly. Optional, so typing
+      // nothing here just leaves this account out of the alert, not an error — and clearing a
+      // date that was set actually removes it, rather than leaving a stale birthday behind.
+      if (birthDate) {
+        await saveBirthday(db, { uid: user.uid, name: name.trim(), birthDate });
+      } else if (userData.birthDate) {
+        await clearBirthday(db, user.uid);
+      }
       showToast("✅ Профиль жаңартылды");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
@@ -78,6 +90,18 @@ export default function Profile() {
             <div className="form-group span-2">
               <label>Email (міндетті емес)</label>
               <input type="email" className="form-input" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="form-group span-2">
+              <label>🎂 Туған күні (міндетті емес)</label>
+              <input
+                type="date"
+                className="form-input"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+              />
+              <p className="form-hint">
+                Енгізсеңіз, туған күніңізде барлық қызметкер бетінде "Бүгін сіздің туған күніңіз!" деп көрінеді.
+              </p>
             </div>
             <button type="submit" className="btn btn-primary btn-full span-2" disabled={savingProfile}>
               Сақтау
