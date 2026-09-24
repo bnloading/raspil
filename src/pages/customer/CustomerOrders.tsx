@@ -15,7 +15,7 @@ import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
 import { formatMdfArea } from "../../lib/mdfJournal";
 import { customerOrderCode } from "../../lib/orderCode";
-import { formatDayMonth } from "../../lib/dates";
+import { dayKey, formatDayMonth } from "../../lib/dates";
 import { orderTiles } from "../../lib/orderTiles";
 import { isCancellable } from "../../lib/statuses";
 import type { Order } from "../../types/domain";
@@ -33,6 +33,27 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   ready: "Дайын",
   debt: "Қарыз",
 };
+
+/**
+ * "Бүгінгі / Кешегі" — a customer who orders often wants to jump straight to what they placed
+ * today or yesterday, rather than scrolling past it to reach the older ones the status buckets
+ * alone can leave up top (a paid, finished order from last month still outranks today's brand-new
+ * one there). Independent of Bucket: the two combine, e.g. "Бүгінгі" + "Қарыз" together.
+ */
+type DatePeriod = "all" | "today" | "yesterday";
+
+const DATE_PERIOD_LABELS: Record<DatePeriod, string> = {
+  all: "Барлық күн",
+  today: "Бүгінгі",
+  yesterday: "Кешегі",
+};
+
+function inDatePeriod(order: Order, datePeriod: DatePeriod, todayKey: string, yesterdayKey: string): boolean {
+  if (datePeriod === "all") return true;
+  if (!order.createdAt) return false;
+  const day = dayKey(order.createdAt);
+  return datePeriod === "today" ? day === todayKey : day === yesterdayKey;
+}
 
 function inBucket(order: Order, bucket: Bucket): boolean {
   switch (bucket) {
@@ -71,7 +92,12 @@ export default function CustomerOrders() {
   const { message, visible, showToast } = useToast();
   const [search, setSearch] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
+  const [datePeriod, setDatePeriod] = useState<DatePeriod>("all");
   const [tab, setTab] = useState<Tab>("mine");
+
+  // Computed once per render rather than per order — dayKey() does real Intl formatting work.
+  const todayKey = dayKey(Date.now());
+  const yesterdayKey = dayKey(Date.now() - 86_400_000);
 
   const counts = useMemo(
     () => ({
@@ -81,6 +107,15 @@ export default function CustomerOrders() {
       debt: orders.filter((o) => inBucket(o, "debt")).length,
     }),
     [orders],
+  );
+
+  const dateCounts = useMemo(
+    () => ({
+      all: orders.length,
+      today: orders.filter((o) => inDatePeriod(o, "today", todayKey, yesterdayKey)).length,
+      yesterday: orders.filter((o) => inDatePeriod(o, "yesterday", todayKey, yesterdayKey)).length,
+    }),
+    [orders, todayKey, yesterdayKey],
   );
 
   // The customer's own outstanding balance — never the shop's total.
@@ -94,8 +129,11 @@ export default function CustomerOrders() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return orders.filter((o) => inBucket(o, bucket) && (!q || o.orderNumber.toLowerCase().includes(q)));
-  }, [orders, bucket, search]);
+    return orders.filter((o) =>
+      inBucket(o, bucket) &&
+      inDatePeriod(o, datePeriod, todayKey, yesterdayKey) &&
+      (!q || o.orderNumber.toLowerCase().includes(q)));
+  }, [orders, bucket, datePeriod, todayKey, yesterdayKey, search]);
 
   const handleCancel = async (orderId: string) => {
     if (!confirm("Заказды бас тартуды қалайсыз ба?")) return;
@@ -173,6 +211,22 @@ export default function CustomerOrders() {
         </div>
       </div>
 
+      {/* A customer who orders often has today's brand-new order buried under last month's — this
+          scopes the list to "when" before (or together with) the status buckets below scope it to
+          "what state". */}
+      <div className="status-filter-row is-compact">
+        {(Object.keys(DATE_PERIOD_LABELS) as DatePeriod[]).map((p) => (
+          <button
+            key={p}
+            className={`status-filter-btn${datePeriod === p ? " active" : ""}`}
+            onClick={() => setDatePeriod(p)}
+          >
+            <span>{DATE_PERIOD_LABELS[p]}</span>
+            <b>{dateCounts[p]}</b>
+          </button>
+        ))}
+      </div>
+
       {/* Exactly four fixed buckets — always shown in full, never a scrolling row (unlike the
           open-ended per-status filter on the staff order lists). */}
       <div className="status-filter-row is-compact">
@@ -196,7 +250,7 @@ export default function CustomerOrders() {
             <div className="icon">📭</div>
             <p>Заказ табылмады</p>
             <p className="empty-state-hint">
-              {bucket === "all"
+              {bucket === "all" && datePeriod === "all"
                 ? "Жаңа заказ беру үшін төмендегі ➕ батырмасын басыңыз."
                 : "Бұл сүзгіге сай заказ жоқ — «Барлығы» дегенді таңдап көріңіз."}
             </p>
