@@ -2378,13 +2378,26 @@ function JournalDetailPanel({
     dirtyRef.current = true;
     setSaveState("dirty");
   };
+  const patchDraft = (p: Partial<JournalDraft>) => {
+    touch();
+    setDraft((prev) => ({ ...prev, ...p }));
+  };
   const patchLine = (index: number, p: Partial<JournalDraftLine>) => {
     touch();
     setDraft((prev) => {
       const lines = prev.lines.map((l, i) => (i === index ? { ...l, ...p } : l));
-      // Кесу is derived, never typed, so it follows the sheet count as well as the material:
-      // picking a 3 m countertop and then correcting its quantity has to reprice the labour too.
-      return { ...prev, lines, cuttingCostTiyn: cuttingCostForLines(lines, materialsById) };
+      // Кесу follows the sheet count and the material automatically — picking a 3 m countertop
+      // and then correcting its quantity has to reprice the labour too — but only while the
+      // manager hasn't typed a number into it directly. A столешница length the shop has no
+      // standing rate for (see EXTERNAL_COUNTERTOP_PRICES_TIYN) prices at 0 automatically, and
+      // the manager has to be able to fix that by hand without the next sheet-count edit wiping
+      // it out again. The test for "still automatic" is just whether the figure on screen still
+      // matches what the formula would have produced before this edit.
+      const auto = cuttingCostForLines(prev.lines, materialsById);
+      const cuttingCostTiyn = prev.cuttingCostTiyn === auto
+        ? cuttingCostForLines(lines, materialsById)
+        : prev.cuttingCostTiyn;
+      return { ...prev, lines, cuttingCostTiyn };
     });
   };
 
@@ -2549,10 +2562,20 @@ function JournalDetailPanel({
               {preview.debtTiyn < 0 ? `+${formatMoney(-preview.debtTiyn)}` : formatMoney(Math.max(0, preview.debtTiyn))}
             </strong>
           </div>
-          {(draft.cuttingCostTiyn > 0 || draft.hdfCostTiyn > 0 || draft.deliveryCostTiyn > 0
+          {/* Always on screen, not just when it's already priced — this is a столешница length
+              the shop has no standing rate for (EXTERNAL_COUNTERTOP_PRICES_TIYN only knows 3 м
+              and 4 м) has to be typed by hand, and a manager can't type into a row that isn't
+              there yet. Every other keystroke on the line still reprices it automatically —
+              see patchLine — right up until this field is touched directly. */}
+          <div className="journal-money-row">
+            <span>Кесу</span>
+            <NumberField className="form-input jt-input-num" value={draft.cuttingCostTiyn / 100} min={0}
+              ariaLabel="Кесу бағасы" placeholder="0"
+              onChange={(v) => patchDraft({ cuttingCostTiyn: Math.round(v * 100) })} />
+          </div>
+          {(draft.hdfCostTiyn > 0 || draft.deliveryCostTiyn > 0
             || draft.extraServicesTiyn > 0 || draft.discountTiyn > 0) && (
             <div className="journal-money-extras">
-              {draft.cuttingCostTiyn > 0 && <span>Кесу: {formatMoneyBare(draft.cuttingCostTiyn)}</span>}
               {draft.hdfCostTiyn > 0 && <span>ХДФ: {formatMoneyBare(draft.hdfCostTiyn)}</span>}
               {draft.deliveryCostTiyn > 0 && <span>Жеткізу: {formatMoneyBare(draft.deliveryCostTiyn)}</span>}
               {draft.extraServicesTiyn > 0 && <span>Қосымша: {formatMoneyBare(draft.extraServicesTiyn)}</span>}
