@@ -21,6 +21,7 @@ import type { ScannedPart } from "../../lib/ocrDimensions";
 import { DimensionScanner } from "../../components/DimensionScanner";
 import { BulkPartsEditor } from "../../components/BulkPartsEditor";
 import { MaterialThumb } from "../../components/MaterialThumb";
+import { dayKey, formatRelativeDateTime } from "../../lib/dates";
 import { formatMoney } from "../../lib/money";
 import { generateOrderNumber } from "../../lib/orderNumber";
 import {
@@ -148,12 +149,26 @@ export default function OrderBuilder() {
     try {
       const raw = localStorage.getItem(autosaveKey);
       if (raw) {
-        const saved = JSON.parse(raw) as { materialId?: string; parts?: CuttingPart[]; customerNote?: string };
+        const saved = JSON.parse(raw) as { materialId?: string; parts?: CuttingPart[]; customerNote?: string; savedAt?: number };
         const savedParts = saved.parts?.filter((p) => p.lengthMm > 0 || p.widthMm > 0 || p.name) ?? [];
-        if (savedParts.length > 0 && confirm(`Сақталған жоба табылды (${savedParts.length} бөлшек). Жалғастырасыз ба?`)) {
-          if (saved.materialId) setMaterialId(saved.materialId);
-          setParts(savedParts);
-          if (saved.customerNote) setCustomerNote(saved.customerNote);
+        // Offered back only for бүгін/кеше — a draft from further back reads less like "I was
+        // just interrupted" and more like an old, abandoned attempt (often one already placed
+        // some other way since). Restoring that silently onto a fresh "Жаңа заказ" is exactly
+        // what made a customer starting a genuinely new order see a previous one first, so an
+        // older draft is discarded here rather than offered.
+        const today = dayKey(Date.now());
+        const yesterday = dayKey(Date.now() - 86_400_000);
+        const savedDay = saved.savedAt ? dayKey(saved.savedAt) : null;
+        const isRecent = savedDay === today || savedDay === yesterday;
+        if (savedParts.length > 0 && isRecent) {
+          const when = saved.savedAt ? formatRelativeDateTime(saved.savedAt) : "бұрын";
+          if (confirm(`Сақталған жоба табылды (${savedParts.length} бөлшек, ${when}). Жалғастырасыз ба?`)) {
+            if (saved.materialId) setMaterialId(saved.materialId);
+            setParts(savedParts);
+            if (saved.customerNote) setCustomerNote(saved.customerNote);
+          } else {
+            localStorage.removeItem(autosaveKey);
+          }
         } else {
           localStorage.removeItem(autosaveKey);
         }
