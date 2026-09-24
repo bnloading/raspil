@@ -19,6 +19,9 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments, useAllInventoryMovements } from "../../hooks/useReports";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useExpenseCategories } from "../../hooks/useExpenseCategories";
+import { useExpenses } from "../../hooks/useExpenses";
+import { useMaterialCosts } from "../../hooks/useMaterialCosts";
+import { useAppSettings } from "../../hooks/useAppSettings";
 import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
 import { exportCsv } from "../../lib/exportTable";
@@ -31,6 +34,7 @@ import {
   computePaymentSummary,
   computeQueueOrders,
 } from "../../lib/dashboardStats";
+import { computeFinanceSummary } from "../../lib/finance";
 import { departmentOf, departmentOfOrder } from "../../lib/rbac";
 
 export default function AdminHome() {
@@ -54,8 +58,19 @@ export default function AdminHome() {
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
   const { materials, loading: materialsLoading } = useMaterials(false);
   const { categories: expenseCategories, loading: expenseCategoriesLoading } = useExpenseCategories();
+  const { expenses: allExpenses, loading: expensesLoading } = useExpenses();
+  const expenses = useMemo(
+    () => allExpenses.filter((e) => (e.department ?? "ldsp") === myDepartment),
+    [allExpenses, myDepartment],
+  );
+  // Таза пайда needs the shop's purchase prices, which firestore.rules keeps Admin-only — this
+  // page is already Admin-only, so the listen always succeeds, but the same available flag
+  // AdminReports.tsx checks is read here too rather than assumed, in case that ever changes.
+  const { costs: purchaseByMaterialId, available: netProfitVisible, loading: costsLoading } = useMaterialCosts();
+  const { settings } = useAppSettings();
 
-  const loading = ordersLoading || paymentsLoading || movementsLoading || materialsLoading || expenseCategoriesLoading;
+  const loading = ordersLoading || paymentsLoading || movementsLoading || materialsLoading
+    || expenseCategoriesLoading || expensesLoading || costsLoading;
 
   const kpis = useMemo(
     () => computeKpis({ orders, payments, movements, materials }),
@@ -70,6 +85,16 @@ export default function AdminHome() {
   const incomeAllocation = useMemo(
     () => computeIncomeAllocation(expenseCategories, kpis.monthRevenueTiyn),
     [expenseCategories, kpis.monthRevenueTiyn],
+  );
+  // Барлық уақыт, not the current month — same reasoning as AdminReports.tsx's Қаржы tab: the
+  // owner reads Таза пайда as a running total, so a month-scoped figure here would just be a
+  // second, differently-answered "how much have we made" sitting next to Бүгінгі табыс.
+  const netProfit = useMemo(
+    () => computeFinanceSummary({
+      orders, payments, purchaseByMaterialId, categories: expenseCategories, expenses,
+      period: null, startDate: settings.cashStartDate ?? null,
+    }),
+    [orders, payments, purchaseByMaterialId, expenseCategories, expenses, settings.cashStartDate],
   );
 
   const handleExportOrders = () => {
@@ -131,6 +156,18 @@ export default function AdminHome() {
                 </div>
                 <div className="number">{kpis.sheetsMonth}</div>
                 <div className="label">Кесілген лист</div>
+              </div>
+            )}
+            {/* Material purchase prices are Admin-only (firestore.rules) — this page already is,
+                so netProfitVisible is normally true, but the card still hides itself on the flag
+                rather than ever showing revenue mislabelled as profit. See useMaterialCosts.ts. */}
+            {netProfitVisible && (
+              <div className="stat-card">
+                <div className="stat-card-icon">
+                  <IconReports />
+                </div>
+                <div className="number">{formatMoney(netProfit.netProfitTiyn)}</div>
+                <div className="label">Таза пайда (барлық уақыт)</div>
               </div>
             )}
           </div>
