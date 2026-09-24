@@ -1,17 +1,24 @@
 import type { ReactNode } from "react";
 import type { Material, Order, OrderLineJob } from "../types/domain";
 import { jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
-import { jobQuantities, workerJobs, type FloorStage } from "../lib/workerQuantities";
+import { isCountertopJob, jobQuantities, workerJobs, type FloorStage } from "../lib/workerQuantities";
 
 const number = (n: number) => n.toLocaleString("kk-KZ", { maximumFractionDigits: 2 });
 export function WorkerHistorySummary({ orders, materials, stage, uid }: { orders: Order[]; materials: Material[]; stage: FloorStage; uid: string }) {
-  const totals = orders.flatMap(order => workerJobs(order, stage, uid, true).map(job => jobQuantities(order, job, materials)));
-  const sheets = totals.reduce((sum, q) => sum + q.sheets, 0);
+  const jobsWithQuantities = orders.flatMap(
+    order => workerJobs(order, stage, uid, true).map(job => ({ job, q: jobQuantities(order, job, materials) })),
+  );
+  // Split apart, same as WorkerHistoryCard's own badge — a столешница is a different unit of work
+  // from a board, so folding both into one "лист" total answered a question nobody was asking.
+  const sheets = jobsWithQuantities.reduce((sum, { job, q }) => sum + (isCountertopJob(job, materials) ? 0 : q.sheets), 0);
+  const countertops = jobsWithQuantities.reduce((sum, { job, q }) => sum + (isCountertopJob(job, materials) ? q.sheets : 0), 0);
   // Raspil is paid per sheet, not per m² — area only matters (and is only shown) on the ПВХ station.
   const showArea = stage !== "cutting";
-  const area = totals.some(q => q.area === null) ? null : totals.reduce((sum, q) => sum + (q.area ?? 0), 0);
-  const pvc = totals.reduce((sum, q) => sum + q.pvcMeters, 0);
-  return <section className="worker-history-summary"><h2>Мен орындаған жұмыс</h2><p>{orders.filter(o => workerJobs(o, stage, uid, true).length).length} тапсырыс · {totals.length} материал</p><div className="worker-quantities"><span><b>{number(sheets)}</b> лист</span>{showArea && <span><b>{area === null ? "—" : number(area)}</b> м² лист</span>}<span><b>{number(pvc)}</b> м ПВХ</span></div>{showArea && area === null && <small>Кейбір материалдардың лист өлшемі көрсетілмеген</small>}</section>;
+  const area = jobsWithQuantities.some(({ q }) => q.area === null)
+    ? null
+    : jobsWithQuantities.reduce((sum, { q }) => sum + (q.area ?? 0), 0);
+  const pvc = jobsWithQuantities.reduce((sum, { q }) => sum + q.pvcMeters, 0);
+  return <section className="worker-history-summary"><h2>Мен орындаған жұмыс</h2><p>{orders.filter(o => workerJobs(o, stage, uid, true).length).length} тапсырыс · {jobsWithQuantities.length} материал</p><div className="worker-quantities"><span><b>{number(sheets)}</b> лист</span>{countertops > 0 && <span><b>{number(countertops)}</b> столеш</span>}{showArea && <span><b>{area === null ? "—" : number(area)}</b> м² лист</span>}<span><b>{number(pvc)}</b> м ПВХ</span></div>{showArea && area === null && <small>Кейбір материалдардың лист өлшемі көрсетілмеген</small>}</section>;
 }
 export function WorkerMaterialSummary({ order, materials, stage, uid, history = false, action }: {
   order: Order; materials: readonly Material[]; stage: FloorStage; uid: string; history?: boolean;

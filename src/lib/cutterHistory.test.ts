@@ -64,6 +64,30 @@ describe("buildCutterHistory", () => {
     expect(entries.map((e) => e.orderId)).toEqual(["b", "a"]);
   });
 
+  it("splits столешница pieces out of the sheet count when a category map is given", () => {
+    const merged = order({
+      lineJobs: [
+        job({ index: 0, materialId: "m-ldsp", materialName: "ЛДСП", sheetQty: 8, confirmedSheets: 8, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-08-25") }),
+        job({ index: 1, materialId: "m-top", materialName: "Сырттан келетін столешница 3м", sheetQty: 2, confirmedSheets: 2, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-08-25") }),
+      ],
+    });
+    const categories = new Map([["m-ldsp", "ldsp"], ["m-top", "countertop"]] as const);
+    const [entry] = buildCutterHistory([merged], CUTTER, categories);
+    expect(entry.sheets).toBe(8);
+    expect(entry.countertops).toBe(2);
+  });
+
+  it("counts everything as sheets when no category map is given, same as before", () => {
+    const merged = order({
+      lineJobs: [
+        job({ index: 0, materialId: "m-top", materialName: "Столешница", sheetQty: 2, confirmedSheets: 2, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-08-25") }),
+      ],
+    });
+    const [entry] = buildCutterHistory([merged], CUTTER);
+    expect(entry.sheets).toBe(2);
+    expect(entry.countertops).toBe(0);
+  });
+
   it("falls back to the legacy single-line shape for an order that predates per-line jobs", () => {
     const legacy = order({
       lineJobs: undefined,

@@ -3,8 +3,15 @@ import { useAuth } from "../AuthContext";
 import { Spinner } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { useCutterOrders } from "../hooks/useOrders";
+import { useMaterials } from "../hooks/useMaterials";
 import { buildCutterHistory, type CutHistoryEntry } from "../lib/cutterHistory";
 import { dayKey, formatDateDMY, monthKey, monthLabel, weekKey, weekLabel } from "../lib/dates";
+
+/** "12 лист · 3 столеш", or just "12 лист" when this stretch cut no countertops at all — a
+ *  cutter who never touches столешница never has to read a stray "· 0 столеш" on every row. */
+function sheetsLabel(sheets: number, countertops: number): string {
+  return countertops > 0 ? `${sheets} лист · ${countertops} столеш` : `${sheets} лист`;
+}
 
 /** One week's entries, already split into day-groups sorted newest first. */
 interface WeekGroup {
@@ -20,8 +27,16 @@ interface WeekGroup {
 export default function CutterHistory() {
   const { user, userData } = useAuth();
   const { orders, loading } = useCutterOrders(user?.uid);
+  const { materials } = useMaterials(false);
+  const categoryByMaterialId = useMemo(
+    () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
+    [materials],
+  );
 
-  const allEntries = useMemo(() => (user ? buildCutterHistory(orders, user.uid) : []), [orders, user]);
+  const allEntries = useMemo(
+    () => (user ? buildCutterHistory(orders, user.uid, categoryByMaterialId) : []),
+    [orders, user, categoryByMaterialId],
+  );
 
   const periods = useMemo(() => {
     const keys = new Set([monthKey(new Date()), ...allEntries.map((e) => monthKey(e.completedAt))]);
@@ -55,7 +70,11 @@ export default function CutterHistory() {
   }, [monthEntries]);
 
   const monthTotals = useMemo(
-    () => ({ sheets: monthEntries.reduce((s, e) => s + e.sheets, 0), orders: monthEntries.length }),
+    () => ({
+      sheets: monthEntries.reduce((s, e) => s + e.sheets, 0),
+      countertops: monthEntries.reduce((s, e) => s + e.countertops, 0),
+      orders: monthEntries.length,
+    }),
     [monthEntries],
   );
 
@@ -77,6 +96,14 @@ export default function CutterHistory() {
           <div className="number">{monthTotals.sheets}</div>
           <div className="label">Лист ({monthLabel(period)})</div>
         </div>
+        {/* Only shown once this cutter has actually cut a столешница — most never do, and a
+            standing "0 столеш" card would just be noise on every one of their months. */}
+        {monthTotals.countertops > 0 && (
+          <div className="stat-card">
+            <div className="number">{monthTotals.countertops}</div>
+            <div className="label">Столеш ({monthLabel(period)})</div>
+          </div>
+        )}
         <div className="stat-card">
           <div className="number">{monthTotals.orders}</div>
           <div className="label">Заказ</div>
@@ -93,21 +120,23 @@ export default function CutterHistory() {
       ) : (
         weeks.map((week) => {
           const weekSheets = week.days.reduce((s, d) => s + d.entries.reduce((s2, e) => s2 + e.sheets, 0), 0);
+          const weekCountertops = week.days.reduce((s, d) => s + d.entries.reduce((s2, e) => s2 + e.countertops, 0), 0);
           const weekOrders = week.days.reduce((s, d) => s + d.entries.length, 0);
           return (
             <section className="panel-card" key={week.key}>
               <div className="panel-head">
                 <h3>Апта: {weekLabel(week.key)}</h3>
-                <span className="otable-sub">{weekSheets} лист · {weekOrders} заказ</span>
+                <span className="otable-sub">{sheetsLabel(weekSheets, weekCountertops)} · {weekOrders} заказ</span>
               </div>
 
               {week.days.map((day) => {
                 const daySheets = day.entries.reduce((s, e) => s + e.sheets, 0);
+                const dayCountertops = day.entries.reduce((s, e) => s + e.countertops, 0);
                 return (
                   <div className="cutter-history-day" key={day.key}>
                     <div className="cutter-history-day-head">
                       <strong>{formatDateDMY(day.entries[0].completedAt)}</strong>
-                      <span className="otable-sub">{daySheets} лист · {day.entries.length} заказ</span>
+                      <span className="otable-sub">{sheetsLabel(daySheets, dayCountertops)} · {day.entries.length} заказ</span>
                     </div>
                     <div className="data-list">
                       {day.entries.map((e) => (
@@ -116,7 +145,7 @@ export default function CutterHistory() {
                             <strong>{e.orderNumber}</strong>
                             <span>{e.customerName} · {e.materials.join(", ")}</span>
                           </div>
-                          <span className="otable-strong">{e.sheets} лист</span>
+                          <span className="otable-strong">{sheetsLabel(e.sheets, e.countertops)}</span>
                         </div>
                       ))}
                     </div>

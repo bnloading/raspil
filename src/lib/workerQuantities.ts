@@ -8,6 +8,15 @@ export function workerJobs(order: Order, stage: FloorStage, uid: string, complet
     : j.pvcByUid === uid && (completed ? !!j.pvcCompletedAt : !!j.pvcStartedAt && !j.pvcCompletedAt));
 }
 
+/**
+ * True for a line cut from a столешница rather than a board — the material's own catalogue entry
+ * carries this (materialSnapshot never does), so it's always looked up live rather than guessed
+ * from the order's own denormalized fields.
+ */
+export function isCountertopJob(job: Pick<OrderLineJob, "materialId">, materials: readonly Material[]): boolean {
+  return materials.find(m => m.id === job.materialId)?.category === "countertop";
+}
+
 /** Sheet area, not the area of finished parts. Never assume one size for a merged order. */
 export function jobQuantities(order: Order, job: OrderLineJob, materials: readonly Material[]) {
   const snapshot = job.materialId === order.materialId ? order.materialSnapshot : undefined;

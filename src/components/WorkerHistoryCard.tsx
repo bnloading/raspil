@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Material, MdfStage, Order } from "../types/domain";
-import { workerJobs, type FloorStage } from "../lib/workerQuantities";
+import { isCountertopJob, workerJobs, type FloorStage } from "../lib/workerQuantities";
 import { formatDateDMY } from "../lib/dates";
 import { formatMdfArea } from "../lib/mdfJournal";
 import { WorkerMaterialSummary } from "./WorkerMaterialSummary";
@@ -14,9 +14,16 @@ export function WorkerHistoryCard({ order, stage, uid, to, materials = [] }: {
   const completedAt = floor
     ? jobs.map(j => stage === "cutting" ? j.cuttingCompletedAt : j.pvcCompletedAt).filter(t => !!t).sort((a, b) => b.seconds - a.seconds)[0]
     : order.mdfStageJobs?.[stage]?.completedAt;
-  const sheets = jobs.reduce((sum, j) => sum + (j.confirmedSheets ?? j.sheetQty), 0);
+  // Split apart rather than lumped into one "лист" figure — a столешница is a different unit of
+  // work from a board, and a merged order carrying both used to read as a single number that
+  // matched neither.
+  const sheets = jobs.reduce((sum, j) => sum + (isCountertopJob(j, materials) ? 0 : (j.confirmedSheets ?? j.sheetQty)), 0);
+  const countertops = jobs.reduce((sum, j) => sum + (isCountertopJob(j, materials) ? (j.confirmedSheets ?? j.sheetQty) : 0), 0);
   const meters = jobs.reduce((sum, j) => sum + j.pvcMeters, 0);
-  const quantity = floor ? `${sheets.toLocaleString("kk-KZ")} лист${stage === "pvc" ? ` · ${meters.toLocaleString("kk-KZ", { maximumFractionDigits: 1 })} м` : ""}` : formatMdfArea(order.mdfAreaM2);
+  const sheetsPart = countertops > 0
+    ? `${sheets.toLocaleString("kk-KZ")} лист · ${countertops.toLocaleString("kk-KZ")} столеш`
+    : `${sheets.toLocaleString("kk-KZ")} лист`;
+  const quantity = floor ? `${sheetsPart}${stage === "pvc" ? ` · ${meters.toLocaleString("kk-KZ", { maximumFractionDigits: 1 })} м` : ""}` : formatMdfArea(order.mdfAreaM2);
   return <details className="station-history-card">
     <summary>
       <span className="station-history-check" aria-hidden="true">✓</span>
