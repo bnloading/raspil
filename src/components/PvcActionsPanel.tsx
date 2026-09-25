@@ -169,7 +169,7 @@ export function PvcLineActions({
       <>
         {leftMin !== null && (
           <div className="station-hero-time">
-            <span>◷ Қалған уақыт: <b>{leftMin > 0 ? `${leftMin} мин` : "мерзімі өтті"}</b></span>
+            <span>🕐 Қалған уақыт: <b>{leftMin > 0 ? `${leftMin} мин` : "мерзімі өтті"}</b></span>
             <button type="button" className="station-hero-edit" disabled={busy}
               onClick={() => setMode("reestimate")} aria-label="Мерзімді өзгерту">✎</button>
           </div>
