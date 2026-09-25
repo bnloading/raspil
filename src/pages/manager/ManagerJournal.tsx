@@ -17,7 +17,12 @@ import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { PVC_JOINTING_SURCHARGE_TIYN, computeJournalRowTotals, netPaidTiyn, paidByMethod } from "../../lib/journal";
 import { departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
-import { cuttingCostForLines, isHdfMaterial, journalDefaultsFor, pvcDefaultsFor } from "../../lib/journalPricing";
+import {
+  cuttingCostForLines,
+  externalCountertopPriceTiyn,
+  isHdfMaterial,
+  pvcDefaultsFor,
+} from "../../lib/journalPricing";
 import {
   JOURNAL_QUICK_FILTERS,
   journalCutState,
@@ -1708,8 +1713,11 @@ function PaymentDialog({
 
             <div className="form-group">
               <label>{payments.length > 0 ? "Жаңа төлемнің түрі" : "Төлем түрі"}</label>
+              {/* Only methods the shop still takes money through. A retired one (active: false)
+                  has to keep existing — historical payments are filed under it and the Касса
+                  still has to classify them — but offering it here would let it come back. */}
               <div className="pay-method-grid">
-                {methods.map((m) => (
+                {methods.filter((m) => m.active !== false).map((m) => (
                   <button
                     key={m.id}
                     type="button"
@@ -1734,7 +1742,7 @@ function PaymentDialog({
                       onChange={(e) => patchLeg(leg.id, { methodId: e.target.value })}
                     >
                       <option value="">Әдісті таңдаңыз</option>
-                      {methods.filter((m) => !m.isMixed).map((m) => (
+                      {methods.filter((m) => !m.isMixed && m.active !== false).map((m) => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>
@@ -2414,7 +2422,12 @@ function JournalDetailPanel({
           ...line,
           materialId,
           materialName: m?.name ?? "",
-          sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
+          // A customer's own countertop is not sold, so its catalogue price is 0 — which left the
+          // "Лист бағасы" cell reading zero for a job the shop very much charges for, and every
+          // manager typed the 2 000/3 000 in by hand. The кесу fee was then added on top of what
+          // they typed and the top billed twice. Filling the standing rate in here puts that money
+          // on the line, once, where it can still be edited.
+          sheetPriceTiyn: m?.sellingPriceTiyn || externalCountertopPriceTiyn(m) || line.sheetPriceTiyn,
           pvcTypeId: pvc.pvcTypeId,
           pvcColorName: pvc.pvcColorName,
           pvcPricePerMeterTiyn: pvc.pvcPricePerMeterTiyn,
@@ -2781,7 +2794,6 @@ function NewJournalRow({
             // rest, and 1600/лист + 160/м of labour on a customer's own board. It also picks the
             // edge to match the board — Ақ board, Ақ edge — and clears ПВХ entirely for ХДФ.
             // All of it stays editable.
-            const rates = journalDefaultsFor(m);
             const pvc = pvcDefaultsFor(m, pvcTypes, line);
             setDraft({
               ...draft,
@@ -2789,13 +2801,20 @@ function NewJournalRow({
                 ...line,
                 materialId,
                 materialName: m?.name ?? "",
-                sheetPriceTiyn: m?.sellingPriceTiyn ?? line.sheetPriceTiyn,
+                // Same standing-rate fill as the detail panel — see pickMaterial there.
+                sheetPriceTiyn: m?.sellingPriceTiyn || externalCountertopPriceTiyn(m) || line.sheetPriceTiyn,
                 pvcTypeId: pvc.pvcTypeId,
                 pvcColorName: pvc.pvcColorName,
                 pvcPricePerMeterTiyn: pvc.pvcPricePerMeterTiyn,
                 ...(pvc.pvcMeters !== undefined ? { pvcMeters: pvc.pvcMeters } : {}),
               }, ...draft.lines.slice(1)],
-              cuttingCostTiyn: rates.cuttingPerSheetTiyn * (line.sheetQty || 0),
+              // Through cuttingCostForLines, not a rate × count of its own: that bypassed the rule
+              // that a line carrying its own price is already charged for, so a countertop picked
+              // here was billed twice while the same pick in the detail panel was not.
+              cuttingCostTiyn: cuttingCostForLines(
+                [{ materialId, sheetQty: line.sheetQty, sheetPriceTiyn: m?.sellingPriceTiyn || externalCountertopPriceTiyn(m) || line.sheetPriceTiyn }],
+                new Map(materials.map((x) => [x.id, x])),
+              ),
             });
           }}
         />

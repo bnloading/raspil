@@ -414,8 +414,11 @@ export function OrderActionPanels({
           </div>
           <div className="form-group">
             <label>Төлем әдісі</label>
+            {/* Retired methods (active: false) stay in the catalogue so the Касса can still
+                classify the payments already filed under them, but are not offered for new
+                money — the same rule ManagerMdfJournal already follows. */}
             <select className="form-input" value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}>
-              {methods.map((m) => (
+              {methods.filter((m) => m.active !== false).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>

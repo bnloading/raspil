@@ -256,14 +256,19 @@ export interface JournalDefaults {
  * switching a line back to a shop sheet drops its fee instead of leaving it stacked on the price.
  */
 export function cuttingCostForLines(
-  lines: readonly { materialId: string; sheetQty: number }[],
+  lines: readonly { materialId: string; sheetQty: number; sheetPriceTiyn?: number }[],
   materials: ReadonlyMap<string, Pick<Material, "name" | "color">>,
 ): number {
-  return lines.reduce(
-    (sum, line) =>
-      sum + journalDefaultsFor(materials.get(line.materialId)).cuttingPerSheetTiyn * (line.sheetQty || 0),
-    0,
-  );
+  return lines.reduce((sum, line) => {
+    // A line that already BILLS for this job has been charged for it. The fee below is what the
+    // shop charges to cut a customer's own countertop — adding it on top of a price typed on the
+    // same line bills the one countertop twice, which is what turned a single 3 м top into
+    // 6 000 ₸ (ORD-2026-000204, …000169, …000151 and three more). Both halves have to be there:
+    // a price with no quantity behind it (ORD-2026-000209 carries 3 000 ₸ against 0 листа) bills
+    // nothing at all, so the fee is that line's only charge and must stand.
+    if ((line.sheetPriceTiyn ?? 0) > 0 && (line.sheetQty || 0) > 0) return sum;
+    return sum + journalDefaultsFor(materials.get(line.materialId)).cuttingPerSheetTiyn * (line.sheetQty || 0);
+  }, 0);
 }
 
 export function journalDefaultsFor(material: Pick<Material, "name" | "color"> | undefined): JournalDefaults {

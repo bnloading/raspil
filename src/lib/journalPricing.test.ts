@@ -294,6 +294,24 @@ describe("cuttingCostForLines — labour is charged per board, not per row", () 
     expect(cuttingCostForLines(lines, catalog)).toBe(2000_00 * 2 + 3000_00);
   });
 
+  // ORD-2026-000204 exactly: one 4 м countertop priced 3 000 ₸ on its own line came out at
+  // 6 000 ₸, because the same job was billed again as кесу. Six live orders were doubled this way.
+  it("does not bill a countertop twice when its line already carries the price", () => {
+    expect(cuttingCostForLines([{ materialId: "ext4", sheetQty: 1, sheetPriceTiyn: 3000_00 }], catalog)).toBe(0);
+    expect(cuttingCostForLines([{ materialId: "ext3", sheetQty: 1, sheetPriceTiyn: 2000_00 }], catalog)).toBe(0);
+  });
+
+  it("still charges the fee for a countertop line left at no price of its own", () => {
+    expect(cuttingCostForLines([{ materialId: "ext3", sheetQty: 1, sheetPriceTiyn: 0 }], catalog)).toBe(2000_00);
+  });
+
+  // ORD-2026-000209: a price sitting on a line with no quantity behind it bills nothing, so the
+  // fee is that countertop's only charge — dropping it would have made the order free.
+  it("still charges the fee when the line's price has no quantity behind it", () => {
+    expect(cuttingCostForLines([{ materialId: "ext4", sheetQty: 0, sheetPriceTiyn: 3000_00 }], catalog)).toBe(0);
+    expect(cuttingCostForLines([{ materialId: "ext4", sheetQty: 1, sheetPriceTiyn: 0 }], catalog)).toBe(3000_00);
+  });
+
   it("drops the fee when a line is switched back to a shop sheet", () => {
     const before = cuttingCostForLines([{ materialId: "ext3", sheetQty: 1 }], catalog);
     const after = cuttingCostForLines([{ materialId: "kashemir", sheetQty: 1 }], catalog);
