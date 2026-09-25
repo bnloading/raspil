@@ -10,14 +10,14 @@ import { AppShell } from "../components/layout/AppShell";
 import { PvcLineActions } from "../components/PvcActionsPanel";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
-import { IconUsers } from "../components/layout/icons";
-import { WorkerMaterialSummary, WorkerHistorySummary } from "../components/WorkerMaterialSummary";
+import { MaterialThumb } from "../components/MaterialThumb";
+import { WorkerHistorySummary } from "../components/WorkerMaterialSummary";
 import { workerJobs } from "../lib/workerQuantities";
 import { usePvcOrders } from "../hooks/useOrders";
 import { useOrderParts } from "../hooks/useOrderParts";
 import { useMaterials, usePvcTypes } from "../hooks/useMaterials";
 import { useToast } from "../hooks";
-import { dayKey } from "../lib/dates";
+import { dayKey, formatDateDMY } from "../lib/dates";
 import { computePvcBreakdown, edgeLengthMm } from "../lib/pricing";
 import { EDGE_KEYS } from "../types/domain";
 import type { EdgeKey, Order, PvcType, UserDoc } from "../types/domain";
@@ -38,6 +38,7 @@ export default function PvcDashboard() {
   const { orders, loading } = usePvcOrders(user?.uid);
   const { pvcTypes } = usePvcTypes(true);
   const { message, visible, showToast } = useToast();
+  const [search, setSearch] = useState("");
 
   const pvcTypesById = useMemo(() => new Map(pvcTypes.map((p) => [p.id, p])), [pvcTypes]);
   const pvcOrders = useMemo(() => orders.filter((o) => o.pvcMetersTotal > 0), [orders]);
@@ -70,19 +71,80 @@ export default function PvcDashboard() {
   const actor: Actor = { user, userData };
 
   const history = pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, true).length > 0);
-  // Today's finished orders stay on the queue, at the bottom, instead of vanishing the moment the
-  // last material is marked done. Completing the work is the one moment a worker wants to see
-  // something happen, and the row simply disappearing read as if it had been lost.
-  //
-  // Deduped, because the two lists genuinely overlap: a two-material order with one side banded
-  // today and the other still open is both "in progress" and "finished something today", and
-  // listing it twice would put the same card on screen twice under one key.
-  const queueRows = [...inProgress, ...queued, ...awaitingCutting];
-  const queueIds = new Set(queueRows.map((o) => o.id));
-  const rows = view === "history" ? history
-    : view === "mine" ? pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0)
-    : [...queueRows, ...doneToday.filter((o) => !queueIds.has(o.id))];
-  return <AppShell variant="station" title="ПВХ" subtitle={userData.name} contentWidth="narrow">
+  const matches = (o: Order) => {
+    const q = search.trim().toLowerCase();
+    return !q || o.customerName.toLowerCase().includes(q) || o.orderNumber.toLowerCase().includes(q);
+  };
+  // Three bands, not one list: the order being worked on is the headline, what is coming is a
+  // list to scan, and what finished today is a receipt. The owner's mockup reads top to bottom
+  // in exactly that order.
+  const heroRows = inProgress.filter(matches);
+  const nextRows = [...queued, ...awaitingCutting].filter(matches);
+  // Deduped against the bands above: a two-material order with one side banded today and the
+  // other still open belongs to both, and would otherwise be drawn twice under one key.
+  const shownIds = new Set([...heroRows, ...nextRows].map(o => o.id));
+  const finishedRows = doneToday.filter(o => !shownIds.has(o.id) && matches(o));
+  const mineRows = pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0 && matches(o));
+
+  /** The colour and thickness this line is banded with, as the card names it. */
+  const pvcFaceOf = (order: Order, index: number) => {
+    const line = (order.items ?? [])[index];
+    const type = line?.pvcTypeId ? pvcTypesById.get(line.pvcTypeId) : undefined;
+    const colour = line?.pvcColorName || type?.colorName || "ПВХ";
+    return { type, label: type?.thicknessMm ? `${colour} • ${type.thicknessMm} мм` : colour };
+  };
+
+  const heroCard = (order: Order) => {
+    const jobs = jobsOf(order).filter(j => (j.pvcMeters ?? 0) > 0);
+    return <article key={order.id} className="station-hero" aria-label={`${order.customerName} — қазір жұмыста`}>
+      <div className="station-hero-head">
+        <div>
+          <span className="station-job-eyebrow">Қазір жұмыста</span>
+          <strong className="station-hero-customer">{order.customerName}</strong>
+          <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
+        </div>
+        <span className="station-state is-working">🕐 Жұмыста</span>
+      </div>
+      <div className={`station-hero-cut${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
+        {order.productionStatus.startsWith("cutting") ? "◷ Распил күтілуде" : "✅ Распил дайын"}
+      </div>
+      {jobs.map(job => {
+        const face = pvcFaceOf(order, job.index);
+        return <div className="station-hero-face" key={job.index}>
+          <MaterialThumb material={face.type} />
+          <span className="station-hero-face-name">{face.label}</span>
+          <b className="station-hero-meters">{job.pvcMeters} м</b>
+        </div>;
+      })}
+      {jobs.map(job => job.pvcCompletedAt ? null : (
+        <PvcLineActions key={`a${job.index}`} order={order} job={job} actor={actor} onToast={showToast} layout="hero" />
+      ))}
+      <button className="btn btn-outline station-hero-more" onClick={() => navigate(`/pvc/order/${order.id}`)}>
+        Толығырақ
+      </button>
+      <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary>
+        <CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} /></details>
+    </article>;
+  };
+
+  /** "Айбек · #1043 — Дуб Вотан • 1 мм — 42 м ›" — a line to scan, not a card to read. */
+  const queueRow = (order: Order, done = false) => {
+    const job = jobsOf(order).find(j => (j.pvcMeters ?? 0) > 0);
+    const face = pvcFaceOf(order, job?.index ?? 0);
+    return <button key={order.id} className={`station-next-row${done ? " is-done" : ""}`}
+      onClick={() => navigate(`/pvc/order/${order.id}`)}>
+      <MaterialThumb material={face.type} />
+      <span className="station-next-who">
+        <strong>{order.customerName} · {order.orderNumber}</strong>
+        <small>{done ? "✓ Бүгін бітті" : face.label}</small>
+      </span>
+      <b className="station-next-meters">{job?.pvcMeters ?? order.pvcMetersTotal} м</b>
+      <span className="station-next-chev" aria-hidden="true">›</span>
+    </button>;
+  };
+
+  return <AppShell variant="station" title="ПВХ панелі" subtitle={`${userData.name} • ${formatDateDMY(new Date())}`} contentWidth="narrow"
+    search={{ value: search, onChange: setSearch, placeholder: "Клиент немесе заказ №" }}>
     {/* One segmented row — count and filter together, per the owner's mockup — replacing the old
         stats-then-tabs pair. "Тарих" stays out of it (historyInNav already puts that in the side/
         bottom nav instead), so these three read as "Кезек → Жұмыста → Дайын", the worker's own
@@ -106,50 +168,40 @@ export default function PvcDashboard() {
     </div>
     {view === "queue" && <WorkerSalaryTeaser uid={user.uid} orders={orders} />}
     {view === "history" && <WorkerHistorySummary orders={orders} materials={materials} stage="pvc" uid={user.uid} />}
-    {loading ? <Spinner /> : rows.length === 0 ? <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div> :
-      <div className={view === "history" ? "station-history-list" : "station-job-list"}>{rows.map(order => view === "history" ? <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} /> : (() => { const finished = order.productionStatus === "ready" || order.productionStatus === "delivered"; return <article key={order.id} className={`station-job${order.productionStatus === "pvc_started" ? " is-active" : ""}${order.productionStatus === "ready" || order.productionStatus === "delivered" ? " is-finished" : ""}`}>
-        {/* The customer leads, the order number sits under it and the two things the worker checks
-            at a glance — am I on this one, and has the saw finished with it — are badges on the
-            right. Per the owner's mockup; it replaces a status line that repeated the same facts
-            in three separate places down the card. */}
-        <div className="station-job-head">
-          <div className="station-job-identity">
-            {order.productionStatus === "pvc_started" && <span className="station-job-eyebrow">Қазір жұмыста</span>}
-            {finished && <span className="station-job-eyebrow is-done">Бүгін бітті</span>}
-            <strong className="station-job-customer"><IconUsers />{order.customerName}</strong>
-            <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
-          </div>
-          <div className="station-job-badges">
-            <span className={`station-state${order.productionStatus === "pvc_started" ? " is-active" : ""}${finished ? " is-done" : ""}`}>
-              {finished ? "✓ ДАЙЫН" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}
-            </span>
-            {/* Once the order is finished the saw's state is old news — the one badge that matters
-                is the green one above it. */}
-            {!finished && (
-              <span className={`station-cut-badge${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
-                {order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "✓ Распил дайын"}
-              </span>
-            )}
-          </div>
-        </div>
-        {/* Each material's own "Бастау"/"Дайын" sits inside that material's card, exactly as
-            распил does. A separate panel underneath repeated every material name and stacked the
-            buttons below the list, so a two-material order read as four rows of the same thing. */}
-        <WorkerMaterialSummary
-          order={order}
-          materials={materials}
-          stage="pvc"
-          uid={user.uid}
-          history={view === "history"}
-          action={view === "history" || (order.productionStatus !== "pvc_queue" && order.productionStatus !== "pvc_started")
-            ? undefined
-            : (job) => <PvcLineActions order={order} job={job} actor={actor} onToast={showToast} />}
-        />
-        {/* No payment badge: whether the customer has paid is none of the edge-bander's business
-            and nothing they can act on, the same rule распил already follows. Where the order is
-            now reads off the badges in the header instead of a third line repeating them. */}
-        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} /></details>
-      </article>; })())}</div>}
+    {loading ? <Spinner /> : view === "history" ? (
+      history.length === 0 ? <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div> :
+      <div className="station-history-list">
+        {history.map(order => <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} />)}
+      </div>
+    ) : view === "mine" ? (
+      mineRows.length === 0 ? <div className="empty-state"><p>Қолыңызда тапсырма жоқ</p></div> :
+      <>{mineRows.map(heroCard)}</>
+    ) : (
+      <>
+        {heroRows.map(heroCard)}
+        {nextRows.length > 0 && (
+          <section className="station-next">
+            <div className="station-next-head">
+              <h3>Келесі заказдар</h3>
+              <span>{nextRows.length} заказ</span>
+            </div>
+            {nextRows.map(o => queueRow(o))}
+          </section>
+        )}
+        {finishedRows.length > 0 && (
+          <section className="station-next is-done-section">
+            <div className="station-next-head">
+              <h3>Бүгін бітті</h3>
+              <span>{finishedRows.length} заказ</span>
+            </div>
+            {finishedRows.map(o => queueRow(o, true))}
+          </section>
+        )}
+        {heroRows.length === 0 && nextRows.length === 0 && finishedRows.length === 0 && (
+          <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div>
+        )}
+      </>
+    )}
     {/* The day's own line, at the foot of the list where a shift ends — the segmented row up top
         counts orders, this counts the metres the worker is actually paid on. */}
     {metersToday > 0 && (

@@ -9789,6 +9789,112 @@ body {
 .station-cut-badge { padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #fff3dd; color: #925000; white-space: nowrap; }
 .station-cut-badge.is-done { background: #e7f6ec; color: #087c34; }
 
+/* ── ПВХ панелі, from the owner's mockup ──────────────────────────────────────
+   One headline card for the order in hand, then a scannable list of what is next. The card is
+   built to be read at arm's length across a workbench: the customer's name is the biggest thing
+   on it, the metres are the second, and everything else is support. */
+.station-hero {
+  /* A flex column purely so the order of the two full-width buttons can be fixed here: the
+     actions come out of PvcLineActions as one block (time row + "ПВХ дайын"), and the mockup
+     puts "Толығырақ" between them. */
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e6e9f0;
+  border-left: 4px solid var(--station-accent, #084bda);
+  border-radius: 14px;
+  padding: 14px 15px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(23, 33, 59, .05), 0 10px 24px rgba(23, 33, 59, .08);
+}
+.station-hero-head { order: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.station-hero-customer { display: block; font-size: 26px; line-height: 1.15; font-weight: 800; color: #131a2c; }
+.station-hero .station-order-link { padding: 0; font-size: 13px; }
+/* Amber, and with a clock, because "Жұмыста" is a state that is still running. */
+.station-state.is-working { background: #fdf0d5; color: #8a4b00; }
+.station-hero-cut { order: 2; margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #5c6675; }
+.station-hero-cut.is-done { color: #0d8341; }
+
+/* The face being banded: swatch, colour and thickness, and the metres it is worth. */
+.station-hero-face {
+  order: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e9ecf3;
+  border-radius: 10px;
+}
+.station-hero-face-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: #2a3346; }
+.station-hero-meters { font-size: 26px; font-weight: 800; color: var(--station-accent, #084bda); font-variant-numeric: tabular-nums; }
+
+.station-hero-time {
+  order: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #5c6675;
+}
+.station-hero-time b { color: #131a2c; }
+.station-hero-edit {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border: 1px solid #e0e4ec;
+  border-radius: 9px;
+  background: #fff;
+  color: #5c6675;
+  font-size: 15px;
+  cursor: pointer;
+}
+.station-hero-edit:hover:not(:disabled) { border-color: var(--station-accent, #084bda); color: var(--station-accent, #084bda); }
+
+.station-hero-more, .station-hero-done { width: 100%; margin-top: 10px; min-height: 48px; border-radius: 10px; }
+.station-hero-more { order: 5; }
+.station-hero-done { order: 6; }
+.station-hero-done {
+  background: var(--station-accent, #084bda);
+  border: 0;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: none;
+}
+.station-hero-done:hover:not(:disabled) { filter: brightness(1.08); transform: none; box-shadow: none; }
+.station-hero .worker-details { order: 7; margin-top: 12px; }
+
+/* "Келесі заказдар" — rows, not cards: name, what it is banded with, how many metres, chevron. */
+.station-next { background: transparent; }
+.station-next-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 2px 2px 8px; }
+.station-next-head h3 { font-size: 16px; font-weight: 700; color: #131a2c; margin: 0; }
+.station-next-head span { font-size: 12px; color: var(--text-secondary); }
+.station-next-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e9ecf3;
+  border-radius: 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.station-next-row + .station-next-row { margin-top: 8px; }
+.station-next-row:hover { border-color: var(--station-accent, #084bda); }
+.station-next-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.station-next-who strong { font-size: 14px; color: #131a2c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.station-next-who small { font-size: 12px; color: var(--text-light); }
+.station-next-meters { flex: 0 0 auto; font-size: 17px; font-weight: 800; color: #131a2c; font-variant-numeric: tabular-nums; }
+.station-next-chev { flex: 0 0 auto; color: #667386; font-size: 18px; }
+.station-next.is-done-section { margin-top: 18px; }
+.station-next-row.is-done { border-color: #cfe9da; background: linear-gradient(180deg, #f3fbf6 0%, #fff 60%); }
+.station-next-row.is-done .station-next-who small { color: #0d8341; font-weight: 600; }
+
 /* "Бүгін дайын: 186 м" — the shift's own line at the foot of the list. */
 .station-day-foot {
   display: flex;

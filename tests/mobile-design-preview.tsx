@@ -34,29 +34,47 @@ function PvcPanels(){
       <button className="station-segmented-btn"><span>Жұмыста</span><b>1</b></button>
       <button className="station-segmented-btn is-active"><span>Дайын</span><b>12</b></button>
     </div>
-    <div className="station-job-list" style={{marginBottom:16}}>
-      {[{st:"pvc_started",name:"Алмат",num:"#1042"},{st:"pvc_queue",name:"Айбек",num:"#1043"},{st:"cutting_started",name:"Аружан",num:"#1044"},{st:"ready",name:"Нұрлан",num:"#1045"}].map(c=>{
-        const finished=c.st==="ready";
-        return <article key={c.num} className={`station-job${c.st==="pvc_started"?" is-active":""}${finished?" is-finished":""}`}>
-          <div className="station-job-head">
-            <div className="station-job-identity">
-              {c.st==="pvc_started" && <span className="station-job-eyebrow">Қазір жұмыста</span>}
-              {finished && <span className="station-job-eyebrow is-done">Бүгін бітті</span>}
-              <strong className="station-job-customer">{c.name}</strong>
-              <button className="station-order-link">{c.num}</button>
-            </div>
-            <div className="station-job-badges">
-              <span className={`station-state${c.st==="pvc_started"?" is-active":""}${finished?" is-done":""}`}>
-                {finished?"✓ ДАЙЫН":c.st==="pvc_started"?"ЖҰМЫСТА":"КЕЗЕКТЕ"}
-              </span>
-              {!finished && <span className={`station-cut-badge${c.st.startsWith("cutting")?"":" is-done"}`}>{c.st.startsWith("cutting")?"Распил күтілуде":"✓ Распил дайын"}</span>}
-            </div>
-          </div>
-          <div className="worker-quantities" style={{marginTop:8}}><span><b>Ақ 0,4 мм</b></span><span><b>89</b> м ПВХ</span></div>
-        </article>;
-      })}
-    </div>
-    <WorkerHistorySummary orders={[pvcOrder]} materials={[]} stage="pvc" uid="worker" />
+    <article className="station-hero">
+      <div className="station-hero-head">
+        <div>
+          <span className="station-job-eyebrow">Қазір жұмыста</span>
+          <strong className="station-hero-customer">Алмат</strong>
+          <button className="station-order-link">#1042</button>
+        </div>
+        <span className="station-state is-working">🕐 Жұмыста</span>
+      </div>
+      <div className="station-hero-cut is-done">✅ Распил дайын</div>
+      <div className="station-hero-face">
+        <span className="mthumb is-sm is-empty" />
+        <span className="station-hero-face-name">Ақ • 0,4 мм</span>
+        <b className="station-hero-meters">89 м</b>
+      </div>
+      <div className="station-hero-time">
+        <span>🕐 Қалған уақыт: <b>10 мин</b></span>
+        <button className="station-hero-edit">✎</button>
+      </div>
+      <button className="btn btn-primary station-hero-done">✓ ПВХ дайын</button>
+      <button className="btn btn-outline station-hero-more">Толығырақ</button>
+    </article>
+    <section className="station-next">
+      <div className="station-next-head"><h3>Келесі заказдар</h3><span>3 заказ</span></div>
+      {[["Айбек","#1043","Дуб Вотан • 1 мм","42"],["Аружан","#1044","Кашемир • 2 мм","67"],["Нұрлан","#1045","Сұр • 0,4 мм","18"]].map(([n,c,f,m])=>(
+        <button key={c} className="station-next-row">
+          <span className="mthumb is-sm is-empty" />
+          <span className="station-next-who"><strong>{n} · {c}</strong><small>{f}</small></span>
+          <b className="station-next-meters">{m} м</b>
+          <span className="station-next-chev">›</span>
+        </button>))}
+    </section>
+    <section className="station-next is-done-section">
+      <div className="station-next-head"><h3>Бүгін бітті</h3><span>1 заказ</span></div>
+      <button className="station-next-row is-done">
+        <span className="mthumb is-sm is-empty" />
+        <span className="station-next-who"><strong>Ерасыл · #1040</strong><small>✓ Бүгін бітті</small></span>
+        <b className="station-next-meters">24 м</b>
+        <span className="station-next-chev">›</span>
+      </button>
+    </section>
     <div className="station-history-list">
       <WorkerHistoryCard order={pvcOrder} stage="pvc" uid="worker" materials={[]} to="#" />
       <WorkerHistoryCard order={{...pvcOrder, id:"pvc2", orderNumber:"#1041", customerName:"Айбек"} as Order} stage="pvc" uid="worker" materials={[]} to="#" />

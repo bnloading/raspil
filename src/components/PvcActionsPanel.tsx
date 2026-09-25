@@ -50,6 +50,7 @@ export function PvcLineActions({
   actor,
   onToast,
   showLabel = false,
+  layout = "row",
 }: {
   order: Order;
   job: OrderLineJob;
@@ -58,6 +59,10 @@ export function PvcLineActions({
   /** Include the material name — for a context, like the order-detail page, where nothing else
    *  already lists the materials. */
   showLabel?: boolean;
+  /** "hero" is the ПВХ panel's headline card: the remaining time on its own line with a pencil to
+   *  change it, and one full-width "ПВХ дайын" underneath. Same actions, laid out to be hit with
+   *  a thumb rather than read off a row. */
+  layout?: "row" | "hero";
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
@@ -153,6 +158,28 @@ export function PvcLineActions({
       setBusy(false);
     }
   };
+
+  if (layout === "hero") {
+    // Minutes left rather than a clock time: "Мерзімі: 24.09.2026, 17:40" makes the worker do the
+    // subtraction, and the answer they want is "how long have I got".
+    const leftMin = job.pvcExpectedCompletionAt
+      ? Math.round((job.pvcExpectedCompletionAt.toMillis() - Date.now()) / 60000)
+      : null;
+    return (
+      <>
+        {leftMin !== null && (
+          <div className="station-hero-time">
+            <span>🕐 Қалған уақыт: <b>{leftMin > 0 ? `${leftMin} мин` : "мерзімі өтті"}</b></span>
+            <button type="button" className="station-hero-edit" disabled={busy}
+              onClick={() => setMode("reestimate")} aria-label="Мерзімді өзгерту">✎</button>
+          </div>
+        )}
+        <button className="btn btn-primary station-hero-done" disabled={busy} onClick={handleComplete}>
+          ✓ ПВХ дайын
+        </button>
+      </>
+    );
+  }
 
   return (
     <div className="cutting-line-row is-active">
