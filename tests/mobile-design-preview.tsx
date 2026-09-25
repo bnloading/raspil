@@ -41,16 +41,16 @@ function PvcPanels(){
           <strong className="station-hero-customer">Алмат</strong>
           <button className="station-order-link">#1042</button>
         </div>
-        <span className="station-state is-working">🕐 Жұмыста</span>
+        <span className="station-state is-working">◷ Жұмыста</span>
       </div>
-      <div className="station-hero-cut is-done">✅ Распил дайын</div>
+      <div className="station-hero-cut is-done">✓ Распил дайын</div>
       <div className="station-hero-face">
         <span className="mthumb is-sm is-empty" />
         <span className="station-hero-face-name">Ақ • 0,4 мм</span>
         <b className="station-hero-meters">89 м</b>
       </div>
       <div className="station-hero-time">
-        <span>🕐 Қалған уақыт: <b>10 мин</b></span>
+        <span>◷ Қалған уақыт: <b>10 мин</b></span>
         <button className="station-hero-edit">✎</button>
       </div>
       <button className="btn btn-primary station-hero-done">✓ ПВХ дайын</button>

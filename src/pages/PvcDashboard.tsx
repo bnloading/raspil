@@ -103,10 +103,10 @@ export default function PvcDashboard() {
           <strong className="station-hero-customer">{order.customerName}</strong>
           <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
         </div>
-        <span className="station-state is-working">🕐 Жұмыста</span>
+        <span className="station-state is-working">◷ Жұмыста</span>
       </div>
       <div className={`station-hero-cut${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
-        {order.productionStatus.startsWith("cutting") ? "◷ Распил күтілуде" : "✅ Распил дайын"}
+        {order.productionStatus.startsWith("cutting") ? "◷ Распил күтілуде" : "✓ Распил дайын"}
       </div>
       {jobs.map(job => {
         const face = pvcFaceOf(order, job.index);

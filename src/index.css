@@ -9781,13 +9781,13 @@ body {
 .station-job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .station-job-identity { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .station-job-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7587; }
-.station-job-eyebrow.is-done { color: #0d8341; }
+.station-job-eyebrow.is-done { color: var(--station-done, #0d8341); }
 .station-job-customer { display: flex; align-items: center; gap: 6px; font-size: 18px; line-height: 1.2; font-weight: 700; color: #17213b; }
 .station-job-customer svg { width: 16px; height: 16px; flex: 0 0 auto; color: #9aa4b2; }
 .station-job-identity .station-order-link { align-self: flex-start; padding: 0; font-size: 12px; }
 .station-job-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .station-cut-badge { padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #fff3dd; color: #925000; white-space: nowrap; }
-.station-cut-badge.is-done { background: #e7f6ec; color: #087c34; }
+.station-cut-badge.is-done { background: var(--station-done-bg, #e7f6ec); color: var(--station-done-ink, #087c34); }
 
 /* ── ПВХ панелі, from the owner's mockup ──────────────────────────────────────
    One headline card for the order in hand, then a scannable list of what is next. The card is
@@ -9811,9 +9811,9 @@ body {
 .station-hero-customer { display: block; font-size: 26px; line-height: 1.15; font-weight: 800; color: #131a2c; }
 .station-hero .station-order-link { padding: 0; font-size: 13px; }
 /* Amber, and with a clock, because "Жұмыста" is a state that is still running. */
-.station-state.is-working { background: #fdf0d5; color: #8a4b00; }
+.station-state.is-working { background: var(--station-wait-bg, #fdf0d5); color: var(--station-wait-ink, #8a4b00); }
 .station-hero-cut { order: 2; margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #5c6675; }
-.station-hero-cut.is-done { color: #0d8341; }
+.station-hero-cut.is-done { color: var(--station-done, #0d8341); }
 
 /* The face being banded: swatch, colour and thickness, and the metres it is worth. */
 .station-hero-face {
@@ -9892,8 +9892,8 @@ body {
 .station-next-meters { flex: 0 0 auto; font-size: 17px; font-weight: 800; color: #131a2c; font-variant-numeric: tabular-nums; }
 .station-next-chev { flex: 0 0 auto; color: #667386; font-size: 18px; }
 .station-next.is-done-section { margin-top: 18px; }
-.station-next-row.is-done { border-color: #cfe9da; background: linear-gradient(180deg, #f3fbf6 0%, #fff 60%); }
-.station-next-row.is-done .station-next-who small { color: #0d8341; font-weight: 600; }
+.station-next-row.is-done { border-color: var(--station-done-edge, #cfe9da); background: var(--station-done-wash, linear-gradient(180deg, #f3fbf6 0%, #fff 60%)); }
+.station-next-row.is-done .station-next-who small { color: var(--station-done-ink, #0d8341); font-weight: 600; }
 
 /* "Бүгін дайын: 186 м" — the shift's own line at the foot of the list. */
 .station-day-foot {
@@ -9919,7 +9919,7 @@ body {
   padding: 12px 14px;
   background: #fff;
   border: 1px solid #e6e9f0;
-  border-left: 4px solid #f0b429;
+  border-left: 4px solid var(--station-wait, #f0b429);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(23, 33, 59, .04), 0 6px 16px rgba(23, 33, 59, .05);
 }
@@ -9931,15 +9931,15 @@ body {
 /* Finished today: the work is done, so the card steps back — but it steps back GREEN, because
    "I finished that one" is the thing the worker is looking for when they glance down the list. */
 .station-job.is-finished {
-  border-color: #cfe9da;
-  border-left-color: #0d8341;
-  background: linear-gradient(180deg, #f3fbf6 0%, #fff 56%);
+  border-color: var(--station-done-edge, #cfe9da);
+  border-left-color: var(--station-done, #0d8341);
+  background: var(--station-done-wash, linear-gradient(180deg, #f3fbf6 0%, #fff 56%));
   box-shadow: 0 1px 2px rgba(13, 131, 65, .06);
 }
 .station-job-status, .station-status-line { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #626d7f; }
 .station-state {
-  background: #fff3dd;
-  color: #8a4b00;
+  background: var(--station-wait-bg, #fff3dd);
+  color: var(--station-wait-ink, #8a4b00);
   padding: 4px 9px;
   border-radius: 999px;
   font-size: 10px;
@@ -9950,7 +9950,7 @@ body {
 .station-state.is-active { color: var(--station-accent-ink, #084bda); background: var(--station-soft, #eaf0ff); }
 /* The one badge that is filled rather than tinted: finishing an order is the event of the shift,
    and it should read as an answer, not as one more label. */
-.station-state.is-done { color: #fff; background: #0d8341; }
+.station-state.is-done { color: #fff; background: var(--station-done, #0d8341); }
 .station-order-link { display: block; min-height: 36px; padding: 2px 0; border: 0; background: none; color: #171c26; font: inherit; font-size: 18px; font-weight: 750; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
 .station-customer { display: flex; gap: 6px; align-items: center; color: #465164; font-size: 13px; margin-bottom: 8px; }
 .station-customer svg { width: 16px; height: 16px; }
@@ -9992,7 +9992,38 @@ body {
 /* --station-accent-ink: a darker cut of the same colour, for small glyphs sitting on the pale
    --station-soft tint where the accent itself is too faint to read (the ✓ on a history card
    measured 3.94:1). */
-.app-shell[data-worker-role="pvh"] { --station-accent: #00713f; --station-soft: #e8f7ee; --station-accent-ink: #04563a; }
+
+/* ПВХ runs monochrome, at the owner's request: white paper, black ink, nothing coloured competing
+   for attention. State is carried by weight and fill instead of hue — waiting is an outline,
+   finished is solid black — which is also the one reading that survives a scratched phone screen
+   in shop light. Every other station keeps its own colour. */
+.app-shell[data-worker-role="pvh"] {
+  --station-accent: #14161a;
+  --station-accent-ink: #14161a;
+  --station-soft: #f2f3f5;
+  --station-wait: #d7dae0;
+  --station-wait-bg: #f2f3f5;
+  --station-wait-ink: #4a4f59;
+  --station-done: #14161a;
+  --station-done-bg: #f2f3f5;
+  --station-done-ink: #14161a;
+  --station-done-edge: #d7dae0;
+  --station-done-wash: #fff;
+}
+/* Paper white, not the faint blue-grey the other stations sit on. */
+.app-shell[data-worker-role="pvh"] .app-main,
+.app-shell[data-worker-role="pvh"] .app-topbar,
+.app-shell[data-worker-role="pvh"] .bottom-nav { background: #fff; }
+.app-shell[data-worker-role="pvh"] .station-hero,
+.app-shell[data-worker-role="pvh"] .station-job,
+.app-shell[data-worker-role="pvh"] .station-next-row,
+.app-shell[data-worker-role="pvh"] .station-history-card,
+.app-shell[data-worker-role="pvh"] .station-day-foot {
+  border-color: #e3e5ea;
+  box-shadow: none;
+}
+/* The finished row is told apart by its solid badge, so it needs no tint of its own. */
+.app-shell[data-worker-role="pvh"] .station-next-row.is-done { background: #fff; }
 .worker-materials { display: grid; gap: 6px; margin: 8px 0; }
 .worker-material { border: 1px solid #e5e9f2; border-radius: 6px; padding: 7px 9px; }
 .worker-material-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
