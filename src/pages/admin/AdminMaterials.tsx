@@ -178,7 +178,8 @@ export default function AdminMaterials() {
   );
 }
 
-function MaterialsTab({
+/** Exported for tests/mobile-design-preview.tsx, the same way AdminReports exports DashboardTab. */
+export function MaterialsTab({
   materials,
   movements,
   loading,

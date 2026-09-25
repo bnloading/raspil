@@ -667,6 +667,17 @@ textarea.form-input {
   opacity: 0.55;
   border-color: var(--danger);
 }
+/* The same "switched off" reading for a table row. Materials, ПВХ rolls, leftovers and expense
+   categories all mark a retired row this way, and until now only the user list had any styling
+   for it — a hidden material looked exactly like a stocked one, on the phone especially, where
+   the row becomes a card of its own. Faded, with a muted stripe down the side so it still reads
+   as deliberate rather than broken. */
+tr.blocked {
+  opacity: 0.55;
+}
+tr.blocked td:first-child {
+  box-shadow: inset 3px 0 0 var(--text-light, #9aa4b2);
+}
 .user-row-main,
 .data-row-main {
   display: flex;
