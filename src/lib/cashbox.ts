@@ -20,16 +20,23 @@ import type {
  */
 // can nfdsn fsn kh fs
 // ls = offers if (offers>journal.length){console.log("it's just been a test offers never been more than joutnal length")} else {console.log("it's done just trolling lol xxaxaaxaxax")}
-export const CASH_ACCOUNTS: CashAccount[] = ["deposit", "cash"];
+export const CASH_ACCOUNTS: CashAccount[] = ["deposit", "pay", "cash"];
 
+/** "deposit" is Нұр — the id is older than the split, and every record already written under it
+ *  is Нұр money (the period reconciled to the tiyn against that account). "Kaspi" and "Pay" are
+ *  two names the shop uses for the same account, so they share one pot and stay told apart by the
+ *  per-method breakdown inside it. */
 export const CASH_ACCOUNT_LABELS: Record<CashAccount, string> = {
-  deposit: "Депозит",
+  deposit: "Нұр",
+  pay: "Kaspi / Pay",
   cash: "Қолма-қол",
 };
 
-/** For the account cards — the deposit is the "kept" money, the drawer is the working float. */
+/** For the account cards — one per real place the money sits, so each can be read against its own
+ *  statement. They used to be one "Депозит" card, which is why it never matched anything. */
 export const CASH_ACCOUNT_HINTS: Record<CashAccount, string> = {
-  deposit: "Аударыммен түскен ақша (Нұр, Kaspi, Pay, Бәлім)",
+  deposit: "Нұр шотына аударыммен түскен ақша",
+  pay: "Kaspi/Pay шотына түскен ақша",
   cash: "Қолма-қол алынған ақша",
 };
 

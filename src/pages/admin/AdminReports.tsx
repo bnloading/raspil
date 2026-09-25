@@ -607,8 +607,6 @@ function FinanceTab({
     () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate }),
     [payments, expenses, methods, openingBalanceTiyn, startDate],
   );
-  const depositTiyn = cashbox.accounts.find((a) => a.account === "deposit")?.balanceTiyn ?? 0;
-
   const periodName = period ? monthName(period) : "Барлық уақыт";
 
   const exportRows = () => [
@@ -697,6 +695,17 @@ function FinanceTab({
             <strong>{formatMoney(s.netProfitTiyn)}</strong>
           </div>
 
+          {/* The figure above is what the period BILLED, not what it collected: an order cut on
+              credit counts toward profit the day it is written, and the money may still be out
+              there. Saying how much of it is still owed is the difference between a profit figure
+              and a cash figure — the owner reads this line as "what is in the till". */}
+          {s.debtTiyn > 0 && (
+            <p className="finance-note is-warn">
+              ⚠️ Бұл сомада <strong>{formatMoney(s.debtTiyn)}</strong> — әлі төленбеген заказдардың
+              (қарызға кесілгендердің) сомасы. Ол қағазда пайда, бірақ кассаға әлі түспеген.
+            </p>
+          )}
+
           {/* Without this the page presents a margin nobody earned: a material with no purchase
               price costs 0, so its whole selling price lands in "profit". Saying which sheets are
               uncosted turns a wrong number into a number with a known gap. */}
@@ -746,12 +755,15 @@ function FinanceTab({
         {/* Purchase prices gate the profit split above by the same rule (firestore.rules: Admin
             only) — the деpozit balance itself isn't a purchase-price secret, but the owner asked
             for it to sit here, next to Таза пайда, rather than on the shared Manager Касса page. */}
-        {costsVisible && (
-          <div className="summary-row is-final">
-            <span>Депозиттегі ақша</span>
-            <strong className="jt-total">{formatMoney(depositTiyn)}</strong>
+        {/* One row per account, not one merged "Депозиттегі ақша": Нұр, Pay and Kaspi are separate
+            accounts with separate statements, and summing them produced a figure that matched none
+            of them. The drawer is left out — this block is about money on account. */}
+        {costsVisible && cashbox.accounts.filter((a) => a.account !== "cash").map((a) => (
+          <div key={a.account} className="summary-row is-final">
+            <span>{CASH_ACCOUNT_LABELS[a.account]} шотындағы ақша</span>
+            <strong className="jt-total">{formatMoney(a.balanceTiyn)}</strong>
           </div>
-        )}
+        ))}
       </div>
 
       <div className="wizard-actions" style={{ marginTop: 12 }}>

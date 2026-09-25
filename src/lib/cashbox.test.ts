@@ -201,11 +201,15 @@ describe("computeCashbox — the two pots", () => {
     expect(of(s, "deposit").balanceTiyn).toBe(T(50000));
   });
 
-  it("always reports both pots, even in a month nothing happened", () => {
+  it("always reports every pot, even in a month nothing happened", () => {
     const s = run({});
-    expect(s.accounts.map((a) => a.account)).toEqual(["deposit", "cash"]);
+    // One per place the shop actually keeps money: Нұр and Kaspi/Pay are separate accounts with
+    // separate statements, and folding them into a single "Депозит" is what stopped the page ever
+    // matching the bank. "deposit" is Нұр — the id predates the split — and "Kaspi" and "Pay" are
+    // two names for the one account, so they share a pot.
+    expect(s.accounts.map((a) => a.account)).toEqual(["deposit", "pay", "cash"]);
     expect(s.accounts.every((a) => a.inTiyn === 0 && a.outTiyn === 0)).toBe(true);
-    expect(CASH_ACCOUNT_LABELS.deposit).toBe("Депозит");
+    expect(CASH_ACCOUNT_LABELS.deposit).toBe("Нұр");
   });
 });
 

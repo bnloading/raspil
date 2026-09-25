@@ -168,6 +168,13 @@ export default function AdminHome() {
                 </div>
                 <div className="number">{formatMoney(netProfit.netProfitTiyn)}</div>
                 <div className="label">Таза пайда (барлық уақыт)</div>
+                {/* Billed, not collected — an order cut on credit counts here the day it is
+                    written. Without this line the card reads as cash in hand. */}
+                {netProfit.debtTiyn > 0 && (
+                  <div className="stat-card-note">
+                    оның {formatMoney(netProfit.debtTiyn)} — әлі төленбеген
+                  </div>
+                )}
               </div>
             )}
           </div>

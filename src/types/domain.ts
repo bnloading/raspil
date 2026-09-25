@@ -241,7 +241,13 @@ export interface PvcType {
  * answers no question the shop actually has - "how much is on the card" and "how much is in the
  * box" are separate questions with separate answers.
  */
-export type CashAccount = "deposit" | "cash";
+/**
+ * Which pot money sits in. One per place the shop actually keeps money, because that is what the
+ * owner checks it against: "deposit" is the Нұр account (the id predates the split and every
+ * record written under it is Нұр money), and "pay" is the Kaspi/Pay account — one account, two
+ * method names for it. Folding Kaspi/Pay in with Нұр is what made the Касса never match the bank.
+ */
+export type CashAccount = "deposit" | "pay" | "cash";
 
 export interface PaymentMethodDef {
   id: string;
