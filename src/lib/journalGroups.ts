@@ -1,3 +1,4 @@
+import { PVC_JOINTING_SURCHARGE_TIYN } from "./journal";
 import type { Order, OrderMaterialLine } from "../types/domain";
 
 /**
@@ -23,11 +24,18 @@ export interface LinePrice {
   sheetsAndPvcTiyn: number;
 }
 
-export function linePrice(line: Pick<OrderMaterialLine, "sheetQty" | "sheetPriceTiyn" | "pvcMeters" | "pvcPricePerMeterTiyn">): LinePrice {
+export function linePrice(
+  line: Pick<OrderMaterialLine, "sheetQty" | "sheetPriceTiyn" | "pvcMeters" | "pvcPricePerMeterTiyn" | "pvcJointed">,
+): LinePrice {
   const sheetsTiyn = Math.round(line.sheetQty * line.sheetPriceTiyn);
+  // Прифуговка is part of what these metres cost, exactly as computeLineTotals prices them for the
+  // row's own total. Leaving it out here did not lose the money — the journal derives "Қосымша" as
+  // total minus the lines — but it moved it: a jointed order read as if the surcharge were a
+  // cutting/delivery extra, and the line the customer is quoted from came out short.
+  const pvcRateTiyn = line.pvcPricePerMeterTiyn + (line.pvcJointed ? PVC_JOINTING_SURCHARGE_TIYN : 0);
   // Metres are fractional (176.4 м), so the product is rounded once, here, rather than leaving
   // a fraction of a tiyn to accumulate down a column of lines.
-  const pvcTiyn = Math.round(line.pvcMeters * line.pvcPricePerMeterTiyn);
+  const pvcTiyn = Math.round(line.pvcMeters * pvcRateTiyn);
   return { sheetsTiyn, pvcTiyn, sheetsAndPvcTiyn: sheetsTiyn + pvcTiyn };
 }
 

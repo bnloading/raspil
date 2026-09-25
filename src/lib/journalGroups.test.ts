@@ -9,6 +9,7 @@ import {
   rangeBetween,
   withRangePicked,
 } from "./journalGroups";
+import { PVC_JOINTING_SURCHARGE_TIYN, computeLineTotals } from "./journal";
 import type { Order } from "../types/domain";
 
 const T = (n: number) => n * 100;
@@ -56,6 +57,16 @@ describe("linePrice", () => {
   it("is zero for a line with nothing on it", () => {
     expect(linePrice({ sheetQty: 0, sheetPriceTiyn: T(16000), pvcMeters: 0, pvcPricePerMeterTiyn: T(200) }))
       .toEqual({ sheetsTiyn: 0, pvcTiyn: 0, sheetsAndPvcTiyn: 0 });
+  });
+
+  // The journal derives "Қосымша" as total − Σ lines, so a surcharge missing from a line does not
+  // vanish: it silently reappears as a cutting/delivery extra. The line has to carry its own.
+  it("prices прифуговка into the metres, the same way the row's own total does", () => {
+    const line = { sheetQty: 0, sheetPriceTiyn: 0, pvcMeters: 100, pvcPricePerMeterTiyn: T(200) };
+    expect(linePrice({ ...line, pvcJointed: true }).pvcTiyn)
+      .toBe(linePrice(line).pvcTiyn + 100 * PVC_JOINTING_SURCHARGE_TIYN);
+    expect(linePrice({ ...line, pvcJointed: true }).pvcTiyn)
+      .toBe(computeLineTotals({ ...line, pvcJointed: true }).pvcCostTiyn);
   });
 });
 
