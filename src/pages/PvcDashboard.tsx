@@ -70,7 +70,18 @@ export default function PvcDashboard() {
   const actor: Actor = { user, userData };
 
   const history = pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, true).length > 0);
-  const rows = view === "history" ? history : view === "mine" ? pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0) : [...inProgress, ...queued, ...awaitingCutting];
+  // Today's finished orders stay on the queue, at the bottom, instead of vanishing the moment the
+  // last material is marked done. Completing the work is the one moment a worker wants to see
+  // something happen, and the row simply disappearing read as if it had been lost.
+  //
+  // Deduped, because the two lists genuinely overlap: a two-material order with one side banded
+  // today and the other still open is both "in progress" and "finished something today", and
+  // listing it twice would put the same card on screen twice under one key.
+  const queueRows = [...inProgress, ...queued, ...awaitingCutting];
+  const queueIds = new Set(queueRows.map((o) => o.id));
+  const rows = view === "history" ? history
+    : view === "mine" ? pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0)
+    : [...queueRows, ...doneToday.filter((o) => !queueIds.has(o.id))];
   return <AppShell variant="station" title="ПВХ" subtitle={userData.name} contentWidth="narrow">
     {/* One segmented row — count and filter together, per the owner's mockup — replacing the old
         stats-then-tabs pair. "Тарих" stays out of it (historyInNav already puts that in the side/
@@ -96,7 +107,7 @@ export default function PvcDashboard() {
     {view === "queue" && <WorkerSalaryTeaser uid={user.uid} orders={orders} />}
     {view === "history" && <WorkerHistorySummary orders={orders} materials={materials} stage="pvc" uid={user.uid} />}
     {loading ? <Spinner /> : rows.length === 0 ? <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div> :
-      <div className={view === "history" ? "station-history-list" : "station-job-list"}>{rows.map(order => view === "history" ? <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} /> : <article key={order.id} className={`station-job ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>
+      <div className={view === "history" ? "station-history-list" : "station-job-list"}>{rows.map(order => view === "history" ? <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} /> : (() => { const finished = order.productionStatus === "ready" || order.productionStatus === "delivered"; return <article key={order.id} className={`station-job${order.productionStatus === "pvc_started" ? " is-active" : ""}${order.productionStatus === "ready" || order.productionStatus === "delivered" ? " is-finished" : ""}`}>
         {/* The customer leads, the order number sits under it and the two things the worker checks
             at a glance — am I on this one, and has the saw finished with it — are badges on the
             right. Per the owner's mockup; it replaces a status line that repeated the same facts
@@ -104,14 +115,21 @@ export default function PvcDashboard() {
         <div className="station-job-head">
           <div className="station-job-identity">
             {order.productionStatus === "pvc_started" && <span className="station-job-eyebrow">Қазір жұмыста</span>}
+            {finished && <span className="station-job-eyebrow is-done">Бүгін бітті</span>}
             <strong className="station-job-customer"><IconUsers />{order.customerName}</strong>
             <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
           </div>
           <div className="station-job-badges">
-            <span className={`station-state ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>{view === "history" ? "ОРЫНДАЛДЫ" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span>
-            <span className={`station-cut-badge${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
-              {order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "✓ Распил дайын"}
+            <span className={`station-state${order.productionStatus === "pvc_started" ? " is-active" : ""}${finished ? " is-done" : ""}`}>
+              {finished ? "✓ ДАЙЫН" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}
             </span>
+            {/* Once the order is finished the saw's state is old news — the one badge that matters
+                is the green one above it. */}
+            {!finished && (
+              <span className={`station-cut-badge${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
+                {order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "✓ Распил дайын"}
+              </span>
+            )}
           </div>
         </div>
         {/* Each material's own "Бастау"/"Дайын" sits inside that material's card, exactly as
@@ -131,7 +149,7 @@ export default function PvcDashboard() {
             and nothing they can act on, the same rule распил already follows. Where the order is
             now reads off the badges in the header instead of a third line repeating them. */}
         <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} /></details>
-      </article>)}</div>}
+      </article>; })())}</div>}
     {/* The day's own line, at the foot of the list where a shift ends — the segmented row up top
         counts orders, this counts the metres the worker is actually paid on. */}
     {metersToday > 0 && (

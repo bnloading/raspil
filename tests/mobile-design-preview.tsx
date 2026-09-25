@@ -34,6 +34,28 @@ function PvcPanels(){
       <button className="station-segmented-btn"><span>Жұмыста</span><b>1</b></button>
       <button className="station-segmented-btn is-active"><span>Дайын</span><b>12</b></button>
     </div>
+    <div className="station-job-list" style={{marginBottom:16}}>
+      {[{st:"pvc_started",name:"Алмат",num:"#1042"},{st:"pvc_queue",name:"Айбек",num:"#1043"},{st:"cutting_started",name:"Аружан",num:"#1044"},{st:"ready",name:"Нұрлан",num:"#1045"}].map(c=>{
+        const finished=c.st==="ready";
+        return <article key={c.num} className={`station-job${c.st==="pvc_started"?" is-active":""}${finished?" is-finished":""}`}>
+          <div className="station-job-head">
+            <div className="station-job-identity">
+              {c.st==="pvc_started" && <span className="station-job-eyebrow">Қазір жұмыста</span>}
+              {finished && <span className="station-job-eyebrow is-done">Бүгін бітті</span>}
+              <strong className="station-job-customer">{c.name}</strong>
+              <button className="station-order-link">{c.num}</button>
+            </div>
+            <div className="station-job-badges">
+              <span className={`station-state${c.st==="pvc_started"?" is-active":""}${finished?" is-done":""}`}>
+                {finished?"✓ ДАЙЫН":c.st==="pvc_started"?"ЖҰМЫСТА":"КЕЗЕКТЕ"}
+              </span>
+              {!finished && <span className={`station-cut-badge${c.st.startsWith("cutting")?"":" is-done"}`}>{c.st.startsWith("cutting")?"Распил күтілуде":"✓ Распил дайын"}</span>}
+            </div>
+          </div>
+          <div className="worker-quantities" style={{marginTop:8}}><span><b>Ақ 0,4 мм</b></span><span><b>89</b> м ПВХ</span></div>
+        </article>;
+      })}
+    </div>
     <WorkerHistorySummary orders={[pvcOrder]} materials={[]} stage="pvc" uid="worker" />
     <div className="station-history-list">
       <WorkerHistoryCard order={pvcOrder} stage="pvc" uid="worker" materials={[]} to="#" />

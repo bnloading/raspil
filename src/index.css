@@ -9780,7 +9780,8 @@ body {
    the worker actually checks ("am I on this" / "has the saw finished") on the right. */
 .station-job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .station-job-identity { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.station-job-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a93a5; }
+.station-job-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7587; }
+.station-job-eyebrow.is-done { color: #0d8341; }
 .station-job-customer { display: flex; align-items: center; gap: 6px; font-size: 18px; line-height: 1.2; font-weight: 700; color: #17213b; }
 .station-job-customer svg { width: 16px; height: 16px; flex: 0 0 auto; color: #9aa4b2; }
 .station-job-identity .station-order-link { align-self: flex-start; padding: 0; font-size: 12px; }
@@ -9803,13 +9804,47 @@ body {
   color: #626d7f;
 }
 .station-day-foot strong { font-size: 17px; color: var(--station-accent, #084bda); font-variant-numeric: tabular-nums; }
-.station-job-list { display: grid; gap: 10px; }
-.station-job { min-width: 0; padding: 10px; background: #fff; border: 1px solid #f2cd8d; border-radius: 8px; }
-.station-job.is-active { border-color: var(--station-accent, #084bda); box-shadow: 0 2px 8px #17213b06; }
+.station-job-list { display: grid; gap: 12px; }
+/* A card reads its state off its leading edge before any text is parsed: amber waiting, the
+   station's own colour while it is being worked, green once it is finished. The stripe is a
+   border rather than a pseudo-element so it survives the card growing to any height. */
+.station-job {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e6e9f0;
+  border-left: 4px solid #f0b429;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(23, 33, 59, .04), 0 6px 16px rgba(23, 33, 59, .05);
+}
+.station-job.is-active {
+  border-color: #e6e9f0;
+  border-left-color: var(--station-accent, #084bda);
+  box-shadow: 0 1px 2px rgba(23, 33, 59, .05), 0 10px 22px rgba(23, 33, 59, .09);
+}
+/* Finished today: the work is done, so the card steps back — but it steps back GREEN, because
+   "I finished that one" is the thing the worker is looking for when they glance down the list. */
+.station-job.is-finished {
+  border-color: #cfe9da;
+  border-left-color: #0d8341;
+  background: linear-gradient(180deg, #f3fbf6 0%, #fff 56%);
+  box-shadow: 0 1px 2px rgba(13, 131, 65, .06);
+}
 .station-job-status, .station-status-line { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #626d7f; }
-.station-state { background: #fff3dd; color: #925000; padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
-.station-state.is-active { color: var(--station-accent, #084bda); background: var(--station-soft, #eaf0ff); }
-.station-state.is-done { color: #087c34; background: #e7f6ec; }
+.station-state {
+  background: #fff3dd;
+  color: #8a4b00;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.station-state.is-active { color: var(--station-accent-ink, #084bda); background: var(--station-soft, #eaf0ff); }
+/* The one badge that is filled rather than tinted: finishing an order is the event of the shift,
+   and it should read as an answer, not as one more label. */
+.station-state.is-done { color: #fff; background: #0d8341; }
 .station-order-link { display: block; min-height: 36px; padding: 2px 0; border: 0; background: none; color: #171c26; font: inherit; font-size: 18px; font-weight: 750; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
 .station-customer { display: flex; gap: 6px; align-items: center; color: #465164; font-size: 13px; margin-bottom: 8px; }
 .station-customer svg { width: 16px; height: 16px; }
