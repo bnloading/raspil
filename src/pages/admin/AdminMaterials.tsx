@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -147,6 +148,7 @@ export default function AdminMaterials() {
       {tab === "materials" && (
         <MaterialsTab
           materials={materials}
+          movements={movements}
           loading={materialsLoading}
           canEdit={canEdit}
           onEdit={setEditingMaterial}
@@ -178,6 +180,7 @@ export default function AdminMaterials() {
 
 function MaterialsTab({
   materials,
+  movements,
   loading,
   canEdit,
   onEdit,
@@ -185,6 +188,9 @@ function MaterialsTab({
   showToast,
 }: {
   materials: Material[];
+  /** Every stock movement ever recorded — what decides whether a row can be deleted outright or
+   *  only hidden: a material with history behind it would leave that history pointing at nothing. */
+  movements: InventoryMovement[];
   loading: boolean;
   canEdit: boolean;
   onEdit: (m: Material | "new") => void;
@@ -196,6 +202,63 @@ function MaterialsTab({
   // balance that moves while the form is open is corrected against the new number, not a stale one.
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const correcting = materials.find((m) => m.id === correctingId) ?? null;
+
+  /**
+   * Takes a material out of circulation without touching anything that already happened.
+   *
+   * This is the right answer for most "бізде мұндай жоқ" rows: pickers only offer active
+   * materials (useMaterials(true)), so the catalogue stops offering it immediately, while every
+   * order, movement and price that referenced it stays readable. Reversible from the same menu.
+   */
+  const handleToggleActive = async (material: Material) => {
+    try {
+      await updateDoc(doc(db, "materials", material.id), { active: !material.active });
+      showToast(material.active ? `🚫 "${material.name}" жасырылды` : `✅ "${material.name}" қайта қосылды`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  /**
+   * Removes a material from the catalogue for good.
+   *
+   * Sheets the shop physically still has are the one hard stop: deleting a row with stock on it
+   * (or reserved against an order) would quietly drop that stock out of the warehouse, so those
+   * are refused and pointed at "Жасыру" instead. Everything else is the owner's call — an old row
+   * nobody stocks any more is exactly what this button is for — but a material with ledger history
+   * says so first, because movements carry only the id: once the row is gone those entries can no
+   * longer be named or opened, and the "Нақты кесілген" figure stops counting them.
+   */
+  const handleDelete = async (material: Material) => {
+    if (!auth.user || !auth.userData) return;
+    if (material.qtyOnHand !== 0 || material.reservedQty !== 0) {
+      const why = material.qtyOnHand !== 0
+        ? `қоймада ${material.qtyOnHand} лист тұр`
+        : `${material.reservedQty} лист резервте`;
+      showToast(`Өшіруге болмайды — ${why}. Алдымен қалдықты 0 қылыңыз, әлде «Жасыру» таңдаңыз.`);
+      return;
+    }
+    const used = movements.filter((mv) => mv.materialId === material.id).length;
+    const warning = used > 0
+      ? `\n\n⚠️ Бұл материалдың ${used} қозғалыс жазбасы бар — өшірілген соң олардың тарихын ашу мүмкін болмайды. Тарихты сақтағыңыз келсе, «Жасыру» таңдаңыз.`
+      : "";
+    if (!confirm(`"${material.name}" каталогтан біржола өшіріледі. Жалғастырасыз ба?${warning}`)) return;
+    try {
+      await deleteDoc(doc(db, "materials", material.id));
+      // The purchase price lives in its own Admin-only doc (materialCosts), so it has to go with
+      // it — otherwise a future material reusing the id would inherit a price nobody set.
+      await deleteDoc(doc(db, "materialCosts", material.id)).catch(() => {});
+      await logAudit(db, { user: auth.user, userData: auth.userData }, {
+        action: "material.deleted",
+        entityType: "material",
+        entityId: material.id,
+        before: { name: material.name, article: material.article, category: material.category },
+      });
+      showToast(`🗑 "${material.name}" өшірілді`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
 
   const handleReceipt = async (material: Material) => {
     const qtyStr = prompt(`"${material.name}" қабылдау мөлшері (лист):`);
@@ -290,7 +353,9 @@ function MaterialsTab({
                           items={[
                             { label: "Тарих", onClick: () => onLedger(m) },
                             { label: "Түзету · баға", onClick: () => setCorrectingId(m.id) },
-                            { label: "Өзгерту", onClick: () => onEdit(m) },
+                            { label: "Өзгерту · атын жөндеу", onClick: () => onEdit(m) },
+                            { label: m.active ? "Жасыру" : "Қайта қосу", onClick: () => handleToggleActive(m) },
+                            { label: "🗑 Өшіру", onClick: () => handleDelete(m) },
                           ]}
                         >
                           <button className="btn btn-outline btn-sm" onClick={() => handleReceipt(m)}>
