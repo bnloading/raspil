@@ -6,7 +6,8 @@ import { DashboardTab } from "../src/pages/admin/AdminReports";
 import { MaterialsTab } from "../src/pages/admin/AdminMaterials";
 import type { Material } from "../src/types/domain";
 import { WorkerDashboardHeader } from "../src/components/WorkerDashboardHeader";
-import { WorkerMaterialSummary } from "../src/components/WorkerMaterialSummary";
+import { WorkerMaterialSummary, WorkerHistorySummary } from "../src/components/WorkerMaterialSummary";
+import { WorkerHistoryCard } from "../src/components/WorkerHistoryCard";
 import { CustomerStatusCard } from "../src/components/CustomerStatusCard";
 import type { Order, Payment } from "../src/types/domain";
 import "../src/index.css";
@@ -23,10 +24,30 @@ const materials = [
   {id:"m4",name:"Ескі лист (қолданылмайды)",article:"",color:"",category:"ldsp",thicknessMm:16,sheetLengthMm:2750,sheetWidthMm:1830,sellingPriceTiyn:0,qtyOnHand:0,reservedQty:0,minStock:0,active:false},
 ] as unknown as Material[];
 
+/** The ПВХ station, both of its views, inside the shell that carries the pvh accent. */
+const pvcOrder = {...order, id:"pvc1", orderNumber:"#1042", customerName:"Алмат", productionStatus:"pvc_started", pvcMetersTotal:89,
+  lineJobs:[{index:0,materialId:"white",materialName:"Ақ 0,4 мм",sheetQty:5,pvcMeters:89,pvcByUid:"worker",pvcStartedAt:now,pvcCompletedAt:now}]} as unknown as Order;
+function PvcPanels(){
+  return <BrowserRouter><div className="app-shell station-shell" data-worker-role="pvh"><div className="app-main"><main className="app-content narrow" style={{padding:12}}>
+    <div className="station-segmented" role="tablist">
+      <button className="station-segmented-btn"><span>Кезек</span><b>3</b></button>
+      <button className="station-segmented-btn"><span>Жұмыста</span><b>1</b></button>
+      <button className="station-segmented-btn is-active"><span>Дайын</span><b>12</b></button>
+    </div>
+    <WorkerHistorySummary orders={[pvcOrder]} materials={[]} stage="pvc" uid="worker" />
+    <div className="station-history-list">
+      <WorkerHistoryCard order={pvcOrder} stage="pvc" uid="worker" materials={[]} to="#" />
+      <WorkerHistoryCard order={{...pvcOrder, id:"pvc2", orderNumber:"#1041", customerName:"Айбек"} as Order} stage="pvc" uid="worker" materials={[]} to="#" />
+    </div>
+    <div className="station-day-foot"><span>Бүгін дайын</span><strong>186 м</strong></div>
+  </main></div></div></BrowserRouter>;
+}
+
 function Preview(){const [view,setView]=useState("queue");const panel=new URLSearchParams(location.search).get("panel");
 if(panel==="ocr") return <OcrSmoke/>;
+if(panel==="pvh") return <PvcPanels/>;
 if(panel==="materials") return <div className="app-shell"><div style={{background:"#f8f9fc",minHeight:"100vh",padding:12}}><h1 style={{fontSize:22,margin:"6px 0 16px"}}>Қойма · Материалдар</h1><MaterialsTab materials={materials} movements={[]} loading={false} canEdit onEdit={()=>{}} onLedger={()=>{}} showToast={()=>{}} /></div></div>;
-if(!panel) return <div style={{padding:20, background:"#e9edf5", minHeight:"100vh"}}><h1 style={{fontSize:20}}>Тест деректері · нақты React компоненттері</h1><div style={{display:"flex", gap:24, alignItems:"flex-start"}}>{["worker","customer","reports","materials"].map(p=><iframe key={p} title={p} src={`?panel=${p}`} style={{flexShrink:0,width:375,height:850,border:"1px solid #ccd3df",borderRadius:16,background:"white"}} />)}</div></div>;
+if(!panel) return <div style={{padding:20, background:"#e9edf5", minHeight:"100vh"}}><h1 style={{fontSize:20}}>Тест деректері · нақты React компоненттері</h1><div style={{display:"flex", gap:24, alignItems:"flex-start"}}>{["worker","customer","reports","materials","pvh"].map(p=><iframe key={p} title={p} src={`?panel=${p}`} style={{flexShrink:0,width:375,height:850,border:"1px solid #ccd3df",borderRadius:16,background:"white"}} />)}</div></div>;
 return <BrowserRouter><div className="app-shell" data-worker-role="raspil"><div style={{background:"#f8f9fc",minHeight:"100vh",padding:12}}><h1 style={{fontSize:22,margin:"6px 0 16px"}}>{panel==="reports"?"Есептер":panel==="worker"?"Распил":"Тапсырыс барысы"}</h1>{panel==="reports"?<><div className="report-period">{["Бүгін","Апта","Ай"].map(x=><button className={`report-period-btn ${x==="Апта"?"is-active":""}`} key={x}>{x}</button>)}</div><DashboardTab orders={[order]} payments={payments} movements={[]} materials={[]} period="week" /></>:panel==="customer"?<CustomerStatusCard order={order}/>:<><WorkerDashboardHeader queued={3} active={1} done={6} view={view} onView={setView}/><article className="station-job is-active"><span className="station-state is-active">ЖҰМЫСТА</span><button className="station-order-link">#A-005</button><div className="station-customer">Нұрик</div><WorkerMaterialSummary order={order} materials={[]} stage="cutting" uid="worker"/><button className="btn btn-primary" style={{width:"100%"}}>Распил дайын</button></article></>}</div></div></BrowserRouter>;
 }
 createRoot(document.getElementById("root")!).render(<Preview/>);

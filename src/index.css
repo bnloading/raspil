@@ -151,7 +151,10 @@
   /* Text / lines */
   --text: #131a2c;
   --text-secondary: #6b7280;
-  --text-light: #9ca3af;
+  /* Was #9ca3af — 2.54:1 on white, which is below the 4.5 small text needs and is what made a
+     page of secondary labels (dates, units, sub-captions) read as blank paper on a phone in shop
+     light. Still clearly the quiet tier under --text-secondary, just legible. */
+  --text-light: #6b7587;
   --border: #e8eaf0;
   --border-strong: #d7dae3;
 
@@ -9724,10 +9727,10 @@ body {
   .cut-timer-clock { font-size: 1.35rem; }
 }
 /* Production stations — shared layout, individual stage accents. */
-.app-shell[data-worker-role="cnc"] { --station-accent: #084bda; --station-soft: #eaf0ff; }
-.app-shell[data-worker-role="sanding"] { --station-accent: #008b36; --station-soft: #e7f6ec; }
-.app-shell[data-worker-role="painting"] { --station-accent: #7435cf; --station-soft: #f1eaff; }
-.app-shell[data-worker-role="vacuum"] { --station-accent: #c94b00; --station-soft: #fff0e5; }
+.app-shell[data-worker-role="cnc"] { --station-accent: #084bda; --station-soft: #eaf0ff; --station-accent-ink: #063a9f; }
+.app-shell[data-worker-role="sanding"] { --station-accent: #008b36; --station-soft: #e7f6ec; --station-accent-ink: #045f26; }
+.app-shell[data-worker-role="painting"] { --station-accent: #7435cf; --station-soft: #f1eaff; --station-accent-ink: #55249b; }
+.app-shell[data-worker-role="vacuum"] { --station-accent: #c94b00; --station-soft: #fff0e5; --station-accent-ink: #8f3500; }
 .app-shell:has(.station-job-list), .app-shell:has(.station-stats, .station-segmented) { --primary: var(--station-accent, #084bda); --primary-soft: var(--station-soft, #eaf0ff); }
 .station-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px 0; border: 1px solid #dfe3eb; border-radius: 8px; background: #fff; }
 .station-stats > div { display: flex; flex-direction: column; gap: 4px; align-items: center; min-width: 0; }
@@ -9841,8 +9844,14 @@ body {
 .station-estimate > div > span { flex: 1; padding: 8px 4px; border: 1px solid #e3e6ed; border-radius: 999px; text-align: center; font-weight: 500; color: #465164; }
 .station-estimate .selected { background: var(--station-accent); color: #fff; border-color: var(--station-accent); font-weight: 700; }
 /* Compact floor cards and customer production timeline. */
-.app-shell[data-worker-role="raspil"] { --station-accent: #164ee8; --station-soft: #edf2ff; }
-.app-shell[data-worker-role="pvh"] { --station-accent: #008b50; --station-soft: #e8f7ee; }
+.app-shell[data-worker-role="raspil"] { --station-accent: #164ee8; --station-soft: #edf2ff; --station-accent-ink: #103aad; }
+/* Deepened from #008b50: white on that green measured 4.37:1 on the active segmented pill, just
+   under the 4.5 a worker reading a phone in shop light needs. The darker green clears it, and it
+   also reads better the other way round — the accent on white, which is where most of it lives. */
+/* --station-accent-ink: a darker cut of the same colour, for small glyphs sitting on the pale
+   --station-soft tint where the accent itself is too faint to read (the ✓ on a history card
+   measured 3.94:1). */
+.app-shell[data-worker-role="pvh"] { --station-accent: #00713f; --station-soft: #e8f7ee; --station-accent-ink: #04563a; }
 .worker-materials { display: grid; gap: 6px; margin: 8px 0; }
 .worker-material { border: 1px solid #e5e9f2; border-radius: 6px; padding: 7px 9px; }
 .worker-material-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
@@ -9882,14 +9891,16 @@ body {
 .station-history-card { min-width: 0; background: #fff; border: 1px solid #e5e9f2; border-radius: 8px; }
 .station-history-card summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; min-height: 44px; }
 .station-history-card summary::-webkit-details-marker { display: none; }
-.station-history-check { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: var(--station-soft, #e7f6ec); color: var(--station-accent, #087c34); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.station-history-check { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: var(--station-soft, #e7f6ec); color: var(--station-accent-ink, #04603a); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
 .station-history-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .station-history-identity strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .station-history-identity span { font-size: 11px; color: #687386; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .station-history-volume { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
 .station-history-volume strong { font-size: 12px; font-variant-numeric: tabular-nums; }
-.station-history-volume time { font-size: 10px; color: #90999f; }
-.station-history-chevron { flex: 0 0 auto; color: #9aa4b2; font-size: 12px; transition: transform .15s ease; }
+/* Was #90999f — 2.9:1 on white, which is what made the whole Тарих page read as blank paper.
+   These two carry the least ink on the card and were the hardest things on it to see. */
+.station-history-volume time { font-size: 10px; color: #5c6675; }
+.station-history-chevron { flex: 0 0 auto; color: #667386; font-size: 12px; transition: transform .15s ease; }
 .station-history-card[open] .station-history-chevron { transform: rotate(180deg); }
 .station-history-details { margin: 0 12px 12px; padding-top: 10px; border-top: 1px solid #eef1f6; }
 .station-history-details .worker-materials { margin: 0 0 8px; }
@@ -9921,7 +9932,9 @@ body {
 .production-step:first-child::before { display: none; }
 .production-step.is-done::before, .production-step.is-active::before { background: #3e64ff; }
 .production-step-dot { position: relative; z-index: 1; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c8cfdb; background: #fff; line-height: 10px; font-size: 9px; }
-.production-step.is-done .production-step-dot { border-color: #18b65b; background: #18b65b; color: #fff; }
+/* Deepened from #18b65b: the ✓ inside it is 9px of white on that green, which measured 2.66:1 —
+   the one glyph on the customer's progress line that says a stage is actually finished. */
+.production-step.is-done .production-step-dot { border-color: #0d8341; background: #0d8341; color: #fff; }
 .production-step.is-active .production-step-dot { border-color: #4165ff; box-shadow: 0 0 0 3px #4165ff10; }
 .production-step.is-skipped { opacity: .6; }
 .workshop-row .corder-tiles { grid-column: 1 / -1; width: 100%; margin: 0; }
