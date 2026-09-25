@@ -8,7 +8,6 @@ import { useAuth } from "../AuthContext";
 import { Spinner, Toast } from "../components";
 import { AppShell } from "../components/layout/AppShell";
 import { PvcLineActions } from "../components/PvcActionsPanel";
-import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { WorkerSalaryTeaser } from "../components/WorkerSalaryTeaser";
 import { IconUsers } from "../components/layout/icons";
@@ -58,6 +57,14 @@ export default function PvcDashboard() {
     const today = dayKey(new Date());
     return pvcOrders.filter(o => jobsOf(o).some(j => j.pvcByUid === user?.uid && j.pvcCompletedAt && dayKey(j.pvcCompletedAt.toDate()) === today));
   }, [pvcOrders, user?.uid]);
+  /** "Бүгін дайын: 186 м" — the metres actually banded today, not the order count. Counted per
+   *  line, so a two-material order this worker only finished half of contributes only that half. */
+  const metersToday = useMemo(() => {
+    const today = dayKey(new Date());
+    return pvcOrders.reduce((sum, o) => sum + jobsOf(o).reduce((s, j) =>
+      j.pvcByUid === user?.uid && j.pvcCompletedAt && dayKey(j.pvcCompletedAt.toDate()) === today
+        ? s + (j.pvcMeters ?? 0) : s, 0), 0);
+  }, [pvcOrders, user?.uid]);
 
   if (!user || !userData) return <Spinner />;
   const actor: Actor = { user, userData };
@@ -65,14 +72,48 @@ export default function PvcDashboard() {
   const history = pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, true).length > 0);
   const rows = view === "history" ? history : view === "mine" ? pvcOrders.filter(o => workerJobs(o, "pvc", user.uid, false).length > 0) : [...inProgress, ...queued, ...awaitingCutting];
   return <AppShell variant="station" title="ПВХ" subtitle={userData.name} contentWidth="narrow">
-    <WorkerDashboardHeader historyInNav queued={queued.length} active={inProgress.length} done={doneToday.length} view={view} onView={next => setParams(next === "queue" ? {} : { view: next })} />
+    {/* One segmented row — count and filter together, per the owner's mockup — replacing the old
+        stats-then-tabs pair. "Тарих" stays out of it (historyInNav already puts that in the side/
+        bottom nav instead), so these three read as "Кезек → Жұмыста → Дайын", the worker's own
+        order of the day. */}
+    <div className="station-segmented" role="tablist" aria-label="Тапсырмалар сүзгісі">
+      <button type="button" role="tab" aria-selected={view === "queue"}
+        className={`station-segmented-btn${view === "queue" ? " is-active" : ""}`}
+        onClick={() => setParams({})}>
+        <span>Кезек</span><b>{queued.length}</b>
+      </button>
+      <button type="button" role="tab" aria-selected={view === "mine"}
+        className={`station-segmented-btn${view === "mine" ? " is-active" : ""}`}
+        onClick={() => setParams({ view: "mine" })}>
+        <span>Жұмыста</span><b>{inProgress.length}</b>
+      </button>
+      <button type="button" role="tab" aria-selected={view === "history"}
+        className={`station-segmented-btn${view === "history" ? " is-active" : ""}`}
+        onClick={() => setParams({ view: "history" })}>
+        <span>Дайын</span><b>{doneToday.length}</b>
+      </button>
+    </div>
     {view === "queue" && <WorkerSalaryTeaser uid={user.uid} orders={orders} />}
     {view === "history" && <WorkerHistorySummary orders={orders} materials={materials} stage="pvc" uid={user.uid} />}
     {loading ? <Spinner /> : rows.length === 0 ? <div className="empty-state"><p>Бұл тізімде тапсырма жоқ</p></div> :
       <div className={view === "history" ? "station-history-list" : "station-job-list"}>{rows.map(order => view === "history" ? <WorkerHistoryCard key={order.id} order={order} stage="pvc" uid={user.uid} materials={materials} to={`/pvc/order/${order.id}`} /> : <article key={order.id} className={`station-job ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>
-        <div className="station-job-status"><span className={`station-state ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>{view === "history" ? "ОРЫНДАЛДЫ" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{order.priority + 1}</span></div>
-        <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
-        <div className="station-customer"><IconUsers />{order.customerName}</div>
+        {/* The customer leads, the order number sits under it and the two things the worker checks
+            at a glance — am I on this one, and has the saw finished with it — are badges on the
+            right. Per the owner's mockup; it replaces a status line that repeated the same facts
+            in three separate places down the card. */}
+        <div className="station-job-head">
+          <div className="station-job-identity">
+            {order.productionStatus === "pvc_started" && <span className="station-job-eyebrow">Қазір жұмыста</span>}
+            <strong className="station-job-customer"><IconUsers />{order.customerName}</strong>
+            <button className="station-order-link" onClick={() => navigate(`/pvc/order/${order.id}`)}>{order.orderNumber}</button>
+          </div>
+          <div className="station-job-badges">
+            <span className={`station-state ${order.productionStatus === "pvc_started" ? "is-active" : ""}`}>{view === "history" ? "ОРЫНДАЛДЫ" : order.productionStatus === "pvc_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span>
+            <span className={`station-cut-badge${order.productionStatus.startsWith("cutting") ? "" : " is-done"}`}>
+              {order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "✓ Распил дайын"}
+            </span>
+          </div>
+        </div>
         {/* Each material's own "Бастау"/"Дайын" sits inside that material's card, exactly as
             распил does. A separate panel underneath repeated every material name and stacked the
             buttons below the list, so a two-material order read as four rows of the same thing. */}
@@ -87,11 +128,18 @@ export default function PvcDashboard() {
             : (job) => <PvcLineActions order={order} job={job} actor={actor} onToast={showToast} />}
         />
         {/* No payment badge: whether the customer has paid is none of the edge-bander's business
-            and nothing they can act on, the same rule распил already follows. What is left is the
-            one thing they need — where the order is. */}
-        <div className="station-status-line"><span>{order.productionStatus === "pvc_started" ? "ПВХ жабыстырылуда" : order.productionStatus.startsWith("cutting") ? "Распил күтілуде" : "Кезекте"}</span></div>
+            and nothing they can act on, the same rule распил already follows. Where the order is
+            now reads off the badges in the header instead of a third line repeating them. */}
         <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
       </article>)}</div>}
+    {/* The day's own line, at the foot of the list where a shift ends — the segmented row up top
+        counts orders, this counts the metres the worker is actually paid on. */}
+    {metersToday > 0 && (
+      <div className="station-day-foot">
+        <span>Бүгін дайын</span>
+        <strong>{metersToday.toLocaleString("kk-KZ", { maximumFractionDigits: 1 })} м</strong>
+      </div>
+    )}
     <Toast message={message} visible={visible} />
   </AppShell>;
 }

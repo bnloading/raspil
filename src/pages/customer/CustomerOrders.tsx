@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -15,7 +15,7 @@ import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
 import { formatMdfArea } from "../../lib/mdfJournal";
 import { customerOrderCode } from "../../lib/orderCode";
-import { dayKey, formatDayMonth } from "../../lib/dates";
+import { dayKey, formatDateDMY, formatDayMonth } from "../../lib/dates";
 import { orderTiles } from "../../lib/orderTiles";
 import { isCancellable } from "../../lib/statuses";
 import type { Order } from "../../types/domain";
@@ -35,24 +35,35 @@ const BUCKET_LABELS: Record<Bucket, string> = {
 };
 
 /**
- * "Бүгінгі / Кешегі" — a customer who orders often wants to jump straight to what they placed
- * today or yesterday, rather than scrolling past it to reach the older ones the status buckets
- * alone can leave up top (a paid, finished order from last month still outranks today's brand-new
- * one there). Independent of Bucket: the two combine, e.g. "Бүгінгі" + "Қарыз" together.
+ * "Бүгін / Кеше / Күн таңдау" — a customer who orders often wants to jump straight to what they
+ * placed today or yesterday, rather than scrolling past it to reach the older ones the status
+ * buckets alone can leave up top (a paid, finished order from last month still outranks today's
+ * brand-new one there). "Барлығы" is the one option not in the owner's mockup — dropping it would
+ * have meant a customer could never see their full order list at once, so it stays as the default.
+ * Independent of Bucket: the two combine, e.g. "Бүгін" + "Қарыз" together.
  */
-type DatePeriod = "all" | "today" | "yesterday";
+type DatePeriod = "all" | "today" | "yesterday" | "custom";
 
 const DATE_PERIOD_LABELS: Record<DatePeriod, string> = {
-  all: "Барлық күн",
-  today: "Бүгінгі",
-  yesterday: "Кешегі",
+  all: "Барлығы",
+  today: "Бүгін",
+  yesterday: "Кеше",
+  custom: "📅 Күн таңдау",
 };
 
-function inDatePeriod(order: Order, datePeriod: DatePeriod, todayKey: string, yesterdayKey: string): boolean {
+function inDatePeriod(
+  order: Order,
+  datePeriod: DatePeriod,
+  todayKey: string,
+  yesterdayKey: string,
+  customDate: string,
+): boolean {
   if (datePeriod === "all") return true;
   if (!order.createdAt) return false;
   const day = dayKey(order.createdAt);
-  return datePeriod === "today" ? day === todayKey : day === yesterdayKey;
+  if (datePeriod === "today") return day === todayKey;
+  if (datePeriod === "yesterday") return day === yesterdayKey;
+  return !!customDate && day === customDate;
 }
 
 function inBucket(order: Order, bucket: Bucket): boolean {
@@ -93,6 +104,9 @@ export default function CustomerOrders() {
   const [search, setSearch] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
   const [datePeriod, setDatePeriod] = useState<DatePeriod>("all");
+  const [customDate, setCustomDate] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
   const [tab, setTab] = useState<Tab>("mine");
 
   // Computed once per render rather than per order — dayKey() does real Intl formatting work.
@@ -109,15 +123,6 @@ export default function CustomerOrders() {
     [orders],
   );
 
-  const dateCounts = useMemo(
-    () => ({
-      all: orders.length,
-      today: orders.filter((o) => inDatePeriod(o, "today", todayKey, yesterdayKey)).length,
-      yesterday: orders.filter((o) => inDatePeriod(o, "yesterday", todayKey, yesterdayKey)).length,
-    }),
-    [orders, todayKey, yesterdayKey],
-  );
-
   // The customer's own outstanding balance — never the shop's total.
   const myDebt = useMemo(
     () =>
@@ -131,9 +136,28 @@ export default function CustomerOrders() {
     const q = search.trim().toLowerCase();
     return orders.filter((o) =>
       inBucket(o, bucket) &&
-      inDatePeriod(o, datePeriod, todayKey, yesterdayKey) &&
+      inDatePeriod(o, datePeriod, todayKey, yesterdayKey, customDate) &&
       (!q || o.orderNumber.toLowerCase().includes(q)));
-  }, [orders, bucket, datePeriod, todayKey, yesterdayKey, search]);
+  }, [orders, bucket, datePeriod, todayKey, yesterdayKey, customDate, search]);
+
+  // Any filter change can strand the reader on a page number that no longer has that many pages —
+  // back to the first page whenever what's being shown changes under them.
+  useEffect(() => setPage(1), [bucket, datePeriod, customDate, search]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, pageCount);
+  const paged = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
+
+  /**
+   * "24.09.2026 · 8 заказ" above the list — only means something once the list is scoped to one
+   * actual day (Бүгін/Кеше/a picked date); across "Барлығы" the orders span many days at once, so
+   * no single date belongs at the top of it.
+   */
+  const dayHeading =
+    datePeriod === "today" ? todayKey
+    : datePeriod === "yesterday" ? yesterdayKey
+    : datePeriod === "custom" && customDate ? customDate
+    : null;
 
   const handleCancel = async (orderId: string) => {
     if (!confirm("Заказды бас тартуды қалайсыз ба?")) return;
@@ -213,22 +237,33 @@ export default function CustomerOrders() {
 
       {/* A customer who orders often has today's brand-new order buried under last month's — this
           scopes the list to "when" before (or together with) the status buckets below scope it to
-          "what state". */}
+          "what state". Plain pills, no counts — the KPI row above already has the numbers, and
+          repeating them here on every pill was clutter the owner's mockup doesn't carry either. */}
       <div className="status-filter-row is-compact">
         {(Object.keys(DATE_PERIOD_LABELS) as DatePeriod[]).map((p) => (
           <button
             key={p}
             className={`status-filter-btn${datePeriod === p ? " active" : ""}`}
-            onClick={() => setDatePeriod(p)}
+            onClick={() => {
+              setDatePeriod(p);
+              if (p === "custom" && !customDate) setCustomDate(todayKey);
+            }}
           >
             <span>{DATE_PERIOD_LABELS[p]}</span>
-            <b>{dateCounts[p]}</b>
           </button>
         ))}
+        {datePeriod === "custom" && (
+          <input
+            type="date"
+            className="form-input corder-date-picker"
+            value={customDate}
+            max={todayKey}
+            aria-label="Күнді таңдау"
+            onChange={(e) => setCustomDate(e.target.value)}
+          />
+        )}
       </div>
 
-      {/* Exactly four fixed buckets — always shown in full, never a scrolling row (unlike the
-          open-ended per-status filter on the staff order lists). */}
       <div className="status-filter-row is-compact">
         {(Object.keys(BUCKET_LABELS) as Bucket[]).map((b) => (
           <button
@@ -237,12 +272,19 @@ export default function CustomerOrders() {
             onClick={() => setBucket(b)}
           >
             <span>{BUCKET_LABELS[b]}</span>
-            <b>{counts[b]}</b>
           </button>
         ))}
       </div>
 
       <div className="orders-section">
+        {/* "24.09.2026 · 8 заказ" — only once the list is scoped to one actual day; meaningless
+            (and not shown) across "Барлығы", which spans every day at once. */}
+        {dayHeading && !loading && (
+          <div className="corder-day-heading">
+            <strong>{formatDateDMY(new Date(`${dayHeading}T12:00:00+05:00`))}</strong>
+            <span>{filtered.length} заказ</span>
+          </div>
+        )}
         {loading ? (
           <Spinner />
         ) : filtered.length === 0 ? (
@@ -257,7 +299,7 @@ export default function CustomerOrders() {
           </div>
         ) : (
           <div className="ocards">
-            {filtered.map((o) => {
+            {paged.map((o) => {
               const tiles = orderTiles(o);
               return (
               <div key={o.id} className="ocard is-static corder-card">
@@ -356,6 +398,19 @@ export default function CustomerOrders() {
               </div>
               );
             })}
+          </div>
+        )}
+        {!loading && filtered.length > PAGE_SIZE && (
+          <div className="pagination-row">
+            <button className="btn btn-outline btn-sm" disabled={pageSafe <= 1} onClick={() => setPage((p) => p - 1)}>
+              ← Алдыңғы
+            </button>
+            <span>
+              {(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, filtered.length)} / {filtered.length} заказ
+            </span>
+            <button className="btn btn-outline btn-sm" disabled={pageSafe >= pageCount} onClick={() => setPage((p) => p + 1)}>
+              Келесі →
+            </button>
           </div>
         )}
       </div>

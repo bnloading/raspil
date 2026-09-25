@@ -5158,6 +5158,15 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+/* The caveat under a stat's number — "оның X ₸ әлі төленбеген". Deliberately quiet: it qualifies
+   the figure above without competing with it. */
+.stat-card-note {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--warning-text, #b45309);
+}
+
 .stat-card-icon {
   width: 36px;
   height: 36px;
@@ -9003,6 +9012,21 @@ body {
 .corder-stage.is-red { background: var(--danger-light); color: var(--danger); border-color: var(--danger); }
 .corder-stage.is-grey { background: var(--surface); color: var(--text-secondary); border-color: var(--border); }
 
+/* "24.09.2026 · 8 заказ" above a list already scoped to one day (Бүгін/Кеше/a picked date). */
+.corder-day-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 2px 10px;
+  font-size: 0.9rem;
+}
+.corder-day-heading strong { color: var(--text); }
+.corder-day-heading span { color: var(--text-secondary); font-size: 0.82rem; }
+
+/* Sits inline with the "📅 Күн таңдау" pill it belongs to, not on a row of its own. */
+.corder-date-picker { width: auto; min-width: 150px; padding: 6px 10px; font-size: 0.82rem; }
+
 /* Sheets, edging and ХДФ as three figures. They are counted separately in the shop — and ХДФ
    takes no edging at all — so one run-on line made the ПВХ number read as if it covered them all. */
 .corder-tiles {
@@ -9693,7 +9717,7 @@ body {
 .app-shell[data-worker-role="sanding"] { --station-accent: #008b36; --station-soft: #e7f6ec; }
 .app-shell[data-worker-role="painting"] { --station-accent: #7435cf; --station-soft: #f1eaff; }
 .app-shell[data-worker-role="vacuum"] { --station-accent: #c94b00; --station-soft: #fff0e5; }
-.app-shell:has(.station-job-list), .app-shell:has(.station-stats) { --primary: var(--station-accent, #084bda); --primary-soft: var(--station-soft, #eaf0ff); }
+.app-shell:has(.station-job-list), .app-shell:has(.station-stats, .station-segmented) { --primary: var(--station-accent, #084bda); --primary-soft: var(--station-soft, #eaf0ff); }
 .station-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px 0; border: 1px solid #dfe3eb; border-radius: 8px; background: #fff; }
 .station-stats > div { display: flex; flex-direction: column; gap: 4px; align-items: center; min-width: 0; }
 .station-stats > div + div { border-left: 1px solid #e6e9ef; }
@@ -9708,6 +9732,63 @@ body {
 .station-tabs { display: flex; gap: 4px; background: #eef1f6; border-radius: 10px; padding: 4px; margin: 12px 0 16px; }
 .station-tabs button { flex: 1; min-height: 40px; background: transparent; border: 0; border-radius: 8px; color: #687386; cursor: pointer; font: inherit; font-size: 13px; }
 .station-tabs button[aria-pressed="true"] { color: #fff; background: var(--station-accent, #084bda); font-weight: 600; }
+
+/* "Кезек 3 · Жұмыста 1 · Дайын 12" — count and filter in one pill, replacing the old
+   stats-row-then-tabs-row pair (see PvcDashboard.tsx). Plain outline at rest, filled with the
+   station's own accent once active, exactly like the owner's mockup. */
+.station-segmented { display: flex; gap: 8px; margin: 0 0 16px; }
+.station-segmented-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #dfe3eb;
+  border-radius: 999px;
+  color: #465164;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.station-segmented-btn b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.station-segmented-btn.is-active {
+  background: var(--station-accent, #084bda);
+  border-color: var(--station-accent, #084bda);
+  color: #fff;
+}
+.station-segmented-btn:focus-visible { outline: 2px solid var(--station-accent, #084bda); outline-offset: 2px; }
+
+/* Card header from the owner's mockup: customer first, order number under it, and the two badges
+   the worker actually checks ("am I on this" / "has the saw finished") on the right. */
+.station-job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.station-job-identity { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.station-job-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a93a5; }
+.station-job-customer { display: flex; align-items: center; gap: 6px; font-size: 18px; line-height: 1.2; font-weight: 700; color: #17213b; }
+.station-job-customer svg { width: 16px; height: 16px; flex: 0 0 auto; color: #9aa4b2; }
+.station-job-identity .station-order-link { align-self: flex-start; padding: 0; font-size: 12px; }
+.station-job-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.station-cut-badge { padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #fff3dd; color: #925000; white-space: nowrap; }
+.station-cut-badge.is-done { background: #e7f6ec; color: #087c34; }
+
+/* "Бүгін дайын: 186 м" — the shift's own line at the foot of the list. */
+.station-day-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #dfe3eb;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #626d7f;
+}
+.station-day-foot strong { font-size: 17px; color: var(--station-accent, #084bda); font-variant-numeric: tabular-nums; }
 .station-job-list { display: grid; gap: 10px; }
 .station-job { min-width: 0; padding: 10px; background: #fff; border: 1px solid #f2cd8d; border-radius: 8px; }
 .station-job.is-active { border-color: var(--station-accent, #084bda); box-shadow: 0 2px 8px #17213b06; }
@@ -9733,15 +9814,15 @@ body {
 .station-job .wizard-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .station-job .wizard-actions > .btn-outline { flex: 1; }
 .station-job .estimated-time-input { min-width: 0; max-width: 130px; }
-.app-shell[data-worker-role]:has(.station-stats) .topbar-title { color: var(--station-accent, #084bda); font-size: 22px; }
-.app-shell:has(.station-stats) .account-avatar { color: var(--station-accent, #084bda); background: var(--station-soft, #eaf0ff); }
-.app-shell:has(.station-stats) .bottom-nav-item.active { color: var(--station-accent, #084bda); }
+.app-shell[data-worker-role]:has(.station-stats, .station-segmented) .topbar-title { color: var(--station-accent, #084bda); font-size: 22px; }
+.app-shell:has(.station-stats, .station-segmented) .account-avatar { color: var(--station-accent, #084bda); background: var(--station-soft, #eaf0ff); }
+.app-shell:has(.station-stats, .station-segmented) .bottom-nav-item.active { color: var(--station-accent, #084bda); }
 .station-tabs button:focus-visible, .station-order-link:focus-visible { outline: 2px solid var(--station-accent, #084bda); outline-offset: 3px; }
 @media (max-width: 767px) {
-  .app-shell:has(.station-stats) .app-content { padding: 12px 16px 100px; }
-  .app-shell:has(.station-stats) .app-topbar { border-bottom: 0; background: #f8f9fc; }
-  .app-shell:has(.station-stats) .app-main { background: #f8f9fc; }
-  .app-shell:has(.station-stats) .bottom-nav { background: #f8f9fc; border-top: 1px solid #e3e6ed; }
+  .app-shell:has(.station-stats, .station-segmented) .app-content { padding: 12px 16px 100px; }
+  .app-shell:has(.station-stats, .station-segmented) .app-topbar { border-bottom: 0; background: #f8f9fc; }
+  .app-shell:has(.station-stats, .station-segmented) .app-main { background: #f8f9fc; }
+  .app-shell:has(.station-stats, .station-segmented) .bottom-nav { background: #f8f9fc; border-top: 1px solid #e3e6ed; }
 }
 @media (min-width: 768px) { .station-job-list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 .station-estimate { font-size: 12px; color: #626d7f; font-weight: 600; margin: 10px 0; }
