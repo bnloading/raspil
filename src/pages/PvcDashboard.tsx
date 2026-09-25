@@ -130,7 +130,7 @@ export default function PvcDashboard() {
         {/* No payment badge: whether the customer has paid is none of the edge-bander's business
             and nothing they can act on, the same rule распил already follows. Where the order is
             now reads off the badges in the header instead of a third line repeating them. */}
-        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} onOpen={() => navigate(`/pvc/order/${order.id}`)} /></details>
+        <details className="worker-details"><summary>Бөлшектер, жиектер және ескертпе</summary><CurrentPvcOrder order={order} pvcTypesById={pvcTypesById} onToast={showToast} /></details>
       </article>)}</div>}
     {/* The day's own line, at the foot of the list where a shift ends — the segmented row up top
         counts orders, this counts the metres the worker is actually paid on. */}
@@ -148,12 +148,10 @@ function CurrentPvcOrder({
   order,
   pvcTypesById,
   onToast,
-  onOpen,
 }: {
   order: Order;
   pvcTypesById: Map<string, PvcType>;
   onToast: (m: string) => void;
-  onOpen: () => void;
 }) {
   const { parts, loading } = useOrderParts(order.id);
   const [note, setNote] = useState(order.productionNote ?? "");
@@ -229,11 +227,10 @@ function CurrentPvcOrder({
 
       {order.adminNote && <div className="worker-manager-note">📋 Менеджер: {order.adminNote}</div>}
 
-      <div className="worker-current-links">
-        <button className="btn btn-outline btn-sm" onClick={onOpen}>
-          ⊞ ПВХ детальдарын көру
-        </button>
-      </div>
+      {/* No "detalьдарын көру" link: the part list it opened is the cutter's sheet, not the edge
+          bander's — what this station works from is the colour, the thickness and the metres,
+          all of which are already on the card. The order number at the top still opens the order
+          for anyone who does need it. */}
 
       <div className="form-group">
         <input
