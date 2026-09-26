@@ -18,6 +18,7 @@ const AdminOrderDetail = lazy(() => import("./pages/admin/AdminOrderDetail"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMaterials = lazy(() => import("./pages/admin/AdminMaterials"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const AdminProfit = lazy(() => import("./pages/admin/AdminProfit"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
 const ManagerCashbox = lazy(() => import("./pages/manager/ManagerCashbox"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
@@ -186,6 +187,16 @@ export default function App() {
               element={
                 <RouteGuard roles={["admin", "manager"]}>
                   <AdminMdfHome />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/admin/profit"
+              element={
+                // Purchase prices and the margin on them: the owner's alone, as materialCosts is in
+                // firestore.rules.
+                <RouteGuard roles={["admin"]}>
+                  <AdminProfit />
                 </RouteGuard>
               }
             />

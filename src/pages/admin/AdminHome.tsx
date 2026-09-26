@@ -1,9 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { AttendanceTodayCard } from "../../components/AttendanceTodayCard";
+import { AdminPhoneSummary } from "../../components/AdminPhoneSummary";
 import { DonutChart } from "../../components/charts/DonutChart";
 import { LineChart } from "../../components/charts/LineChart";
 import { ProductionStatusBadge } from "../../components/StatusBadge";
@@ -22,6 +25,7 @@ import { useExpenseCategories } from "../../hooks/useExpenseCategories";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useAppSettings } from "../../hooks/useAppSettings";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
 import { exportCsv } from "../../lib/exportTable";
@@ -33,9 +37,12 @@ import {
   computeProductionBreakdown,
   computePaymentSummary,
   computeQueueOrders,
+  computeSheetsCutByPeriod,
 } from "../../lib/dashboardStats";
-import { computeFinanceSummary } from "../../lib/finance";
+import { computeCashbox } from "../../lib/cashbox";
+import { computeOrderProfits, formatStartDate } from "../../lib/orderProfit";
 import { departmentOf, departmentOfOrder } from "../../lib/rbac";
+import type { PaymentMethodDef } from "../../types/domain";
 
 export default function AdminHome() {
   const { userData } = useAuth();
@@ -66,11 +73,22 @@ export default function AdminHome() {
   // Таза пайда needs the shop's purchase prices, which firestore.rules keeps Admin-only — this
   // page is already Admin-only, so the listen always succeeds, but the same available flag
   // AdminReports.tsx checks is read here too rather than assumed, in case that ever changes.
-  const { costs: purchaseByMaterialId, available: netProfitVisible, loading: costsLoading } = useMaterialCosts();
-  const { settings } = useAppSettings();
+  const { costs: purchaseCosts, available: netProfitVisible, loading: costsLoading } = useMaterialCosts();
+  const { settings, loading: settingsLoading } = useAppSettings();
+  // Below the bottom-nav breakpoint the owner gets the three numbers, not the dashboard.
+  const isPhone = useMediaQuery("(max-width: 767px)");
+  // Which account a payment lands in is read off its method (lib/cashbox.ts accountForMethod), so
+  // the balances wait for the methods rather than show a first guess and then change under the
+  // reader — the same reason ManagerCashbox.tsx waits on everything its figures depend on.
+  const [methods, setMethods] = useState<PaymentMethodDef[] | null>(null);
+  useEffect(() => {
+    getDocs(collection(db, "paymentMethods"))
+      .then((snap) => setMethods(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PaymentMethodDef, "id">) }))))
+      .catch(() => setMethods([]));
+  }, []);
 
   const loading = ordersLoading || paymentsLoading || movementsLoading || materialsLoading
-    || expenseCategoriesLoading || expensesLoading || costsLoading;
+    || expenseCategoriesLoading || expensesLoading || costsLoading || settingsLoading || methods === null;
 
   const kpis = useMemo(
     () => computeKpis({ orders, payments, movements, materials }),
@@ -86,15 +104,36 @@ export default function AdminHome() {
     () => computeIncomeAllocation(expenseCategories, kpis.monthRevenueTiyn),
     [expenseCategories, kpis.monthRevenueTiyn],
   );
-  // Барлық уақыт, not the current month — same reasoning as AdminReports.tsx's Қаржы tab: the
-  // owner reads Таза пайда as a running total, so a month-scoped figure here would just be a
-  // second, differently-answered "how much have we made" sitting next to Бүгінгі табыс.
-  const netProfit = useMemo(
-    () => computeFinanceSummary({
-      orders, payments, purchaseByMaterialId, categories: expenseCategories, expenses,
-      period: null, startDate: settings.cashStartDate ?? null,
-    }),
-    [orders, payments, purchaseByMaterialId, expenseCategories, expenses, settings.cashStartDate],
+  // The owner's Таза пайда: each order since 22.09 less its sheets and ПВХ at wholesale — the same
+  // figure, from the same function, as the Таза пайда page (lib/orderProfit.ts), so the home screen
+  // and that page can never disagree.
+  const freeMaterialIds = useMemo(
+    () => new Set(materials.filter((m) => m.stockTracked === false).map((m) => m.id)),
+    [materials],
+  );
+  const profit = useMemo(
+    () => computeOrderProfits({ orders, costs: purchaseCosts, freeMaterialIds }),
+    [orders, purchaseCosts, freeMaterialIds],
+  );
+
+  // The phone summary's "Ақша қайда тұр" and sheet counts — the Касса page's own figures, all-time,
+  // counted from the shop's accounting restart.
+  const cashStartDate = settings.cashStartDate ?? null;
+  const openingBalanceTiyn = useMemo(
+    () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
+    [settings.cashOpeningBalanceTiyn, myDepartment],
+  );
+  const cashbox = useMemo(
+    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate: cashStartDate }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate],
+  );
+  const deptMaterialIds = useMemo(
+    () => new Set(materials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),
+    [materials, myDepartment],
+  );
+  const sheetsCut = useMemo(
+    () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds, cashStartDate),
+    [movements, deptMaterialIds, cashStartDate],
   );
 
   const handleExportOrders = () => {
@@ -118,6 +157,14 @@ export default function AdminHome() {
     <AppShell title="Басты бет" subtitle={`Сәлем, ${userData.name || "Админ"}`}>
       {loading ? (
         <Spinner />
+      ) : isPhone ? (
+        <AdminPhoneSummary
+          profit={netProfitVisible ? profit : null}
+          cashbox={cashbox}
+          openingBalanceTiyn={openingBalanceTiyn}
+          sheetsCut={isLdsp ? sheetsCut : null}
+          startDate={cashStartDate}
+        />
       ) : (
         <>
           <div className="stat-grid">
@@ -166,13 +213,15 @@ export default function AdminHome() {
                 <div className="stat-card-icon">
                   <IconReports />
                 </div>
-                <div className="number">{formatMoney(netProfit.netProfitTiyn)}</div>
-                <div className="label">Таза пайда (барлық уақыт)</div>
+                <div className="number">{formatMoney(profit.profitTiyn)}</div>
+                <div className="label">
+                  <Link to="/admin/profit">Таза пайда ({formatStartDate(profit.startDate)} бастап)</Link>
+                </div>
                 {/* Billed, not collected — an order cut on credit counts here the day it is
                     written. Without this line the card reads as cash in hand. */}
-                {netProfit.debtTiyn > 0 && (
+                {profit.debtTiyn > 0 && (
                   <div className="stat-card-note">
-                    оның {formatMoney(netProfit.debtTiyn)} — әлі төленбеген
+                    оның {formatMoney(profit.debtTiyn)} — әлі төленбеген
                   </div>
                 )}
               </div>

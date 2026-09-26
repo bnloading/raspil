@@ -13,3 +13,305 @@
 .data-table tbody tr.blocked td:first-child {
   box-shadow: inset 3px 0 0 var(--danger);
 }
+
+/* ── AdminPhoneSummary: the owner's phone home ─────────────────────────────
+   Таза пайда, sheets cut, and where the money is — each figure over the sum
+   behind it. Greens and reds are a step darker than --emerald/--danger, which
+   measure 3.8:1 on white and these are small figures read at a glance. */
+.aps {
+  --aps-in: #047857;
+  --aps-out: #b91c1c;
+  display: grid;
+  gap: 12px;
+}
+.aps-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.aps-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.aps-head h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); }
+.aps-head span { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+.aps-big {
+  display: block;
+  margin: 6px 0 12px;
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: var(--aps-in);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.aps-big.is-negative { color: var(--aps-out); }
+
+/* A till receipt: every line that makes the figure above, and the figure again at the foot. */
+.aps-receipt { margin: 0; font-size: 13px; }
+.aps-receipt > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+.aps-receipt dt { color: var(--text-secondary); min-width: 0; }
+.aps-receipt dd { margin: 0; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.aps-receipt > div.is-total { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border-strong); }
+.aps-receipt > div.is-total dt { color: var(--text); font-weight: 700; }
+.aps-receipt > div.is-total dd { font-weight: 800; }
+.aps-note {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: #f5f6fa;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #465164;
+}
+.aps-note b { color: var(--text); font-variant-numeric: tabular-nums; }
+.aps-note.is-warn { background: #fef3c7; color: #7c3d06; }
+
+.aps-sheets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.aps-tile { display: flex; flex-direction: column; gap: 4px; padding: 14px; }
+.aps-tile span { font-size: 12px; color: var(--text-secondary); }
+.aps-tile strong { font-size: 22px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* One row per account: the name and what is in it now, then бастапқы + түсті − шықты under it. */
+.aps-account { padding: 12px 0; border-top: 1px solid var(--border); }
+.aps-head + .aps-account { margin-top: 8px; }
+.aps-account-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.aps-account-head span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.aps-account-head span::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+.aps-account.is-deposit .aps-account-head span::before { background: var(--info); }
+.aps-account.is-cash .aps-account-head span::before { background: var(--emerald); }
+.aps-account-head strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.aps-account-head strong.is-negative { color: var(--aps-out); }
+.aps-flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 0 12px;
+}
+.aps-flow dt { font-size: 11px; color: var(--text-secondary); }
+.aps-flow dd { margin: 1px 0 0; font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.aps-flow dd.is-in { color: var(--aps-in); }
+.aps-flow dd.is-out { color: var(--aps-out); }
+.aps-detail { margin: 6px 0 0 12px; font-size: 11px; color: var(--text-secondary); }
+.aps-account.is-total {
+  margin: 4px -16px -16px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--border-strong);
+  border-radius: 0 0 14px 14px;
+  background: #f5f6fa;
+}
+.aps-account.is-total .aps-account-head span::before { display: none; }
+.aps-account.is-total .aps-flow,
+.aps-account.is-total .aps-detail { margin-left: 0; }
+
+.aps-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.aps-links .btn { min-height: 46px; padding: 10px 8px; font-size: 13px; white-space: normal; text-align: center; }
+/* The brand blue is 3.96:1 on the page grey; its darker step clears 5:1. */
+.aps-links .btn-outline { color: var(--primary-dark); border-color: var(--primary-dark); background: var(--card); }
+.aps-links .btn-outline:hover { color: #fff; background: var(--primary-dark); }
+/* On the grey total band the quiet label tier needs one step more ink. */
+.aps-account.is-total .aps-flow dt { color: #5c6675; }
+
+/* "Әр заказ және оптом бағалар →" under the profit card on the phone home. */
+.aps-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 12px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.aps-note-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── Таза пайда page (AdminProfit) ─────────────────────────────────────────── */
+.prf-tabs { display: flex; gap: 8px; scroll-margin-top: 80px; }
+.prf-tabs button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: #465164;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.prf-tabs button.is-active { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
+.prf-tabs b { font-variant-numeric: tabular-nums; }
+.prf-dot { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+
+/* One order per row: who, what it made, and the sum that made it. */
+.prf-orders { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.prf-order {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.prf-order:hover { border-color: var(--primary); }
+.prf-order-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.prf-order-head strong { min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prf-order-head b { flex: 0 0 auto; font-size: 17px; font-weight: 800; color: #047857; font-variant-numeric: tabular-nums; }
+.prf-order-head b.is-negative { color: #b91c1c; }
+.prf-order-math { font-size: 12px; color: #465164; font-variant-numeric: tabular-nums; }
+.prf-order-meta { font-size: 11px; color: var(--text-secondary); }
+.prf-order-meta .is-debt { color: #b91c1c; }
+.prf-order-meta .is-warn { color: #92400e; font-weight: 700; }
+
+.prf-more { margin-top: 4px; }
+.prf-more summary { min-height: 44px; padding: 12px 0; font-size: 13px; font-weight: 700; color: var(--primary-dark); cursor: pointer; }
+.prf-empty { margin: 10px 0; font-size: 13px; color: var(--text-secondary); }
+
+/* The headline card's "48 заказ · сомасы …" under the big figure. */
+.aps-sub { margin: -6px 0 10px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ── The breakdown: each sheet and colour worked out as on paper ─────────────
+   Сату 16 200 − Оптом [13 000] = 3 200 ₸ / лист, then 45 лист × 3 200 = 144 000 ₸. */
+.prf-section { padding-bottom: 6px; }
+.prf-section-sum { font-size: 17px; font-weight: 800; color: #047857; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prf-section-sum.is-negative { color: #b91c1c; }
+.prf-hint { margin: 4px 0 6px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+
+.prf-general {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f6fa;
+}
+.prf-general > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prf-general strong { font-size: 14px; color: var(--text); }
+.prf-general small { font-size: 12px; color: #5c6675; }
+.prf-general .prf-input { width: 116px; }
+
+.prf-item { padding: 12px 0; border-top: 1px solid var(--border); }
+.prf-item.is-missing { margin: 0 -10px; padding: 12px 10px; border-radius: 10px; border-top-color: transparent; background: #fef3c7; }
+.prf-item-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.prf-item-head strong { min-width: 0; font-size: 15px; color: var(--text); overflow-wrap: anywhere; }
+.prf-item-head b { flex: 0 0 auto; font-size: 16px; font-weight: 800; color: #047857; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prf-item-head b.is-negative { color: #b91c1c; }
+.prf-item-sub { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.prf-item.is-missing .prf-item-sub { color: #5c4a1f; }
+
+/* Sale − [wholesale] = per unit, in one row of three: the box sits where the number it stands for
+   would be written. Figures shrink with the screen so the row holds at 320px. */
+.prf-formula {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 4px;
+  margin-top: 8px;
+}
+.prf-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.prf-f small { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.prf-item.is-missing .prf-f small { color: #5c4a1f; }
+.prf-f b {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: clamp(12px, 3.7vw, 15px);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.prf-f:last-child b { color: #047857; }
+.prf-f b.is-negative, .prf-f:last-child b.is-negative { color: #b91c1c; }
+.prf-op { min-height: 44px; display: flex; align-items: center; font-size: 17px; font-weight: 700; color: #5c6675; }
+.prf-item-total { margin: 8px 0 0; font-size: 13px; color: #465164; font-variant-numeric: tabular-nums; }
+.prf-item-total b { color: #047857; }
+.prf-item-note { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary); }
+.prf-item-warn { margin: 6px 0 0; font-size: 12px; font-weight: 700; color: #92400e; }
+
+.prf-input { position: relative; display: block; }
+.prf-input input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--primary-dark);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  /* 16px: iOS zooms the whole page into any smaller input on focus. */
+  font-size: 16px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.prf-input input::placeholder { color: #8a93a3; font-weight: 600; }
+.prf-input input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.prf-item.is-missing .prf-input input { border-color: #b45309; }
+.prf-input-state { position: absolute; right: 2px; top: calc(100% + 1px); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.prf-input-state.is-saved { color: #047857; }
+.prf-input-state.is-error { color: #b91c1c; }
+.prf-input-state.is-saving { color: var(--text-secondary); }
+/* With no wholesale price the row's figure is the whole sale, not a profit — shown, since it is in
+   the total, but in the warning colour rather than the green of money actually made. */
+.prf-item.is-missing .prf-item-head b { color: #92400e; }

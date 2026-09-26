@@ -9,9 +9,19 @@ import { WorkerDashboardHeader } from "../src/components/WorkerDashboardHeader";
 import { WorkerMaterialSummary, WorkerHistorySummary } from "../src/components/WorkerMaterialSummary";
 import { WorkerHistoryCard } from "../src/components/WorkerHistoryCard";
 import { CustomerStatusCard } from "../src/components/CustomerStatusCard";
+import { AdminPhoneSummary } from "../src/components/AdminPhoneSummary";
+import type { CashboxSummary } from "../src/lib/cashbox";
+import { computeOrderProfits, pvcCostKey, PVC_DEFAULT_COST_KEY } from "../src/lib/orderProfit";
+import { ProfitView } from "../src/pages/admin/AdminProfit";
+import { CashboxAccounts } from "../src/pages/manager/ManagerCashbox";
+import type { PvcType } from "../src/types/domain";
 import type { Order, Payment } from "../src/types/domain";
 import "../src/index.css";
 import "../src/styles/customer-pages.css";
+// The station pages are dark (worker-pages.css) — without it the ПВХ panel below measures against
+// a light shell the app never actually shows a worker.
+import "../src/styles/worker-pages.css";
+import "../src/styles/admin-pages.css";
 const now = Timestamp.now();
 const order = { id:"preview",orderNumber:"#A-005",customerName:"Нұрик",customerId:"preview",materialId:"white", materialSnapshot:{name:"Ақ матовый",sheetLengthMm:2800,sheetWidthMm:2070}, productionStatus:"cutting_started", paymentStatus:"paid", priority:1, createdAt:now, updatedAt:now, totalTiyn:38400000, paidTiyn:38400000, debtTiyn:0, pvcMetersTotal:176, estimatedSheets:13, pricePublished:true, lineJobs:[{index:0,materialId:"white",materialName:"Ақ матовый",sheetQty:13,pvcMeters:176,cuttingByUid:"worker",cuttingStartedAt:now}],items:[{materialId:"white",materialName:"Ақ матовый",sheetQty:13,pvcMeters:176},{materialId:"hdf",materialName:"ХДФ",sheetQty:5,pvcMeters:0}] } as unknown as Order;
 const payments = Array.from({length:7},(_,i)=>({id:String(i), amountTiyn:(i+1)*1600000, paymentDate:Timestamp.fromMillis(Date.now()-i*86400000), methodName:i%2?"Kaspi Pay":"Қолма-қол", reversed:false})) as Payment[];
@@ -83,11 +93,71 @@ function PvcPanels(){
   </main></div></div></BrowserRouter>;
 }
 
+
+/** The Admin's phone home, on the figures from the owner's Касса screenshot (all time). */
+const T = (tenge: number) => tenge * 100;
+const apsCashbox: CashboxSummary = { monthKey:null, totalInTiyn:T(4881960), totalOutTiyn:T(2828404), totalBalanceTiyn:T(6307347), accounts:[
+  {account:"deposit", inTiyn:T(2309420), outTiyn:T(2820164), balanceTiyn:T(3743047), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2309420)}], expenseCount:18},
+  {account:"pay", inTiyn:T(1251080), outTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
+  {account:"cash", inTiyn:T(1321460), outTiyn:T(8240), balanceTiyn:T(1313220), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321460)}], expenseCount:1},
+]};
+/** The Таза пайда page's view on a handful of orders since 22.09, through the real calculation. */
+const at = (d: string) => Timestamp.fromDate(new Date(`${d}T12:00:00+05:00`));
+const prfMaterials = [
+  {id:"m1",name:"ЛДСП Ақ Томск",category:"ldsp",sellingPriceTiyn:T(16500),active:true,archived:false},
+  {id:"m2",name:"ЛДСП Кашемир",category:"ldsp",sellingPriceTiyn:T(17000),active:true,archived:false},
+  {id:"hdf",name:"ХДФ Ақ",category:"ldsp",sellingPriceTiyn:T(7500),active:true,archived:false},
+  {id:"m3",name:"Столешница Ақ",category:"ldsp",sellingPriceTiyn:T(24000),active:true,archived:false},
+] as unknown as Material[];
+const prfPvc = [
+  {id:"p1",colorName:"Ақ",thicknessMm:0.4,pricePerMeterTiyn:T(150),active:true},
+  {id:"p2",colorName:"Ақ",thicknessMm:2,pricePerMeterTiyn:T(350),active:true},
+  {id:"p3",colorName:"Кашемир",thicknessMm:1,pricePerMeterTiyn:T(250),active:true},
+] as unknown as PvcType[];
+// The owner's own example: ЛДСП Ақ sold at 16 200, bought at 13 000. Кашемир has no wholesale yet.
+const prfCosts = new Map<string, number>([["m1",T(13000)],["hdf",T(5200)],[pvcCostKey("p1"),T(60)],[PVC_DEFAULT_COST_KEY,T(90)]]);
+const line = (materialId:string, materialName:string, sheetQty:number, price:number, pvcMeters=0, pvcPrice=0, pvcTypeId?:string) =>
+  ({materialId,materialName,sheetQty,sheetPriceTiyn:T(price),pvcMeters,pvcPricePerMeterTiyn:T(pvcPrice),pvcTypeId});
+const prfOrders = [
+  {...order, id:"a", orderNumber:"#1046", customerName:"Айбек", productionStatus:"ready", createdAt:at("2026-09-25"), pvcByType:undefined,
+    items:[line("m1","ЛДСП Ақ Томск",12,16200,120,150,"p1"), line("hdf","ХДФ Ақ",3,7500)], pvcMetersTotal:120, pvcCostTiyn:T(18000), cuttingCostTiyn:T(30000),
+    discountTiyn:0, totalTiyn:T(194400+22500+18000+30000), debtTiyn:0},
+  {...order, id:"b", orderNumber:"#1045", customerName:"Аружан", productionStatus:"pvc_queue", createdAt:at("2026-09-24"), pvcByType:undefined,
+    items:[line("m2","ЛДСП Кашемир",9,17000,64,250,"p3")], pvcMetersTotal:64, pvcCostTiyn:T(16000), cuttingCostTiyn:T(18000),
+    discountTiyn:T(5000), totalTiyn:T(153000+16000+18000-5000), debtTiyn:T(60000)},
+  {...order, id:"c", orderNumber:"#1043", customerName:"Нұрлан", productionStatus:"delivered", createdAt:at("2026-09-22"), pvcByType:undefined,
+    items:[line("m1","ЛДСП Ақ Томск",5,16000,40,150)], pvcMetersTotal:40, pvcCostTiyn:T(6000), cuttingCostTiyn:T(10000),
+    discountTiyn:0, totalTiyn:T(80000+6000+10000), debtTiyn:0},
+  {...order, id:"old", orderNumber:"#1030", customerName:"Ескі", createdAt:at("2026-09-20"), totalTiyn:T(500000)},
+] as unknown as Order[];
+const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts });
+function ProfitPanel(){
+  const [costs, setCosts] = useState(prfCosts);
+  const summary = computeOrderProfits({ orders: prfOrders, costs });
+  return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>
+    <ProfitView summary={summary} materials={prfMaterials} pvcTypes={prfPvc} costs={costs} freeMaterialIds={new Set()}
+      onSavePrice={async (key, tiyn) => setCosts(prev => new Map(prev).set(key, tiyn))} onOpenOrder={() => {}} />
+  </main></div></div></BrowserRouter>;
+}
+/** The Касса cards on the owner's latest screenshot: Нұр 4 253 791 + 2 763 520 − 3 821 804 = 3 195 507. */
+const nurCashbox: CashboxSummary = { monthKey:null, totalInTiyn:T(5335680), totalOutTiyn:T(3830044), totalBalanceTiyn:T(5759427), accounts:[
+  {account:"deposit", inTiyn:T(2763520), outTiyn:T(3821804), balanceTiyn:T(3195507), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2763520)}], expenseCount:25},
+  {account:"pay", inTiyn:T(1251080), outTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
+  {account:"cash", inTiyn:T(1321080), outTiyn:T(8240), balanceTiyn:T(1312840), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321080)}], expenseCount:1},
+]};
+function AdminPhonePanel(){
+  return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>
+    <AdminPhoneSummary profit={apsProfit} cashbox={apsCashbox} openingBalanceTiyn={{deposit:T(4253791)}} sheetsCut={{week:221,month:221}} startDate="2026-09-18" />
+  </main></div></div></BrowserRouter>;
+}
 function Preview(){const [view,setView]=useState("queue");const panel=new URLSearchParams(location.search).get("panel");
 if(panel==="ocr") return <OcrSmoke/>;
 if(panel==="pvh") return <PvcPanels/>;
+if(panel==="admin") return <AdminPhonePanel/>;
+if(panel==="profit") return <ProfitPanel/>;
+if(panel==="cashbox") return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}><CashboxAccounts cashbox={nurCashbox} cashboxNow={nurCashbox} openingBalanceTiyn={{deposit:T(4253791)}} period={null} /><div style={{height:16}}/><CashboxAccounts cashbox={{...nurCashbox, accounts: nurCashbox.accounts.map(a => ({...a, inTiyn: Math.round(a.inTiyn/3), outTiyn: Math.round(a.outTiyn/3)}))}} cashboxNow={nurCashbox} openingBalanceTiyn={{deposit:T(4253791)}} period="2026-09" /></main></div></div></BrowserRouter>;
 if(panel==="materials") return <div className="app-shell"><div style={{background:"#f8f9fc",minHeight:"100vh",padding:12}}><h1 style={{fontSize:22,margin:"6px 0 16px"}}>Қойма · Материалдар</h1><MaterialsTab materials={materials} movements={[]} loading={false} canEdit onEdit={()=>{}} onLedger={()=>{}} showToast={()=>{}} /></div></div>;
-if(!panel) return <div style={{padding:20, background:"#e9edf5", minHeight:"100vh"}}><h1 style={{fontSize:20}}>Тест деректері · нақты React компоненттері</h1><div style={{display:"flex", gap:24, alignItems:"flex-start"}}>{["worker","customer","reports","materials","pvh"].map(p=><iframe key={p} title={p} src={`?panel=${p}`} style={{flexShrink:0,width:375,height:850,border:"1px solid #ccd3df",borderRadius:16,background:"white"}} />)}</div></div>;
+if(!panel) return <div style={{padding:20, background:"#e9edf5", minHeight:"100vh"}}><h1 style={{fontSize:20}}>Тест деректері · нақты React компоненттері</h1><div style={{display:"flex", gap:24, alignItems:"flex-start"}}>{["worker","customer","reports","materials","pvh","admin","profit","cashbox"].map(p=><iframe key={p} title={p} src={`?panel=${p}`} style={{flexShrink:0,width:375,height:850,border:"1px solid #ccd3df",borderRadius:16,background:"white"}} />)}</div></div>;
 return <BrowserRouter><div className="app-shell" data-worker-role="raspil"><div style={{background:"#f8f9fc",minHeight:"100vh",padding:12}}><h1 style={{fontSize:22,margin:"6px 0 16px"}}>{panel==="reports"?"Есептер":panel==="worker"?"Распил":"Тапсырыс барысы"}</h1>{panel==="reports"?<><div className="report-period">{["Бүгін","Апта","Ай"].map(x=><button className={`report-period-btn ${x==="Апта"?"is-active":""}`} key={x}>{x}</button>)}</div><DashboardTab orders={[order]} payments={payments} movements={[]} materials={[]} period="week" /></>:panel==="customer"?<CustomerStatusCard order={order}/>:<><WorkerDashboardHeader queued={3} active={1} done={6} view={view} onView={setView}/><article className="station-job is-active"><span className="station-state is-active">ЖҰМЫСТА</span><button className="station-order-link">#A-005</button><div className="station-customer">Нұрик</div><WorkerMaterialSummary order={order} materials={[]} stage="cutting" uid="worker"/><button className="btn btn-primary" style={{width:"100%"}}>Распил дайын</button></article></>}</div></div></BrowserRouter>;
 }
 createRoot(document.getElementById("root")!).render(<Preview/>);
