@@ -56,10 +56,11 @@ function adminNav(department: Department): NavItem[] {
   return byDepartment(
     [
       { key: "admin-home", label: "Басты бет", short: "Басты", path: "/admin", icon: IconHome, group: "main", mobile: true },
-      // Second in the phone bar: the owner's own figure, and the only place the wholesale prices
-      // behind it are set.
-      { key: "admin-profit", label: "Таза пайда", short: "Пайда", path: "/admin/profit", icon: IconProfit, group: "main", mobile: true },
-      { key: "admin-orders", label: "Заказдар", short: "Заказ", path: "/admin/orders", icon: IconOrders, group: "main", mobile: true },
+      // In the phone bar where Заказдар used to be, at the owner's request, and under its full name:
+      // it is the owner's own figure and the only place the wholesale prices behind it are set.
+      { key: "admin-profit", label: "Таза пайда", path: "/admin/profit", icon: IconProfit, group: "main", mobile: true },
+      // Off the phone bar (Таза пайда took its place); the phone home links here instead.
+      { key: "admin-orders", label: "Заказдар", short: "Заказ", path: "/admin/orders", icon: IconOrders, group: "main" },
       { key: "admin-oversight-manager", label: "Менеджер", path: "/admin/oversight/manager", icon: IconUsers, group: "main" },
       { key: "admin-oversight-cutting", label: "Распил", path: "/admin/oversight/cutting", icon: IconCut, group: "main" },
       { key: "admin-oversight-pvc", label: "ПВХ", path: "/admin/oversight/pvc", icon: IconPvc, group: "main" },
@@ -68,9 +69,7 @@ function adminNav(department: Department): NavItem[] {
       { key: "admin-mdf", label: "МДФ өндірісі", path: "/admin/mdf", icon: IconLayers, group: "main" },
       { key: "admin-materials", label: "Қойма", short: "Қойма", path: "/admin/materials", icon: IconWarehouse, group: "main", mobile: true },
       { key: "admin-payments", label: "Төлемдер", path: "/admin/reports", icon: IconReports, group: "main" },
-      // Off the phone bar to make room for Таза пайда — the phone home links here, and the owner
-      // asked for no more reports on the phone than that.
-      { key: "admin-reports", label: "Есептер", short: "Есеп", path: "/admin/reports", icon: IconReports, group: "main" },
+      { key: "admin-reports", label: "Есептер", short: "Есеп", path: "/admin/reports", icon: IconReports, group: "main", mobile: true },
       // On the phone bottom bar: an owner checking in from outside the shop wants the debt ledger
       // more than anything below it in this list.
       { key: "admin-debt", label: "Қарыз", short: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main", mobile: true },

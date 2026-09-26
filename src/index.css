@@ -2909,7 +2909,9 @@ tr.blocked td:first-child {
   right: 0;
   display: flex;
   justify-content: space-around;
-  align-items: center;
+  /* Stretch + items starting at the top: a two-line label ('Таза / пайда') makes its item taller,
+     and centring would lift that one icon above the other five. */
+  align-items: stretch;
   padding: 10px 0;
   padding-bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 100;
@@ -2941,7 +2943,7 @@ tr.blocked td:first-child {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
   /* Every item now carries a label, so they share the bar evenly and truncate rather than
      letting one long name push the others off. 14px of side padding per item was 28px each —
@@ -2988,10 +2990,17 @@ tr.blocked td:first-child {
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.2;
-  white-space: nowrap;
+  /* Two-word names wrap at the space rather than being cut: "Таза па…" hid the one word that
+     says what the page is. Single-word labels are unchanged; anything longer than two lines
+     still ends in an ellipsis. */
   max-width: 100%;
+  text-align: center;
+  overflow-wrap: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Six labelled items on a 320px screen: shave the label rather than the touch target. */
@@ -3025,6 +3034,8 @@ tr.blocked td:first-child {
   width: 26px;
   height: 26px;
 }
+/* Above a bar whose two-line label ("Таза / пайда") makes it ~16px taller — see BottomNav. */
+.track-fab.is-over-tall-bar { bottom: calc(80px + max(8px, env(safe-area-inset-bottom))); }
 .track-fab:active {
   transform: translateX(-50%) scale(0.94);
 }
@@ -4426,7 +4437,10 @@ body {
 .app-main {
   min-height: 100vh;
   min-width: 0;
-  padding-bottom: calc(var(--bottomnav-h) + 24px);
+  /* Room for the fixed bottom bar: its height with a two-line label ("Таза / пайда", ~84px), plus
+     the iPhone's home-indicator inset, which the bar adds to its own padding when the app runs
+     from the home screen — without it the last line of every page sat under the bar. */
+  padding-bottom: calc(var(--bottomnav-h) + 40px + env(safe-area-inset-bottom, 0px));
 }
 @media (min-width: 1024px) {
   .app-main {

@@ -86,7 +86,9 @@ export function AdminPhoneSummary({
 
       <nav className="aps-links" aria-label="Толығырақ">
         <Link to="/manager/cashbox" className="btn btn-outline">Касса және шығындар</Link>
-        <Link to="/admin/reports" className="btn btn-outline">Толық есептер</Link>
+        {/* Заказдар left the phone bar for Таза пайда, and a phone has no side menu — this is the
+            way to the orders from here. */}
+        <Link to="/admin/orders" className="btn btn-outline">Заказдар</Link>
       </nav>
     </div>
   );

@@ -12,18 +12,22 @@ export function BottomNav({ items, activeKey, fab }: BottomNavProps) {
   // Six is what fits a 360px bar: each item has a 44px touch target and only the active one shows
   // its label. Beyond six they start to crowd, so the cap stays.
   const mobileItems = items.filter((item) => item.mobile).slice(0, 6);
+  // A two-word name ("Таза пайда") wraps to a second line and makes the whole bar taller, so the
+  // floating button has to sit that much higher or it lands on the bar.
+  const tallBar = mobileItems.some((item) => (item.short ?? item.label).includes(" "));
+  const fabClass = `track-fab${tallBar ? " is-over-tall-bar" : ""}`;
 
   return (
     <>
       {fab &&
         (fab.to ? (
-          <Link to={fab.to} className="track-fab" aria-label={fab.label ?? "Жаңа тапсырыс"}>
+          <Link to={fab.to} className={fabClass} aria-label={fab.label ?? "Жаңа тапсырыс"}>
             <IconPlus />
           </Link>
         ) : (
           <button
             type="button"
-            className="track-fab"
+            className={fabClass}
             onClick={fab.onClick}
             aria-label={fab.label ?? "Жаңа тапсырыс"}
           >
