@@ -77,15 +77,18 @@ describe("buildCutterHistory", () => {
     expect(entry.countertops).toBe(2);
   });
 
-  it("counts everything as sheets when no category map is given, same as before", () => {
+  it("with no category map, still tells a столешница from a sheet by the line's own name", () => {
+    // Before lib/lineCategory.ts this counted the countertop as 2 sheets until the catalogue
+    // loaded — and forever, for a countertop since deleted from the catalogue.
     const merged = order({
       lineJobs: [
         job({ index: 0, materialId: "m-top", materialName: "Столешница", sheetQty: 2, confirmedSheets: 2, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-08-25") }),
+        job({ index: 1, materialId: "m-ldsp", materialName: "ЛДСП Ақ", sheetQty: 5, confirmedSheets: 5, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-08-25") }),
       ],
     });
     const [entry] = buildCutterHistory([merged], CUTTER);
-    expect(entry.sheets).toBe(2);
-    expect(entry.countertops).toBe(0);
+    expect(entry.sheets).toBe(5);
+    expect(entry.countertops).toBe(2);
   });
 
   it("falls back to the legacy single-line shape for an order that predates per-line jobs", () => {

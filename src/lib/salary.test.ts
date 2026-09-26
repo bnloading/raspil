@@ -561,3 +561,23 @@ describe("hoursBetween", () => {
     expect(hoursBetween("18:00", "09:00")).toBeUndefined();
   });
 });
+
+describe("a material since deleted from the catalogue", () => {
+  // ORD-2026-000172 as it is in the ledger: "Столешница Симал Бежевый" was cut, then the material
+  // was deleted, so there is no catalogue entry to say it is a countertop.
+  it("is paid by the name its line was typed under — a столешница at the countertop rate", () => {
+    const o = order({
+      id: "o172",
+      materialId: "m-ldsp",
+      cuttingCompletedAt: MARCH,
+      lineJobs: [
+        { index: 0, materialId: "top-simal-bezhevyi", materialName: "Столешница Симал Бежевый", sheetQty: 2, pvcMeters: 0, confirmedSheets: 2, cuttingByUid: CUTTER, cuttingCompletedAt: MARCH },
+        { index: 1, materialId: "m-ldsp", materialName: "ЛДСП", sheetQty: 3, pvcMeters: 0, confirmedSheets: 3, cuttingByUid: CUTTER, cuttingCompletedAt: MARCH },
+      ],
+    });
+    const work = measureWork([o], [], CUTTER, "2026-03", new Map([["m-ldsp", "ldsp"]]));
+    expect(work).toMatchObject({ countertopSheets: 2, ldspSheets: 3 });
+    const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "PER_SHEET", perSheetTiyn: T(600), perCountertopTiyn: T(300) };
+    expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(2 * 300 + 3 * 600));
+  });
+});

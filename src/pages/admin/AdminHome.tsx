@@ -114,7 +114,7 @@ export default function AdminHome() {
   const profit = useMemo(
     () => computeOrderProfits({
       orders, costs: purchaseCosts, freeMaterialIds,
-      countertopIds: new Set(materials.filter((m) => m.category === "countertop").map((m) => m.id)),
+      categoryByMaterialId: new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
     }),
     [orders, purchaseCosts, freeMaterialIds, materials],
   );

@@ -138,12 +138,12 @@ const prfOrders = [
     discountTiyn:0, totalTiyn:T(90000+2000), debtTiyn:0},
   {...order, id:"old", orderNumber:"#1030", customerName:"Ескі", createdAt:at("2026-09-20"), totalTiyn:T(500000)},
 ] as unknown as Order[];
-const prfTops = new Set(["m3","ext","m4"]);
+const prfCategories = new Map(prfMaterials.map((m) => [m.id, m.category ?? "ldsp"] as const));
 const prfFree = new Set(["ext"]);
-const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts, countertopIds: prfTops, freeMaterialIds: prfFree });
+const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts, categoryByMaterialId: prfCategories, freeMaterialIds: prfFree });
 function ProfitPanel(){
   const [costs, setCosts] = useState(prfCosts);
-  const summary = computeOrderProfits({ orders: prfOrders, costs, countertopIds: prfTops, freeMaterialIds: prfFree });
+  const summary = computeOrderProfits({ orders: prfOrders, costs, categoryByMaterialId: prfCategories, freeMaterialIds: prfFree });
   return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>
     <ProfitView header={<DepositCard now={nurCashbox.accounts[0]} month={nurCashbox.accounts[0]} monthKey="2026-09" openingTiyn={T(4253791)} startDate="2026-09-22" />}
       summary={summary} materials={prfMaterials} pvcTypes={prfPvc} costs={costs} freeMaterialIds={prfFree}

@@ -1,6 +1,7 @@
 import type { Timestamp } from "firebase/firestore";
 import type { MaterialCategory, Order } from "../types/domain";
 import { jobsOf } from "./orderLines";
+import { lineCategory } from "./lineCategory";
 
 /** One order this cutter actually cut sheets on — dated by when they finished their part of it. */
 export interface CutHistoryEntry {
@@ -52,7 +53,7 @@ export function buildCutterHistory(
     let countertops = 0;
     for (const j of mine) {
       const qty = j.confirmedSheets ?? j.sheetQty ?? 0;
-      if (categoryByMaterialId.get(j.materialId) === "countertop") countertops += qty;
+      if (lineCategory(j, categoryByMaterialId) === "countertop") countertops += qty;
       else sheets += qty;
     }
 

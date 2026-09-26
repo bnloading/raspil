@@ -165,7 +165,7 @@ describe("столешница", () => {
         items: [line({ materialId: "ldsp", sheetQty: 10, sheetPriceTiyn: T(16200) }), line({ materialId: "top", materialName: "Столешница Ақ", sheetQty: 2, sheetPriceTiyn: T(45000) })],
       })],
       costs: new Map([["ldsp", T(13000)], ["top", T(38000)]]),
-      countertopIds: new Set(["top"]),
+      categoryByMaterialId: new Map([["top", "countertop"]]),
     });
     expect(s.orders[0]).toMatchObject({ sheets: 10, countertops: 2 });
     expect(s.materials.find((m) => m.materialId === "top")).toMatchObject({ countertop: true, sheets: 2, profitTiyn: T(2 * 7000) });
@@ -178,7 +178,7 @@ describe("столешница", () => {
     const s = computeOrderProfits({
       orders: [order({ items: [line({ materialId: "top", sheetQty: 1, sheetPriceTiyn: T(45000) })] })],
       costs: new Map(),
-      countertopIds: new Set(["top"]),
+      categoryByMaterialId: new Map([["top", "countertop"]]),
     });
     expect(s.uncostedCountertops).toBe(1);
     expect(s.uncostedSheets).toBe(0);

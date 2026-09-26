@@ -1,7 +1,8 @@
 import { dayKey, formatDateDMY } from "./dates";
 import { formatMoney } from "./money";
 import { linesOf } from "./orderMerge";
-import type { Order } from "../types/domain";
+import { lineCategory } from "./lineCategory";
+import type { MaterialCategory, Order } from "../types/domain";
 
 /**
  * "Таза пайда" as the owner counts it: what each sheet and each metre of ПВХ was sold for, less
@@ -187,20 +188,21 @@ export interface ProfitSummary {
  * Material.stockTracked === false): a zero price on those is true, not missing, so they are never
  * reported as uncosted.
  *
- * `countertopIds` are the столешница materials (Material.category "countertop"): sold per piece,
- * so they are counted and reported apart from the board sheets rather than as more "лист".
+ * `categoryByMaterialId` is the catalogue's category per material (lib/lineCategory.ts): a
+ * столешница is sold per piece, so it is counted and reported apart from the board sheets rather
+ * than as more "лист" — and a countertop since deleted from the catalogue is still known by name.
  */
 export function computeOrderProfits({
   orders,
   costs,
   freeMaterialIds = new Set(),
-  countertopIds = new Set(),
+  categoryByMaterialId = new Map(),
   startDate = PROFIT_START_DATE,
 }: {
   orders: Order[];
   costs: ReadonlyMap<string, number>;
   freeMaterialIds?: ReadonlySet<string>;
-  countertopIds?: ReadonlySet<string>;
+  categoryByMaterialId?: ReadonlyMap<string, MaterialCategory>;
   startDate?: string;
 }): ProfitSummary {
   const defaultPvc = costs.get(PVC_DEFAULT_COST_KEY) ?? 0;
@@ -233,7 +235,7 @@ export function computeOrderProfits({
     for (const line of lines) {
       const qty = line.sheetQty ?? 0;
       if (qty <= 0) continue;
-      const countertop = countertopIds.has(line.materialId);
+      const countertop = lineCategory(line, categoryByMaterialId) === "countertop";
       const revenue = hasItems ? Math.round(qty * line.sheetPriceTiyn) : order.materialCostTiyn ?? 0;
       const unitPrice = Math.round(revenue / qty);
       const wholesale = costs.get(line.materialId) ?? 0;

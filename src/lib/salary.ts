@@ -10,6 +10,7 @@ import { MDF_STAGES } from "../types/domain";
 import { monthKey, weekKey, dayKey } from "./dates";
 import { periodContains, periodContainsDay, periodKindOf, type SalaryPeriodKind } from "./salaryPeriod";
 import { jobsOf } from "./orderLines";
+import { lineCategory } from "./lineCategory";
 
 /**
  * Configurable salary engine.
@@ -101,7 +102,7 @@ export function measureWork(
       ) {
         const sheets = job.confirmedSheets ?? job.sheetQty ?? 0;
         sheetsCut += sheets;
-        const category = categoryByMaterialId.get(job.materialId) ?? "ldsp";
+        const category = lineCategory(job, categoryByMaterialId);
         if (category === "hdf") hdfSheets += sheets;
         else if (category === "countertop") countertopSheets += sheets;
         else if (category === "mdf") mdfSheets += sheets;

@@ -1,5 +1,6 @@
 import type { Material, Order, OrderLineJob } from "../types/domain";
 import { jobsOf } from "./orderLines";
+import { lineCategory } from "./lineCategory";
 
 export type FloorStage = "cutting" | "pvc";
 export function workerJobs(order: Order, stage: FloorStage, uid: string, completed: boolean) {
@@ -10,11 +11,13 @@ export function workerJobs(order: Order, stage: FloorStage, uid: string, complet
 
 /**
  * True for a line cut from a столешница rather than a board — the material's own catalogue entry
- * carries this (materialSnapshot never does), so it's always looked up live rather than guessed
- * from the order's own denormalized fields.
+ * carries this (materialSnapshot never does), so it's looked up live; only a material since deleted
+ * from the catalogue falls back to the name the line was typed under (lib/lineCategory.ts).
  */
-export function isCountertopJob(job: Pick<OrderLineJob, "materialId">, materials: readonly Material[]): boolean {
-  return materials.find(m => m.id === job.materialId)?.category === "countertop";
+export function isCountertopJob(job: Pick<OrderLineJob, "materialId" | "materialName">, materials: readonly Material[]): boolean {
+  const material = materials.find(m => m.id === job.materialId);
+  const known = new Map(material ? [[material.id, material.category ?? "ldsp"] as const] : []);
+  return lineCategory(job, known) === "countertop";
 }
 
 /** Sheet area, not the area of finished parts. Never assume one size for a merged order. */

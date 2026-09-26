@@ -54,13 +54,13 @@ export default function AdminProfit() {
     () => new Set(allMaterials.filter((m) => m.stockTracked === false).map((m) => m.id)),
     [allMaterials],
   );
-  const countertopIds = useMemo(
-    () => new Set(allMaterials.filter((m) => m.category === "countertop").map((m) => m.id)),
+  const categoryByMaterialId = useMemo(
+    () => new Map(allMaterials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
     [allMaterials],
   );
   const summary = useMemo(
-    () => computeOrderProfits({ orders, costs, freeMaterialIds, countertopIds }),
-    [orders, costs, freeMaterialIds, countertopIds],
+    () => computeOrderProfits({ orders, costs, freeMaterialIds, categoryByMaterialId }),
+    [orders, costs, freeMaterialIds, categoryByMaterialId],
   );
   // Нұр's balance for the head of the page — the Касса page's own figure (hooks/useDepartmentCashbox).
   const cash = useDepartmentCashbox({ orders: allOrders, department: myDepartment });
