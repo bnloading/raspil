@@ -184,3 +184,25 @@ describe("столешница", () => {
     expect(s.uncostedSheets).toBe(0);
   });
 });
+
+describe("ПВХ typed with no colour", () => {
+  // ORD-2026-000188 as it is in the ledger: the Ақ lines carry their colour, the Бунратти line's
+  // colour was never filled in (the roll is catalogued as "Бнуратти", so the journal found no match).
+  it("is still counted, and names the board and the order it came from", () => {
+    const s = computeOrderProfits({
+      orders: [order({
+        orderNumber: "ORD-2026-000188",
+        pvcMetersTotal: 226, pvcCostTiyn: T(155 * 200 + 71 * 220), totalTiyn: T(155 * 200 + 71 * 220),
+        pvcByType: [{ pvcTypeId: "white04", colorName: "Ақ", thicknessMm: 0.4, meters: 155, costTiyn: T(155 * 200) }],
+        items: [
+          line({ materialName: "ЛДСП Ақ Томск", pvcMeters: 155, pvcPricePerMeterTiyn: T(200), pvcTypeId: "white04" }),
+          line({ materialName: "ЛДСП Дуб Бунратти", pvcMeters: 71, pvcPricePerMeterTiyn: T(220), pvcTypeId: "" }),
+        ],
+      })],
+      costs,
+    });
+    const none = s.pvc.find((p) => p.pvcTypeId === null);
+    expect(none).toMatchObject({ meters: 71, revenueTiyn: T(71 * 220), costTiyn: T(71 * 90) });
+    expect(none?.colourless).toEqual([{ board: "ЛДСП Дуб Бунратти", meters: 71, orderNumbers: ["ORD-2026-000188"] }]);
+  });
+});

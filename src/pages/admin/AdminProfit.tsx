@@ -284,7 +284,7 @@ function Breakdown({
         <ItemRow
           key="none"
           name="Түсі жазылмаған ПВХ"
-          note="Оптомы — жалпы баға. Прифуговка үстемесі де осында."
+          note={colourlessNote(p)}
           unit="м"
           qty={p.meters}
           qtyLabel={formatMeters(p.meters)}
@@ -585,4 +585,17 @@ function PriceInput({
       </i>
     </label>
   );
+}
+
+/**
+ * Where the colourless ПВХ came from — "ЛДСП Дуб Бунратти — 76 м (ORD-2026-000188,
+ * ORD-2026-000218)" — so the owner can see the metres ARE in the figure, just not under a colour,
+ * and which orders to open in the journal to give them one.
+ */
+function colourlessNote(p: PvcProfit): string {
+  const orders = (list: string[]) =>
+    list.length <= 4 ? list.join(", ") : `${list.slice(0, 4).join(", ")} және тағы ${list.length - 4} заказ`;
+  const boards = (p.colourless ?? []).map((c) => `${c.board} — ${formatMeters(c.meters)} (${orders(c.orderNumbers)})`);
+  const where = boards.length > 0 ? `Заказда ПВХ түсі таңдалмаған: ${boards.join("; ")}. ` : "";
+  return `${where}Бұл метрлер пайдаға кірген, оптомы — жалпы баға. Журналда түсін таңдасаңыз, сол түстің жолына ауысады.`;
 }

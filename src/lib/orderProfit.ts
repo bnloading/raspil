@@ -35,6 +35,8 @@ interface PvcPart {
   /** What the customer was billed for these metres. */
   revenueTiyn: number;
   name: string;
+  /** For the colourless part only: metres per board they were typed against. */
+  boards?: Map<string, number>;
 }
 
 /**
@@ -70,14 +72,30 @@ export function pvcOf(order: Order): { byType: Map<string, PvcPart>; unknown: Pv
   const meters = Math.max(order.pvcMetersTotal ?? 0, lines.reduce((s, l) => s + (l.pvcMeters ?? 0), 0));
   const billed = order.pvcCostTiyn ?? lines.reduce((s, l) => s + Math.round(l.pvcMeters * l.pvcPricePerMeterTiyn), 0);
   const unknownMeters = meters - parts.reduce((s, p) => s + p.meters, 0);
+  // Which boards the colourless metres were typed against — a journal row keeps them per line.
+  // "76 м, no colour" says nothing; "ЛДСП Дуб Бунратти, 76 м" says which roll it really was.
+  const boards = new Map<string, number>();
+  if (order.items && order.items.length > 0) {
+    for (const line of order.items) {
+      if (line.pvcMeters > 0 && !line.pvcTypeId) boards.set(line.materialName, (boards.get(line.materialName) ?? 0) + line.pvcMeters);
+    }
+  }
   return {
     byType,
     unknown: {
       meters: unknownMeters > 0.005 ? unknownMeters : 0,
       revenueTiyn: billed - parts.reduce((s, p) => s + p.revenueTiyn, 0),
       name: "",
+      boards,
     },
   };
+}
+
+/** Colourless ПВХ from one board over the period, and the orders it was typed on. */
+export interface ColourlessPvc {
+  board: string;
+  meters: number;
+  orderNumbers: string[];
 }
 
 /** One sheet material over the period: "ЛДСП Ақ — 45 лист, 16 200 − 13 000 = 3 200 ₸/лист".
@@ -107,6 +125,8 @@ export interface PvcProfit {
   wholesaleTiyn: number;
   /** Whether wholesaleTiyn is this colour's own price rather than the general one. */
   ownPrice: boolean;
+  /** The no-colour row only: which boards those metres were typed against, and on which orders. */
+  colourless?: ColourlessPvc[];
   costTiyn: number;
   profitTiyn: number;
 }
@@ -191,6 +211,7 @@ export function computeOrderProfits({
 
   const materials = new Map<string, MaterialProfit>();
   const pvc = new Map<string | null, PvcProfit>();
+  const colourless = new Map<string, ColourlessPvc>();
   let cuttingTiyn = 0;
   let otherTiyn = 0;
 
@@ -268,6 +289,12 @@ export function computeOrderProfits({
     };
     for (const [pvcTypeId, part] of byType) addPvc(pvcTypeId, part);
     if (unknown.meters > 0 || unknown.revenueTiyn !== 0) addPvc(null, unknown);
+    for (const [board, meters] of unknown.boards ?? []) {
+      const c = colourless.get(board) ?? { board, meters: 0, orderNumbers: [] };
+      c.meters += meters;
+      c.orderNumbers.push(order.orderNumber);
+      colourless.set(board, c);
+    }
 
     // Everything else on the total: распил, then ХДФ/қызмет/жеткізу less жеңілдік.
     const revenueTiyn = order.totalTiyn ?? 0;
@@ -300,6 +327,8 @@ export function computeOrderProfits({
   const materialRows = [...materials.values()]
     .map((m) => ({ ...m, profitTiyn: m.revenueTiyn - m.costTiyn }))
     .sort((a, b) => b.sheets - a.sheets);
+  const noColour = pvc.get(null);
+  if (noColour) noColour.colourless = [...colourless.values()].sort((a, b) => b.meters - a.meters);
   const pvcRows = [...pvc.values()]
     .map((p) => ({ ...p, profitTiyn: p.revenueTiyn - p.costTiyn }))
     .sort((a, b) => (a.pvcTypeId === null ? 1 : 0) - (b.pvcTypeId === null ? 1 : 0) || b.meters - a.meters);
