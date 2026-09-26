@@ -201,3 +201,138 @@
   color: var(--station-accent, var(--primary));
   box-shadow: none;
 }
+
+/* ── ПВХ панелі (PvcDashboard) and the shared worker history cards ─────────
+   These were written against a white card and hardcode it, while the text they
+   inherit is this theme's near-white --text — so on a phone the order number,
+   the history rows' figures and the "Дайын" summary rendered white on white,
+   and the section headings dark on the dark page. Each gets its dark-card
+   equivalent here, the same as the older .station-* rules above. */
+.app-shell.station-shell .station-segmented-btn {
+  background: var(--card);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+/* The accents in this theme are bright steps (#34d399, #5b8dff, …): white on
+   them measured 1.9:1, the page's own navy on them clears 9:1. */
+.app-shell.station-shell .station-segmented-btn.is-active,
+.app-shell.station-shell .station-hero-done,
+.app-shell.station-shell .btn-outline:hover {
+  color: var(--bg);
+}
+.app-shell.station-shell .station-segmented-btn.is-active {
+  background: var(--station-accent);
+  border-color: var(--station-accent);
+}
+
+.app-shell.station-shell .station-hero {
+  background: var(--card);
+  border-color: var(--border);
+  border-left-color: var(--station-accent);
+  box-shadow: var(--shadow);
+}
+.app-shell.station-shell .station-job-eyebrow,
+.app-shell.station-shell .station-hero-cut,
+.app-shell.station-shell .station-hero-time {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .station-job-eyebrow.is-done,
+.app-shell.station-shell .station-hero-cut.is-done {
+  color: var(--success);
+}
+.app-shell.station-shell .station-hero-customer,
+.app-shell.station-shell .station-hero-face-name,
+.app-shell.station-shell .station-hero-time b {
+  color: var(--text);
+}
+.app-shell.station-shell .station-hero-face {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+}
+.app-shell.station-shell .station-hero-edit {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+/* "Келесі заказдар" / "Бүгін бітті" */
+.app-shell.station-shell .station-next-head h3 {
+  color: var(--text);
+}
+.app-shell.station-shell .station-next-row {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+}
+.app-shell.station-shell .station-next-row:hover {
+  border-color: var(--station-accent);
+}
+.app-shell.station-shell .station-next-who strong,
+.app-shell.station-shell .station-next-meters {
+  color: var(--text);
+}
+.app-shell.station-shell .station-next-who small,
+.app-shell.station-shell .station-next-chev {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .station-next-row.is-done {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: linear-gradient(180deg, rgba(52, 211, 153, 0.1) 0%, var(--card) 60%);
+}
+.app-shell.station-shell .station-next-row.is-done .station-next-who small {
+  color: var(--success);
+}
+.app-shell.station-shell .station-day-foot {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+/* The order drawer under the headline card. */
+.app-shell.station-shell .jt-tone-muted,
+.app-shell.station-shell .worker-edge-chip {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .worker-edge-chip.is-on {
+  background: var(--success-light);
+  color: var(--success);
+}
+.app-shell.station-shell .worker-manager-note {
+  color: var(--warning);
+}
+
+/* Тарих / Дайын: the per-order history rows and the summary above them. */
+.app-shell.station-shell .station-history-card,
+.app-shell.station-shell .worker-history-summary {
+  background: var(--card);
+  border-color: var(--border);
+}
+.app-shell.station-shell .station-history-check {
+  color: var(--station-accent);
+}
+.app-shell.station-shell .station-history-identity span,
+.app-shell.station-shell .station-history-volume time,
+.app-shell.station-shell .station-history-chevron,
+.app-shell.station-shell .station-history-details p,
+.app-shell.station-shell .worker-history-summary p,
+.app-shell.station-shell .worker-history-summary small,
+.app-shell.station-shell .worker-history-summary .worker-quantities span,
+.app-shell.station-shell .worker-quantities span,
+.app-shell.station-shell .worker-material small {
+  color: var(--text-secondary);
+}
+.app-shell.station-shell .worker-quantities b {
+  color: var(--text);
+}
+.app-shell.station-shell .station-history-details,
+.app-shell.station-shell .worker-material {
+  border-color: var(--border);
+}
+/* Unstyled until now, so it drew in the browser's own link blue — invisible on a dark card. */
+.app-shell.station-shell .station-detail-link {
+  color: var(--station-accent, var(--primary));
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
