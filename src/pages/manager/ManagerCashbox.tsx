@@ -31,6 +31,7 @@ import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import type { CashAccount, Department, Expense, PaymentMethodDef } from "../../types/domain";
+import type { CashboxSummary } from "../../lib/cashbox";
 
 /**
  * "Касса" — where the shop's money is, and what left it.
@@ -114,6 +115,13 @@ export default function ManagerCashbox() {
     () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate }),
     [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate],
   );
+  // "Қазір бізде бар" is what is in each account today — the all-time balance, opening included —
+  // whichever month the picker shows. A month's own in − out is that month's flow, not money on
+  // hand, and labelling it as the balance is how the card came to be read wrong.
+  const cashboxNow = useMemo(
+    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate],
+  );
   const rows = useMemo(
     () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
     [expenses, effectivePeriod, cashStartDate],
@@ -192,55 +200,7 @@ export default function ManagerCashbox() {
             </div>
           </div>
 
-          <div className="cashbox-accounts">
-            {cashbox.accounts.map((acc) => (
-              <section key={acc.account} className={`cashbox-card is-${acc.account}`}>
-                <header>
-                  <h3>{CASH_ACCOUNT_LABELS[acc.account]}</h3>
-                  <p>{CASH_ACCOUNT_HINTS[acc.account]}</p>
-                </header>
-                <div className="cashbox-balance">
-                  <span className="cashbox-balance-label">Қалдық</span>
-                  <strong className={acc.balanceTiyn < 0 ? "is-negative" : ""}>{formatMoney(acc.balanceTiyn)}</strong>
-                  {effectivePeriod === null && (openingBalanceTiyn[acc.account] ?? 0) > 0 && (
-                    <span className="cashbox-count">
-                      {" "}
-                      (оның ішінде бастапқы {formatMoney(openingBalanceTiyn[acc.account]!)})
-                    </span>
-                  )}
-                </div>
-                <dl className="cashbox-flow">
-                  <div>
-                    <dt>Түсті</dt>
-                    <dd className="is-in">{formatMoney(acc.inTiyn)}</dd>
-                  </div>
-                  <div>
-                    <dt>Шықты</dt>
-                    <dd className="is-out">
-                      {formatMoney(acc.outTiyn)}
-                      {acc.expenseCount > 0 && <span className="cashbox-count"> · {acc.expenseCount} жазба</span>}
-                    </dd>
-                  </div>
-                </dl>
-                {acc.byMethod.length > 0 && (
-                  <ul className="cashbox-methods">
-                    {acc.byMethod.map((m) => (
-                      <li key={m.methodId}>
-                        <span>{m.methodName}</span>
-                        <strong>{formatMoney(m.amountTiyn)}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
-          </div>
-
-          <div className="cashbox-total">
-            <span>Барлығы түсті <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong></span>
-            <span>Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
-            <span>Қолда <strong>{formatMoney(cashbox.totalBalanceTiyn)}</strong></span>
-          </div>
+          <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod} />
 
           <ExpenseForm
             defaultDate={expenseDefaultDate(effectivePeriod)}
@@ -592,5 +552,98 @@ function OpeningBalanceEditor({
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * One card per account and the total under them. Each card leads with "Қазір бізде бар" — the
+ * all-time balance, which is the money actually in that account today — and shows the sum behind
+ * it: бастапқы + түсті − шықты, or the chosen month's own түсті/шықты when a month is picked.
+ * Pure, so tests/mobile-design-preview.tsx can draw it on sample figures.
+ */
+export function CashboxAccounts({
+  cashbox,
+  cashboxNow,
+  openingBalanceTiyn,
+  period: effectivePeriod,
+}: {
+  /** The picked period's flows. */
+  cashbox: CashboxSummary;
+  /** All time — what is in each account now. */
+  cashboxNow: CashboxSummary;
+  openingBalanceTiyn: Partial<Record<CashAccount, number>>;
+  period: string | null;
+}) {
+  const nowByAccount = new Map(cashboxNow.accounts.map((a) => [a.account, a.balanceTiyn]));
+  const totalOpeningTiyn = CASH_ACCOUNTS.reduce((s, a) => s + (openingBalanceTiyn[a] ?? 0), 0);
+
+  return (
+    <>
+      <div className="cashbox-accounts">
+        {cashbox.accounts.map((acc) => (
+          <section key={acc.account} className={`cashbox-card is-${acc.account}`}>
+            <header>
+              <h3>{CASH_ACCOUNT_LABELS[acc.account]}</h3>
+              <p>{CASH_ACCOUNT_HINTS[acc.account]}</p>
+            </header>
+            <div className="cashbox-balance">
+              <span className="cashbox-balance-label">Қазір бізде бар</span>
+              <strong className={(nowByAccount.get(acc.account) ?? 0) < 0 ? "is-negative" : ""}>
+                {formatMoney(nowByAccount.get(acc.account) ?? 0)}
+              </strong>
+            </div>
+            {/* The sum behind the figure above: бастапқы + түсті − шықты. It used to read
+                "Қалдық 3 195 507 (оның ішінде бастапқы 4 253 791)" — a balance that "includes"
+                a larger number. For a single month it is that month's flow instead, named as such. */}
+            {effectivePeriod !== null && <p className="cashbox-flow-title">{monthLabel(effectivePeriod)}</p>}
+            <dl className="cashbox-flow">
+              {effectivePeriod === null && (openingBalanceTiyn[acc.account] ?? 0) > 0 && (
+                <div>
+                  <dt>Бастапқы</dt>
+                  <dd>{formatMoney(openingBalanceTiyn[acc.account])}</dd>
+                </div>
+              )}
+              <div>
+                <dt>+ Түсті</dt>
+                <dd className="is-in">{formatMoney(acc.inTiyn)}</dd>
+              </div>
+              <div>
+                <dt>− Шықты</dt>
+                <dd className={acc.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(acc.outTiyn)}</dd>
+                {acc.expenseCount > 0 && <dd className="cashbox-count">{acc.expenseCount} жазба</dd>}
+              </div>
+            </dl>
+            {/* One method is the "Түсті" figure again; the split only says something when
+                two methods share the account (Kaspi and Pay). */}
+            {acc.byMethod.length > 1 && (
+              <ul className="cashbox-methods">
+                {acc.byMethod.map((m) => (
+                  <li key={m.methodId}>
+                    <span>{m.methodName}</span>
+                    <strong>{formatMoney(m.amountTiyn)}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
+  
+      <div className="cashbox-total">
+        <span className="cashbox-total-now">
+          Қазір бізде барлығы <strong className={cashboxNow.totalBalanceTiyn < 0 ? "is-out" : undefined}>
+            {formatMoney(cashboxNow.totalBalanceTiyn)}
+          </strong>
+        </span>
+        {effectivePeriod === null && totalOpeningTiyn > 0 && (
+          <span>Бастапқы <strong>{formatMoney(totalOpeningTiyn)}</strong></span>
+        )}
+        <span>
+          {effectivePeriod === null ? "+ Түсті" : `${monthLabel(effectivePeriod)}: түсті`}{" "}
+          <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong>
+        </span>
+        <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
+      </div>
+    </>
   );
 }

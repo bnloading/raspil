@@ -7984,44 +7984,56 @@ body {
   font-size: 0.76rem;
   color: var(--text-light);
 }
+/* "Қазір бізде бар  3 195 507 ₸" — what is in the account today, on one line. The figure never
+   wraps: a "₸" left alone on the next line reads as a second number. */
 .cashbox-balance {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   margin: 12px 0 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
 .cashbox-balance-label {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 .cashbox-balance strong {
   font-size: 1.45rem;
   font-weight: 800;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* Spending a pot past what came into it that month is real and is shown, not clamped. */
-.cashbox-balance strong.is-negative { color: var(--danger); }
+/* Spending a pot past what came into it is real and is shown, not clamped. */
+.cashbox-balance strong.is-negative { color: #b91c1c; }
 
+/* The sum behind that figure — бастапқы + түсті − шықты — in even columns. The greens and reds
+   are a step darker than --emerald/--danger, which measure 3.8:1 on white. */
+.cashbox-flow-title { margin: 0 0 6px; font-size: 0.74rem; font-weight: 700; color: var(--text-secondary); }
 .cashbox-flow {
-  display: flex;
-  gap: 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 10px;
   margin: 0;
 }
-.cashbox-flow div { flex: 1 1 0; }
 .cashbox-flow dt {
   font-size: 0.74rem;
-  color: var(--text-light);
+  color: var(--text-secondary);
 }
 .cashbox-flow dd {
   margin: 2px 0 0;
   font-weight: 700;
+  /* Three seven-digit sums side by side on a 320px phone: the size follows the screen so they
+     never run into each other, up to the normal 16px wherever there is room. */
+  font-size: clamp(12px, 3.6vw, 1rem);
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.cashbox-flow dd.is-in { color: var(--emerald); }
-.cashbox-flow dd.is-out { color: var(--danger); }
+.cashbox-flow dd.is-in { color: #047857; }
+.cashbox-flow dd.is-out { color: #b91c1c; }
 .cashbox-count {
   font-weight: 400;
   font-size: 0.72rem;
@@ -8046,7 +8058,7 @@ body {
 
 .cashbox-total {
   display: flex;
-  gap: 26px;
+  gap: 8px 26px;
   flex-wrap: wrap;
   margin: 14px 0;
   padding: 12px 18px;
@@ -8060,8 +8072,12 @@ body {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.cashbox-total strong.is-in { color: var(--emerald); }
-.cashbox-total strong.is-out { color: var(--danger); }
+.cashbox-total strong.is-in { color: #047857; }
+.cashbox-total strong.is-out { color: #b91c1c; }
+/* The day's answer first and biggest; the flows beside it are how it got there. */
+.cashbox-total-now { flex-basis: 100%; font-weight: 600; }
+.cashbox-total-now strong { font-size: 1.25rem; font-weight: 800; }
+.cashbox-flow dd.cashbox-count { font-size: 0.72rem; font-weight: 400; color: var(--text-secondary); }
 
 /* One row, not a modal: an expense is written between two customers, and a dialog that has to be
    opened first is the reason expenses stop being written down. */
