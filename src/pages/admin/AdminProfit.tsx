@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -6,10 +6,12 @@ import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { ProfitCard } from "../../components/ProfitCard";
+import { DepositCard } from "../../components/DepositCard";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
+import { useDepartmentCashbox } from "../../hooks/useDepartmentCashbox";
 import { logAudit } from "../../lib/audit";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
@@ -52,10 +54,18 @@ export default function AdminProfit() {
     () => new Set(allMaterials.filter((m) => m.stockTracked === false).map((m) => m.id)),
     [allMaterials],
   );
-  const summary = useMemo(
-    () => computeOrderProfits({ orders, costs, freeMaterialIds }),
-    [orders, costs, freeMaterialIds],
+  const countertopIds = useMemo(
+    () => new Set(allMaterials.filter((m) => m.category === "countertop").map((m) => m.id)),
+    [allMaterials],
   );
+  const summary = useMemo(
+    () => computeOrderProfits({ orders, costs, freeMaterialIds, countertopIds }),
+    [orders, costs, freeMaterialIds, countertopIds],
+  );
+  // Нұр's balance for the head of the page — the Касса page's own figure (hooks/useDepartmentCashbox).
+  const cash = useDepartmentCashbox({ orders: allOrders, department: myDepartment });
+  const nurNow = cash.now.accounts.find((a) => a.account === "deposit");
+  const nurMonth = cash.thisMonth.accounts.find((a) => a.account === "deposit");
 
   const savePrice = async (key: string, tiyn: number, label: string) => {
     if (!user || !userData) return;
@@ -73,7 +83,7 @@ export default function AdminProfit() {
   };
 
   if (!userData) return <Spinner />;
-  const loading = ordersLoading || materialsLoading || pvcLoading || costsLoading;
+  const loading = ordersLoading || materialsLoading || pvcLoading || costsLoading || cash.loading;
 
   return (
     <AppShell title="Таза пайда" subtitle={`${formatStartDate(PROFIT_START_DATE)} бастапқы заказдар`}>
@@ -83,6 +93,10 @@ export default function AdminProfit() {
         <div className="empty-state"><p>Оптом бағаларды тек админ көре алады.</p></div>
       ) : (
         <ProfitView
+          header={nurNow && nurMonth && (
+            <DepositCard now={nurNow} month={nurMonth} monthKey={cash.monthKey}
+              openingTiyn={cash.openingBalanceTiyn.deposit ?? 0} startDate={cash.startDate} />
+          )}
           summary={summary}
           materials={materials}
           pvcTypes={pvcTypes}
@@ -101,6 +115,7 @@ type SavePrice = (key: string, tiyn: number, label: string) => Promise<void>;
 
 /** The page without its data hooks — tests/mobile-design-preview.tsx renders it on sample figures. */
 export function ProfitView({
+  header,
   summary,
   materials,
   pvcTypes,
@@ -109,6 +124,8 @@ export function ProfitView({
   onSavePrice,
   onOpenOrder,
 }: {
+  /** Drawn first and biggest — the Нұр balance (DepositCard). */
+  header?: ReactNode;
   summary: ProfitSummary;
   materials: Material[];
   pvcTypes: PvcType[];
@@ -126,13 +143,16 @@ export function ProfitView({
 
   return (
     <div className="aps">
+      {header}
       <ProfitCard summary={summary} onFixPrices={openPrices} />
 
       <div className="prf-tabs" role="tablist" aria-label="Таза пайда" ref={tabs}>
         <button type="button" role="tab" aria-selected={tab === "items"} className={tab === "items" ? "is-active" : ""}
           onClick={() => setTab("items")}>
-          Лист және ПВХ
-          {(summary.uncostedSheets > 0 || summary.uncostedPvcMeters > 0) && <span className="prf-dot" aria-label="оптом бағасы жоқ" />}
+          Материалдар
+          {(summary.uncostedSheets > 0 || summary.uncostedCountertops > 0 || summary.uncostedPvcMeters > 0) && (
+            <span className="prf-dot" aria-label="оптом бағасы жоқ" />
+          )}
         </button>
         <button type="button" role="tab" aria-selected={tab === "orders"} className={tab === "orders" ? "is-active" : ""}
           onClick={() => setTab("orders")}>
@@ -179,8 +199,11 @@ function Breakdown({
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const pvcById = new Map(pvcTypes.map((p) => [p.id, p]));
   const soldMaterialIds = new Set(summary.materials.map((m) => m.materialId));
-  const unsoldMaterials = materials
-    .filter((m) => !soldMaterialIds.has(m.id) && m.active && !m.archived)
+  // A customer's own board is not bought by the shop, so it has no wholesale to set — it is never
+  // offered in the "not sold yet" price lists.
+  const unsold = (countertop: boolean) => materials
+    .filter((m) => !soldMaterialIds.has(m.id) && m.active && !m.archived && !freeMaterialIds.has(m.id)
+      && (m.category === "countertop") === countertop)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
   const soldPvcIds = new Set(summary.pvc.map((p) => p.pvcTypeId));
   const unsoldPvc = pvcTypes
@@ -188,23 +211,70 @@ function Breakdown({
     .sort((a, b) => pvcName(a).localeCompare(pvcName(b), "ru"));
   const defaultPvc = costs.get(PVC_DEFAULT_COST_KEY) ?? 0;
 
-  const soldMaterial = (m: MaterialProfit) => {
+  const soldMaterial = (m: MaterialProfit, unit: string) => {
     const name = materialById.get(m.materialId)?.name ?? m.name;
+    // A customer's own board or countertop: what the line billed is the labour to cut it, and
+    // there is no wholesale behind it to subtract.
+    if (freeMaterialIds.has(m.materialId)) {
+      // Billed through Распил instead (a customer's own countertop is quoted by length) — its
+      // money is on that line, and a "+0 ₸" row here would only look like something went wrong.
+      if (m.revenueTiyn === 0) return null;
+      return (
+        <FlatRow key={m.materialId} name={name} amountTiyn={m.profitTiyn}
+          note={`${m.sheets} ${unit} · клиенттің өз материалы — оптом құны жоқ, түскені кесу ақысы`} />
+      );
+    }
     return (
       <ItemRow
         key={m.materialId}
         name={name}
-        unit="лист"
+        unit={unit}
         qty={m.sheets}
-        qtyLabel={`${m.sheets} лист`}
+        qtyLabel={`${m.sheets} ${unit}`}
         revenueTiyn={m.revenueTiyn}
         sellTiyn={Math.round(m.revenueTiyn / m.sheets)}
         sellVaried={m.minPriceTiyn !== m.maxPriceTiyn}
         wholesaleTiyn={m.wholesaleTiyn}
         profitTiyn={m.profitTiyn}
-        missing={m.wholesaleTiyn <= 0 && !freeMaterialIds.has(m.materialId)}
+        missing={m.wholesaleTiyn <= 0}
         onSave={(tiyn) => onSavePrice(m.materialId, tiyn, name)}
       />
+    );
+  };
+  const unsoldMaterial = (m: Material, unit: string) => (
+    <ItemRow
+      key={m.id}
+      name={m.name}
+      unit={unit}
+      sellTiyn={m.sellingPriceTiyn}
+      wholesaleTiyn={costs.get(m.id) ?? 0}
+      missing={false}
+      onSave={(tiyn) => onSavePrice(m.id, tiyn, m.name)}
+    />
+  );
+  /** Листтар and Столешница: the same sum, sheets counted per sheet and countertops per piece. */
+  const materialSection = ({ id, title, countertop, unit, profitTiyn, hint, empty, unsoldTitle }: {
+    id: string; title: string; countertop: boolean; unit: string; profitTiyn: number; hint: string; empty: string; unsoldTitle: string;
+  }) => {
+    const sold = summary.materials.filter((m) => m.countertop === countertop);
+    const rest = unsold(countertop);
+    if (countertop && sold.length === 0 && rest.length === 0) return null;
+    return (
+      <section className="aps-card prf-section" aria-labelledby={id}>
+        <div className="aps-head">
+          <h2 id={id}>{title}</h2>
+          <b className={`prf-section-sum${profitTiyn < 0 ? " is-negative" : ""}`}>{signedMoney(profitTiyn)}</b>
+        </div>
+        <p className="prf-hint">{hint}</p>
+        {sold.length === 0 && <p className="prf-empty">{empty}</p>}
+        {sold.map((m) => soldMaterial(m, unit))}
+        {rest.length > 0 && (
+          <details className="prf-more">
+            <summary>{unsoldTitle} ({rest.length})</summary>
+            {rest.map((m) => unsoldMaterial(m, unit))}
+          </details>
+        )}
+      </section>
     );
   };
   const soldPvc = (p: PvcProfit) => {
@@ -253,31 +323,17 @@ function Breakdown({
 
   return (
     <>
-      <section className="aps-card prf-section" aria-labelledby="prf-sheets">
-        <div className="aps-head">
-          <h2 id="prf-sheets">Листтан пайда</h2>
-          <b className={`prf-section-sum${summary.sheetProfitTiyn < 0 ? " is-negative" : ""}`}>{signedMoney(summary.sheetProfitTiyn)}</b>
-        </div>
-        <p className="prf-hint">Сату бағасы − оптом бағасы = 1 листтің пайдасы. Оптом бағасын өзіңіз жазыңыз.</p>
-        {summary.materials.length === 0 && <p className="prf-empty">Бұл кезеңде лист сатылмаған</p>}
-        {summary.materials.map(soldMaterial)}
-        {unsoldMaterials.length > 0 && (
-          <details className="prf-more">
-            <summary>Әлі сатылмаған листтар ({unsoldMaterials.length})</summary>
-            {unsoldMaterials.map((m) => (
-              <ItemRow
-                key={m.id}
-                name={m.name}
-                unit="лист"
-                sellTiyn={m.sellingPriceTiyn}
-                wholesaleTiyn={costs.get(m.id) ?? 0}
-                missing={false}
-                onSave={(tiyn) => onSavePrice(m.id, tiyn, m.name)}
-              />
-            ))}
-          </details>
-        )}
-      </section>
+      {materialSection({
+        id: "prf-sheets", title: "Листтан пайда", countertop: false, unit: "лист", profitTiyn: summary.sheetProfitTiyn,
+        hint: "Сату бағасы − оптом бағасы = 1 листтің пайдасы. Оптом бағасын өзіңіз жазыңыз.",
+        empty: "Бұл кезеңде лист сатылмаған", unsoldTitle: "Әлі сатылмаған листтар",
+      })}
+
+      {materialSection({
+        id: "prf-tops", title: "Столешницадан пайда", countertop: true, unit: "дана", profitTiyn: summary.countertopProfitTiyn,
+        hint: "1 дананың сату бағасы − оптом бағасы. Оптом бағасын өзіңіз жазыңыз.",
+        empty: "Бұл кезеңде столешница сатылмаған", unsoldTitle: "Әлі сатылмаған столешницалар",
+      })}
 
       <section className="aps-card prf-section" aria-labelledby="prf-pvc">
         <div className="aps-head">
@@ -454,13 +510,15 @@ function OrderList({ summary, onOpenOrder }: { summary: ProfitSummary; onOpenOrd
             </span>
             <span className="prf-order-math">
               {formatMoney(o.revenueTiyn)}
-              {o.sheets > 0 && <> − {o.sheets} лист оптом {formatMoney(o.sheetCostTiyn)}</>}
+              {(o.sheets > 0 || o.countertops > 0) && (
+                <> − {[o.sheets > 0 ? `${o.sheets} лист` : "", o.countertops > 0 ? `${o.countertops} столешница` : ""].filter(Boolean).join(" + ")} оптом {formatMoney(o.sheetCostTiyn)}</>
+              )}
               {o.pvcMeters > 0 && <> − ПВХ {formatMeters(o.pvcMeters)} оптом {formatMoney(o.pvcCostTiyn)}</>}
             </span>
             <span className="prf-order-meta">
               {o.createdAt ? formatDateDMY(o.createdAt) : ""}
               {o.debtTiyn > 0 && <span className="is-debt"> · қарыз {formatMoney(o.debtTiyn)}</span>}
-              {(o.uncostedSheets > 0 || o.uncostedPvcMeters > 0) && <span className="is-warn"> · оптом бағасы жоқ</span>}
+              {(o.uncostedSheets > 0 || o.uncostedCountertops > 0 || o.uncostedPvcMeters > 0) && <span className="is-warn"> · оптом бағасы жоқ</span>}
             </span>
           </button>
         </li>

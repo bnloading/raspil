@@ -13,6 +13,7 @@ import { AdminPhoneSummary } from "../src/components/AdminPhoneSummary";
 import type { CashboxSummary } from "../src/lib/cashbox";
 import { computeOrderProfits, pvcCostKey, PVC_DEFAULT_COST_KEY } from "../src/lib/orderProfit";
 import { ProfitView } from "../src/pages/admin/AdminProfit";
+import { DepositCard } from "../src/components/DepositCard";
 import { CashboxAccounts } from "../src/pages/manager/ManagerCashbox";
 import { BottomNav } from "../src/components/layout/BottomNav";
 import { getNavForRole } from "../src/components/layout/navConfig";
@@ -109,7 +110,9 @@ const prfMaterials = [
   {id:"m1",name:"ЛДСП Ақ Томск",category:"ldsp",sellingPriceTiyn:T(16500),active:true,archived:false},
   {id:"m2",name:"ЛДСП Кашемир",category:"ldsp",sellingPriceTiyn:T(17000),active:true,archived:false},
   {id:"hdf",name:"ХДФ Ақ",category:"ldsp",sellingPriceTiyn:T(7500),active:true,archived:false},
-  {id:"m3",name:"Столешница Ақ",category:"ldsp",sellingPriceTiyn:T(24000),active:true,archived:false},
+  {id:"m3",name:"Столешница Ақ 38 мм",category:"countertop",sellingPriceTiyn:T(45000),active:true,archived:false},
+  {id:"ext",name:"Сырттан келетін столешница 3м",category:"countertop",stockTracked:false,sellingPriceTiyn:0,active:true,archived:false},
+  {id:"m4",name:"Столешница Кашемир 38 мм",category:"countertop",sellingPriceTiyn:T(48000),active:true,archived:false},
 ] as unknown as Material[];
 const prfPvc = [
   {id:"p1",colorName:"Ақ",thicknessMm:0.4,pricePerMeterTiyn:T(150),active:true},
@@ -117,7 +120,7 @@ const prfPvc = [
   {id:"p3",colorName:"Кашемир",thicknessMm:1,pricePerMeterTiyn:T(250),active:true},
 ] as unknown as PvcType[];
 // The owner's own example: ЛДСП Ақ sold at 16 200, bought at 13 000. Кашемир has no wholesale yet.
-const prfCosts = new Map<string, number>([["m1",T(13000)],["hdf",T(5200)],[pvcCostKey("p1"),T(60)],[PVC_DEFAULT_COST_KEY,T(90)]]);
+const prfCosts = new Map<string, number>([["m3",T(38000)],["m1",T(13000)],["hdf",T(5200)],[pvcCostKey("p1"),T(60)],[PVC_DEFAULT_COST_KEY,T(90)]]);
 const line = (materialId:string, materialName:string, sheetQty:number, price:number, pvcMeters=0, pvcPrice=0, pvcTypeId?:string) =>
   ({materialId,materialName,sheetQty,sheetPriceTiyn:T(price),pvcMeters,pvcPricePerMeterTiyn:T(pvcPrice),pvcTypeId});
 const prfOrders = [
@@ -130,14 +133,20 @@ const prfOrders = [
   {...order, id:"c", orderNumber:"#1043", customerName:"Нұрлан", productionStatus:"delivered", createdAt:at("2026-09-22"), pvcByType:undefined,
     items:[line("m1","ЛДСП Ақ Томск",5,16000,40,150)], pvcMetersTotal:40, pvcCostTiyn:T(6000), cuttingCostTiyn:T(10000),
     discountTiyn:0, totalTiyn:T(80000+6000+10000), debtTiyn:0},
+  {...order, id:"d", orderNumber:"#1047", customerName:"Ерлан", productionStatus:"ready", createdAt:at("2026-09-26"), pvcByType:undefined,
+    items:[line("m3","Столешница Ақ 38 мм",2,45000), line("ext","Сырттан келетін столешница 3м",1,0)], pvcMetersTotal:0, pvcCostTiyn:0, cuttingCostTiyn:T(2000),
+    discountTiyn:0, totalTiyn:T(90000+2000), debtTiyn:0},
   {...order, id:"old", orderNumber:"#1030", customerName:"Ескі", createdAt:at("2026-09-20"), totalTiyn:T(500000)},
 ] as unknown as Order[];
-const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts });
+const prfTops = new Set(["m3","ext","m4"]);
+const prfFree = new Set(["ext"]);
+const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts, countertopIds: prfTops, freeMaterialIds: prfFree });
 function ProfitPanel(){
   const [costs, setCosts] = useState(prfCosts);
-  const summary = computeOrderProfits({ orders: prfOrders, costs });
+  const summary = computeOrderProfits({ orders: prfOrders, costs, countertopIds: prfTops, freeMaterialIds: prfFree });
   return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>
-    <ProfitView summary={summary} materials={prfMaterials} pvcTypes={prfPvc} costs={costs} freeMaterialIds={new Set()}
+    <ProfitView header={<DepositCard now={nurCashbox.accounts[0]} month={nurCashbox.accounts[0]} monthKey="2026-09" openingTiyn={T(4253791)} startDate="2026-09-22" />}
+      summary={summary} materials={prfMaterials} pvcTypes={prfPvc} costs={costs} freeMaterialIds={prfFree}
       onSavePrice={async (key, tiyn) => setCosts(prev => new Map(prev).set(key, tiyn))} onOpenOrder={() => {}} />
   </main></div></div></BrowserRouter>;
 }

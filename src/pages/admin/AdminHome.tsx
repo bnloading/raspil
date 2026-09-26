@@ -112,8 +112,11 @@ export default function AdminHome() {
     [materials],
   );
   const profit = useMemo(
-    () => computeOrderProfits({ orders, costs: purchaseCosts, freeMaterialIds }),
-    [orders, purchaseCosts, freeMaterialIds],
+    () => computeOrderProfits({
+      orders, costs: purchaseCosts, freeMaterialIds,
+      countertopIds: new Set(materials.filter((m) => m.category === "countertop").map((m) => m.id)),
+    }),
+    [orders, purchaseCosts, freeMaterialIds, materials],
   );
 
   // The phone summary's "Ақша қайда тұр" and sheet counts — the Касса page's own figures, all-time,

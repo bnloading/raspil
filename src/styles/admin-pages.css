@@ -315,3 +315,11 @@
 /* With no wholesale price the row's figure is the whole sale, not a profit — shown, since it is in
    the total, but in the warning colour rather than the green of money actually made. */
 .prf-item.is-missing .prf-item-head b { color: #92400e; }
+
+/* "Нұрдағы ақша" at the head of the Таза пайда page: the Нұр blue edge it carries on the Касса page,
+   and the balance in ink rather than the profit's green — money held, not money made. */
+.aps-deposit { border-left: 4px solid var(--info); }
+.aps-big.is-money { color: var(--text); }
+.aps-big.is-money.is-negative { color: var(--aps-out); }
+.aps-deposit .aps-flow,
+.aps-deposit .aps-detail { margin-left: 0; }

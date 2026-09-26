@@ -21,8 +21,9 @@ export function ProfitCard({
 }) {
   const missing = [
     summary.uncostedSheets > 0 ? `${summary.uncostedSheets} листтің` : "",
+    summary.uncostedCountertops > 0 ? `${summary.uncostedCountertops} столешницаның` : "",
     summary.uncostedPvcMeters > 0 ? `${formatMeters(summary.uncostedPvcMeters)} ПВХ-ның` : "",
-  ].filter(Boolean).join(" және ");
+  ].filter(Boolean).join(", ");
 
   return (
     <section className="aps-card aps-profit" aria-labelledby="aps-profit-title">
@@ -43,6 +44,12 @@ export function ProfitCard({
           <dt>Листтан пайда</dt>
           <dd>{signedMoney(summary.sheetProfitTiyn)}</dd>
         </div>
+        {summary.materials.some((m) => m.countertop) && (
+          <div>
+            <dt>Столешницадан пайда</dt>
+            <dd>{signedMoney(summary.countertopProfitTiyn)}</dd>
+          </div>
+        )}
         <div>
           <dt>ПВХ-дан пайда</dt>
           <dd>{signedMoney(summary.pvcProfitTiyn)}</dd>

@@ -156,3 +156,31 @@ describe("the per-material breakdown", () => {
     expect(s.sheetProfitTiyn + s.pvcProfitTiyn + s.cuttingTiyn + s.otherTiyn).toBe(s.profitTiyn);
   });
 });
+
+describe("столешница", () => {
+  it("is counted per piece and reported apart from the board sheets, and still adds up", () => {
+    const s = computeOrderProfits({
+      orders: [order({
+        totalTiyn: T(10 * 16200 + 2 * 45000),
+        items: [line({ materialId: "ldsp", sheetQty: 10, sheetPriceTiyn: T(16200) }), line({ materialId: "top", materialName: "Столешница Ақ", sheetQty: 2, sheetPriceTiyn: T(45000) })],
+      })],
+      costs: new Map([["ldsp", T(13000)], ["top", T(38000)]]),
+      countertopIds: new Set(["top"]),
+    });
+    expect(s.orders[0]).toMatchObject({ sheets: 10, countertops: 2 });
+    expect(s.materials.find((m) => m.materialId === "top")).toMatchObject({ countertop: true, sheets: 2, profitTiyn: T(2 * 7000) });
+    expect(s.sheetProfitTiyn).toBe(T(10 * 3200));
+    expect(s.countertopProfitTiyn).toBe(T(2 * 7000));
+    expect(s.sheetProfitTiyn + s.countertopProfitTiyn + s.pvcProfitTiyn + s.cuttingTiyn + s.otherTiyn).toBe(s.profitTiyn);
+  });
+
+  it("flags a countertop with no wholesale as a missing countertop price, not a missing sheet", () => {
+    const s = computeOrderProfits({
+      orders: [order({ items: [line({ materialId: "top", sheetQty: 1, sheetPriceTiyn: T(45000) })] })],
+      costs: new Map(),
+      countertopIds: new Set(["top"]),
+    });
+    expect(s.uncostedCountertops).toBe(1);
+    expect(s.uncostedSheets).toBe(0);
+  });
+});

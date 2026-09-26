@@ -80,10 +80,12 @@ export function pvcOf(order: Order): { byType: Map<string, PvcPart>; unknown: Pv
   };
 }
 
-/** One sheet material over the period: "ЛДСП Ақ — 45 лист, 16 200 − 13 000 = 3 200 ₸/лист". */
+/** One sheet material over the period: "ЛДСП Ақ — 45 лист, 16 200 − 13 000 = 3 200 ₸/лист".
+ *  A столешница is the same sum per piece, and `sheets` counts pieces. */
 export interface MaterialProfit {
   materialId: string;
   name: string;
+  countertop: boolean;
   sheets: number;
   revenueTiyn: number;
   /** Wholesale ₸ per sheet — 0 when none has been entered. */
@@ -119,10 +121,14 @@ export interface OrderProfit {
   pvcCostTiyn: number;
   profitTiyn: number;
   debtTiyn: number;
+  /** Board sheets, столешница excluded. */
   sheets: number;
+  /** Столешница pieces. */
+  countertops: number;
   pvcMeters: number;
   /** Sheets on this order whose material has no wholesale price — costed at 0. */
   uncostedSheets: number;
+  uncostedCountertops: number;
   /** Metres on this order with no wholesale price, own or general — costed at 0. */
   uncostedPvcMeters: number;
 }
@@ -137,12 +143,15 @@ export interface ProfitSummary {
   profitTiyn: number;
   debtTiyn: number;
   uncostedSheets: number;
+  uncostedCountertops: number;
   uncostedPvcMeters: number;
-  /** Most sheets first. */
+  /** Most sold first — sheets and столешница both; `countertop` tells them apart. */
   materials: MaterialProfit[];
   /** Most metres first; the no-colour row, if any, last. */
   pvc: PvcProfit[];
+  /** Board sheets only. */
   sheetProfitTiyn: number;
+  countertopProfitTiyn: number;
   pvcProfitTiyn: number;
   /** Распил — billed, no wholesale cost. */
   cuttingTiyn: number;
@@ -157,16 +166,21 @@ export interface ProfitSummary {
  * `freeMaterialIds` are materials that are not shop stock (a customer's own board, offcuts —
  * Material.stockTracked === false): a zero price on those is true, not missing, so they are never
  * reported as uncosted.
+ *
+ * `countertopIds` are the столешница materials (Material.category "countertop"): sold per piece,
+ * so they are counted and reported apart from the board sheets rather than as more "лист".
  */
 export function computeOrderProfits({
   orders,
   costs,
   freeMaterialIds = new Set(),
+  countertopIds = new Set(),
   startDate = PROFIT_START_DATE,
 }: {
   orders: Order[];
   costs: ReadonlyMap<string, number>;
   freeMaterialIds?: ReadonlySet<string>;
+  countertopIds?: ReadonlySet<string>;
   startDate?: string;
 }): ProfitSummary {
   const defaultPvc = costs.get(PVC_DEFAULT_COST_KEY) ?? 0;
@@ -190,20 +204,27 @@ export function computeOrderProfits({
     const lines = linesOf(order);
     const hasItems = !!order.items && order.items.length > 0;
     let sheets = 0;
+    let countertops = 0;
     let sheetRevenueTiyn = 0;
     let sheetCostTiyn = 0;
     let uncostedSheets = 0;
+    let uncostedCountertops = 0;
     for (const line of lines) {
       const qty = line.sheetQty ?? 0;
       if (qty <= 0) continue;
+      const countertop = countertopIds.has(line.materialId);
       const revenue = hasItems ? Math.round(qty * line.sheetPriceTiyn) : order.materialCostTiyn ?? 0;
       const unitPrice = Math.round(revenue / qty);
       const wholesale = costs.get(line.materialId) ?? 0;
       const cost = qty * wholesale;
-      sheets += qty;
+      if (countertop) countertops += qty;
+      else sheets += qty;
       sheetRevenueTiyn += revenue;
       sheetCostTiyn += cost;
-      if (wholesale <= 0 && !freeMaterialIds.has(line.materialId)) uncostedSheets += qty;
+      if (wholesale <= 0 && !freeMaterialIds.has(line.materialId)) {
+        if (countertop) uncostedCountertops += qty;
+        else uncostedSheets += qty;
+      }
 
       const m = materials.get(line.materialId);
       if (m) {
@@ -214,7 +235,7 @@ export function computeOrderProfits({
         m.maxPriceTiyn = Math.max(m.maxPriceTiyn, unitPrice);
       } else {
         materials.set(line.materialId, {
-          materialId: line.materialId, name: line.materialName, sheets: qty, revenueTiyn: revenue,
+          materialId: line.materialId, name: line.materialName, countertop, sheets: qty, revenueTiyn: revenue,
           wholesaleTiyn: wholesale, costTiyn: cost, profitTiyn: 0, minPriceTiyn: unitPrice, maxPriceTiyn: unitPrice,
         });
       }
@@ -265,8 +286,10 @@ export function computeOrderProfits({
       profitTiyn: revenueTiyn - sheetCostTiyn - pvcCostTiyn,
       debtTiyn: Math.max(0, order.debtTiyn ?? 0),
       sheets,
+      countertops,
       pvcMeters,
       uncostedSheets,
+      uncostedCountertops,
       uncostedPvcMeters,
     });
   }
@@ -290,10 +313,12 @@ export function computeOrderProfits({
     profitTiyn: sum(rows, (r) => r.profitTiyn),
     debtTiyn: sum(rows, (r) => r.debtTiyn),
     uncostedSheets: sum(rows, (r) => r.uncostedSheets),
+    uncostedCountertops: sum(rows, (r) => r.uncostedCountertops),
     uncostedPvcMeters: sum(rows, (r) => r.uncostedPvcMeters),
     materials: materialRows,
     pvc: pvcRows,
-    sheetProfitTiyn: sum(materialRows, (m) => m.profitTiyn),
+    sheetProfitTiyn: sum(materialRows.filter((m) => !m.countertop), (m) => m.profitTiyn),
+    countertopProfitTiyn: sum(materialRows.filter((m) => m.countertop), (m) => m.profitTiyn),
     pvcProfitTiyn: sum(pvcRows, (p) => p.profitTiyn),
     cuttingTiyn,
     otherTiyn,
