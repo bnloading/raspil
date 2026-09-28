@@ -1,17 +1,18 @@
 // Gives boards their ПВХ colour back where the catalogue name of the roll did not match the board.
 //
 // The journal fills a line's ПВХ colour by matching the roll's name against the board's, whole
-// words only (lib/journalPricing.ts matchPvcTypeFor). Two rolls were catalogued under names the
+// words only (lib/journalPricing.ts matchPvcTypeFor). Three rolls were catalogued under names the
 // boards do not contain, so their lines were saved with metres but no colour:
 //
 //   "Бнуратти" for "ЛДСП Дуб Бунратти"    — a typo
 //   "Честер"   for "ЛДСП Дуб Честерфилд"  — a shortening
+//   "Санома"   for "ЛДСП Дуб Сонома"      — a typo
 //
 // Their ПВХ still counted in Таза пайда, but as "Түсі жазылмаған" rather than under the colour, and
 // the roll was not drawn down when the edging was finished. For each:
 //
 //   1. pvcTypes/<id>.colorName is corrected, so new journal rows match on their own.
-//   2. On the listed orders (all from 22.09 on, the owner's approved list), each matching line with
+//   2. On the listed orders (the owner's approved list for each), each matching line with
 //      metres and no colour gets pvcTypeId/pvcColorName, and pvcByType gains the entry, costed at
 //      the line's own rate exactly as lib/journalOrders.ts pvcByTypeFromDraft does. No total, price
 //      or payment changes: the metres were already billed on the line.
@@ -20,7 +21,8 @@
 //   node --env-file=.env.local scripts/pvc-colour-fix-2026-09-26.mjs --apply
 //
 // Re-running after an apply is a no-op: a corrected name and lines that already carry a colour are
-// left alone. (Бунратти was applied first, on its own; Честерфилд was added after.)
+// left alone. Applied in turn as each was found: Бунратти, then Честерфилд, then Сонома — whose
+// orders (ORD-2026-000163 on 21.09, ORD-2026-000075 on 10.09) both predate the 22.09 Таза пайда start.
 import { readFileSync } from "node:fs";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -39,6 +41,12 @@ const FIXES = [
     name: "Честерфилд",
     board: /честерфилд/i,
     orders: ["ORD-2026-000211", "ORD-2026-000216", "ORD-2026-000217", "ORD-2026-000229", "ORD-2026-000232"],
+  },
+  {
+    pvcId: "pvc-1-sanoma",
+    name: "Сонома",
+    board: /сонома/i,
+    orders: ["ORD-2026-000163", "ORD-2026-000075"],
   },
 ];
 

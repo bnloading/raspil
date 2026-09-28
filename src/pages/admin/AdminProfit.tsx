@@ -210,6 +210,9 @@ function Breakdown({
     .filter((p) => !soldPvcIds.has(p.id) && p.active)
     .sort((a, b) => pvcName(a).localeCompare(pvcName(b), "ru"));
   const defaultPvc = costs.get(PVC_DEFAULT_COST_KEY) ?? 0;
+  // "Not sold since 22.09", never "not sold yet": Каньон, Серый and Санома all went out in
+  // September, just before the count starts, and the owner read "әлі сатылмаған" as never.
+  const since = formatStartDate(summary.startDate);
 
   const soldMaterial = (m: MaterialProfit, unit: string) => {
     const name = materialById.get(m.materialId)?.name ?? m.name;
@@ -326,13 +329,13 @@ function Breakdown({
       {materialSection({
         id: "prf-sheets", title: "Листтан пайда", countertop: false, unit: "лист", profitTiyn: summary.sheetProfitTiyn,
         hint: "Сату бағасы − оптом бағасы = 1 листтің пайдасы. Оптом бағасын өзіңіз жазыңыз.",
-        empty: "Бұл кезеңде лист сатылмаған", unsoldTitle: "Әлі сатылмаған листтар",
+        empty: "Бұл кезеңде лист сатылмаған", unsoldTitle: `${since} бері сатылмаған листтар`,
       })}
 
       {materialSection({
         id: "prf-tops", title: "Столешницадан пайда", countertop: true, unit: "дана", profitTiyn: summary.countertopProfitTiyn,
         hint: "1 дананың сату бағасы − оптом бағасы. Оптом бағасын өзіңіз жазыңыз.",
-        empty: "Бұл кезеңде столешница сатылмаған", unsoldTitle: "Әлі сатылмаған столешницалар",
+        empty: "Бұл кезеңде столешница сатылмаған", unsoldTitle: `${since} бері сатылмаған столешницалар`,
       })}
 
       <section className="aps-card prf-section" aria-labelledby="prf-pvc">
@@ -352,7 +355,7 @@ function Breakdown({
         {summary.pvc.map(soldPvc)}
         {unsoldPvc.length > 0 && (
           <details className="prf-more">
-            <summary>Әлі сатылмаған түстер ({unsoldPvc.length})</summary>
+            <summary>{since} бері сатылмаған түстер ({unsoldPvc.length})</summary>
             {unsoldPvc.map((p) => (
               <ItemRow
                 key={p.id}
