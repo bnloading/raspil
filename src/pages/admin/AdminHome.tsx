@@ -127,8 +127,8 @@ export default function AdminHome() {
     [settings.cashOpeningBalanceTiyn, myDepartment],
   );
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate: cashStartDate }),
-    [payments, expenses, methods, openingBalanceTiyn, cashStartDate],
+    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate: cashStartDate, orders: allOrders }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, allOrders],
   );
   const deptMaterialIds = useMemo(
     () => new Set(materials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),

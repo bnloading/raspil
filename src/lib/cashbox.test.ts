@@ -299,3 +299,49 @@ describe("the expense log", () => {
     expect(groups[1]).toEqual({ name: "Лист алуға", amountTiyn: T(20000), count: 1 });
   });
 });
+
+describe("payments on orders from before the accounting restart", () => {
+  // The owner's rule: the books closed on the restart, and marking a 07.09 order paid on the 25th
+  // must not add to today's deposit. ORD-2026-000043 (created 07.09, 333 360 ₸ by Pay on 25.09)
+  // and ORD-2026-000049 (07.09, 6 400 ₸ Нұр on 28.09) are the real cases this was found on.
+  const SEP25 = Timestamp.fromDate(new Date("2026-09-25T12:00:00+05:00"));
+  const at = (day: string) => Timestamp.fromDate(new Date(`${day}T12:00:00+05:00`));
+  const orders = [
+    { id: "old", orderNumber: "ORD-2026-000049", createdAt: at("2026-09-07") },
+    { id: "new", orderNumber: "ORD-2026-000200", createdAt: at("2026-09-24") },
+    { id: "start", orderNumber: "ORD-2026-000150", createdAt: at("2026-09-22") },
+  ];
+  const summary = computeCashbox({
+    payments: [
+      payment({ id: "p-old", orderId: "old", amountTiyn: T(6400), paymentDate: SEP25 }),
+      payment({ id: "p-new", orderId: "new", amountTiyn: T(100000), paymentDate: SEP25 }),
+      payment({ id: "p-start", orderId: "start", amountTiyn: T(5000), paymentDate: SEP25 }),
+      payment({ id: "p-unknown", orderId: "not-loaded", amountTiyn: T(700), paymentDate: SEP25 }),
+    ],
+    expenses: [],
+    methods,
+    period: null,
+    startDate: "2026-09-22",
+    orders,
+  });
+
+  it("leaves them out of every pot, while an order from the restart day on still counts", () => {
+    expect(summary.accounts.find((a) => a.account === "deposit")!.inTiyn).toBe(T(100000 + 5000 + 700));
+    expect(summary.totalInTiyn).toBe(T(105700));
+  });
+
+  it("lists what it left out, so the money is never simply gone", () => {
+    expect(summary.excludedOldOrders).toEqual([{
+      paymentId: "p-old", orderNumber: "ORD-2026-000049", orderDay: "2026-09-07", paymentDay: "2026-09-25",
+      amountTiyn: T(6400), methodName: "Нұр", account: "deposit",
+    }]);
+  });
+
+  it("changes nothing when no orders are passed, or there is no restart", () => {
+    const noOrders = computeCashbox({ payments: [payment({ orderId: "old", amountTiyn: T(6400), paymentDate: SEP25 })], expenses: [], methods, period: null, startDate: "2026-09-22" });
+    expect(noOrders.totalInTiyn).toBe(T(6400));
+    const noRestart = computeCashbox({ payments: [payment({ orderId: "old", amountTiyn: T(6400), paymentDate: SEP25 })], expenses: [], methods, period: null, orders });
+    expect(noRestart.totalInTiyn).toBe(T(6400));
+    expect(noRestart.excludedOldOrders).toEqual([]);
+  });
+});

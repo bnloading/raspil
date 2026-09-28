@@ -130,8 +130,14 @@ export function computeFinanceSummary({
     0,
   );
 
+  // Касса's rule too (lib/cashbox.ts computeCashbox): a payment on an order from before the
+  // restart belongs to the closed books, even when it was recorded after — otherwise "Түскен"
+  // here and the Касса would disagree by exactly those payments.
+  const preRestartOrderIds = startDate
+    ? new Set(orders.filter((o) => o.createdAt && dayKey(o.createdAt) < startDate).map((o) => o.id))
+    : new Set<string>();
   const receivedTiyn = payments
-    .filter((p) => !p.reversed && inPeriod(p.paymentDate))
+    .filter((p) => !p.reversed && inPeriod(p.paymentDate) && !preRestartOrderIds.has(p.orderId))
     .reduce((s, p) => s + p.amountTiyn, 0);
 
   const grossProfitTiyn = billedTiyn - costTiyn;

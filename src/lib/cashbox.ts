@@ -2,6 +2,7 @@ import { dayKey, monthKey } from "./dates";
 import type {
   CashAccount,
   Expense,
+  Order,
   Payment,
   PaymentMethodDef,
 } from "../types/domain";
@@ -85,6 +86,19 @@ export interface AccountSummary {
   expenseCount: number;
 }
 
+/** A payment left out of the pots because the order it settles predates the restart. */
+export interface ExcludedPayment {
+  paymentId: string;
+  orderNumber: string;
+  /** "YYYY-MM-DD" the order was created, and the payment recorded. */
+  orderDay: string;
+  paymentDay: string;
+  amountTiyn: number;
+  methodName: string;
+  /** The pot it would otherwise have landed in. */
+  account: CashAccount;
+}
+
 export interface CashboxSummary {
   /** YYYY-MM in Asia/Almaty, or null for all time. */
   monthKey: string | null;
@@ -92,6 +106,8 @@ export interface CashboxSummary {
   totalInTiyn: number;
   totalOutTiyn: number;
   totalBalanceTiyn: number;
+  /** Payments on pre-restart orders, oldest payment first — shown, never counted (see `orders`). */
+  excludedOldOrders: ExcludedPayment[];
 }
 
 function emptyAccount(account: CashAccount): AccountSummary {
@@ -110,6 +126,8 @@ function emptyAccount(account: CashAccount): AccountSummary {
  *
  * A payment is dated by `paymentDate` (when the money actually arrived), not by the order it
  * settles — an order billed in March and paid in April is April's cash, and the drawer knows it.
+ * The one exception is the accounting restart: given `orders`, a payment on an order created
+ * before `startDate` belongs to the closed books and is listed in `excludedOldOrders` instead.
  * Reversed payments never count: the money went back.
  *
  * `openingBalanceTiyn` is what was already in a pot before this app started tracking money —
@@ -123,6 +141,7 @@ export function computeCashbox({
   period,
   openingBalanceTiyn = {},
   startDate = null,
+  orders,
 }: {
   payments: Payment[];
   expenses: Expense[];
@@ -135,8 +154,18 @@ export function computeCashbox({
    * its cash figures over mid-month without deleting payments the orders still depend on.
    */
   startDate?: string | null;
+  /**
+   * The orders the payments settle, so a payment can be dated by its order as well. With a
+   * `startDate`, a payment on an order CREATED before it is left out of every pot even when it was
+   * recorded after — the owner's rule: the books closed on the restart, and marking a 07.09 order
+   * paid on the 25th must not add to today's deposit. Such payments are reported in
+   * `excludedOldOrders` instead of vanishing. Omitted, every payment is dated by itself alone.
+   */
+  orders?: readonly Pick<Order, "id" | "orderNumber" | "createdAt">[];
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
+  const orderById = new Map((orders ?? []).map((o) => [o.id, o]));
+  const excludedOldOrders: ExcludedPayment[] = [];
   const summaries = new Map<CashAccount, AccountSummary>(
     CASH_ACCOUNTS.map((a) => [a, emptyAccount(a)]),
   );
@@ -162,6 +191,20 @@ export function computeCashbox({
     const account = accountForMethod(
       methodById.get(payment.methodId) ?? { id: payment.methodId },
     );
+    // Settles an order from before the restart: the old books, not today's money.
+    const order = orderById.get(payment.orderId);
+    if (startDate && order?.createdAt && dayKey(order.createdAt) < startDate) {
+      excludedOldOrders.push({
+        paymentId: payment.id,
+        orderNumber: order.orderNumber,
+        orderDay: dayKey(order.createdAt),
+        paymentDay: dayKey(payment.paymentDate),
+        amountTiyn: payment.amountTiyn,
+        methodName: methodById.get(payment.methodId)?.name ?? payment.methodName ?? payment.methodId,
+        account,
+      });
+      continue;
+    }
     const summary = summaries.get(account)!;
     summary.inTiyn += payment.amountTiyn;
 
@@ -206,6 +249,7 @@ export function computeCashbox({
     totalInTiyn: accounts.reduce((s, a) => s + a.inTiyn, 0),
     totalOutTiyn: accounts.reduce((s, a) => s + a.outTiyn, 0),
     totalBalanceTiyn: accounts.reduce((s, a) => s + a.balanceTiyn, 0),
+    excludedOldOrders: excludedOldOrders.sort((a, b) => a.paymentDay.localeCompare(b.paymentDay)),
   };
 }
 

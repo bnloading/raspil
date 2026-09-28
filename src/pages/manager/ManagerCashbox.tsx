@@ -112,15 +112,15 @@ export default function ManagerCashbox() {
   );
 
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate }),
-    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate],
+    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate, orders }),
+    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate, orders],
   );
   // "Қазір бізде бар" is what is in each account today — the all-time balance, opening included —
   // whichever month the picker shows. A month's own in − out is that month's flow, not money on
   // hand, and labelling it as the balance is how the card came to be read wrong.
   const cashboxNow = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate }),
-    [payments, expenses, methods, openingBalanceTiyn, cashStartDate],
+    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate, orders }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, orders],
   );
   const rows = useMemo(
     () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
@@ -200,7 +200,8 @@ export default function ManagerCashbox() {
             </div>
           </div>
 
-          <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod} />
+          <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod}
+            startDate={cashStartDate} />
 
           <ExpenseForm
             defaultDate={expenseDefaultDate(effectivePeriod)}
@@ -566,6 +567,7 @@ export function CashboxAccounts({
   cashboxNow,
   openingBalanceTiyn,
   period: effectivePeriod,
+  startDate = null,
 }: {
   /** The picked period's flows. */
   cashbox: CashboxSummary;
@@ -573,6 +575,8 @@ export function CashboxAccounts({
   cashboxNow: CashboxSummary;
   openingBalanceTiyn: Partial<Record<CashAccount, number>>;
   period: string | null;
+  /** The accounting restart — names the date in the "left out" note. */
+  startDate?: string | null;
 }) {
   const nowByAccount = new Map(cashboxNow.accounts.map((a) => [a.account, a.balanceTiyn]));
   const totalOpeningTiyn = CASH_ACCOUNTS.reduce((s, a) => s + (openingBalanceTiyn[a] ?? 0), 0);
@@ -644,6 +648,33 @@ export function CashboxAccounts({
         </span>
         <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
       </div>
+
+      {/* Money taken since the restart on orders from before it — left out of every figure above
+          (lib/cashbox.ts computeCashbox), but listed, so a late payment on an old order is never
+          simply gone: it is the old books', and this is where the owner can see it went. */}
+      {cashboxNow.excludedOldOrders.length > 0 && (
+        <details className="cashbox-excluded">
+          <summary>
+            {startDate ? `${dmy(startDate)}-ға дейінгі` : "Ескі"} заказдарға кейін түскен{" "}
+            {cashboxNow.excludedOldOrders.length} төлем —{" "}
+            <strong>{formatMoney(cashboxNow.excludedOldOrders.reduce((s, p) => s + p.amountTiyn, 0))}</strong>.
+            Бұл Кассаға кірмейді.
+          </summary>
+          <ul>
+            {cashboxNow.excludedOldOrders.map((p) => (
+              <li key={p.paymentId}>
+                <span>
+                  {p.orderNumber} · заказ {dmy(p.orderDay)} · төленді {dmy(p.paymentDay)} · {p.methodName}
+                </span>
+                <strong>{formatMoney(p.amountTiyn)}</strong>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </>
   );
 }
+
+/** "2026-09-22" → "22.09.2026" */
+const dmy = (day: string) => formatDateDMY(new Date(`${day}T12:00:00+05:00`));

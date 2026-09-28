@@ -8092,6 +8092,28 @@ body {
 .cashbox-total-now { flex-basis: 100%; font-weight: 600; }
 .cashbox-total-now strong { font-size: 1.25rem; font-weight: 800; }
 .cashbox-flow dd.cashbox-count { font-size: 0.72rem; font-weight: 400; color: var(--text-secondary); }
+/* Late payments on pre-restart orders: listed under the total, left out of it (computeCashbox). */
+.cashbox-excluded {
+  margin: -4px 0 14px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #f5f6fa;
+  font-size: 0.82rem;
+  color: #465164;
+}
+.cashbox-excluded summary { cursor: pointer; line-height: 1.45; }
+.cashbox-excluded summary strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.cashbox-excluded ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.cashbox-excluded li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.cashbox-excluded li span { min-width: 0; overflow-wrap: anywhere; }
+.cashbox-excluded li strong { flex: 0 0 auto; color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* One row, not a modal: an expense is written between two customers, and a dialog that has to be
    opened first is the reason expenses stop being written down. */

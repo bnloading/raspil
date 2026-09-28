@@ -293,6 +293,23 @@ describe("computeFinanceSummary — есеп басталатын күн (accoun
     expect(s.billedTiyn).toBe(T(400000));
     expect(s.fixedExpensesTiyn).toBe(T(300000));
   });
+
+  it("leaves out a payment recorded after the start on an order from before it, as Касса does", () => {
+    // Marking an old order paid after the restart must not show up as money received now.
+    const s = run({
+      period: null,
+      startDate: "2026-08-15",
+      orders: [
+        order({ id: "old", totalTiyn: T(400000), createdAt: at("2026-08-10") }),
+        order({ id: "new", totalTiyn: T(120000), createdAt: at("2026-08-20") }),
+      ],
+      payments: [
+        payment({ id: "late-on-old", orderId: "old", amountTiyn: T(400000), paymentDate: at("2026-08-25") }),
+        payment({ id: "on-new", orderId: "new", amountTiyn: T(90000), paymentDate: at("2026-08-25") }),
+      ],
+    });
+    expect(s.receivedTiyn).toBe(T(90000));
+  });
 });
 
 describe("computeFinanceSummary — uncosted sheets", () => {

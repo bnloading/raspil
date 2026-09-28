@@ -54,13 +54,14 @@ export function useDepartmentCashbox({ orders, department }: { orders: Order[]; 
   const startDate = settings.cashStartDate ?? null;
   const monthKey = dayKey(new Date()).slice(0, 7);
 
+  // `orders` too: a payment on an order from before the restart stays out of today's money.
   const now = useMemo(
-    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate }),
-    [payments, expenses, methods, openingBalanceTiyn, startDate],
+    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate, orders }),
+    [payments, expenses, methods, openingBalanceTiyn, startDate, orders],
   );
   const thisMonth = useMemo(
-    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: monthKey, openingBalanceTiyn, startDate }),
-    [payments, expenses, methods, monthKey, openingBalanceTiyn, startDate],
+    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: monthKey, openingBalanceTiyn, startDate, orders }),
+    [payments, expenses, methods, monthKey, openingBalanceTiyn, startDate, orders],
   );
 
   return {
