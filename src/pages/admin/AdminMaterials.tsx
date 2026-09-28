@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useKeyboardInset } from "../../hooks/useKeyboardInset";
 import {
   addDoc,
   collection,
@@ -261,12 +262,13 @@ export function MaterialsTab({
     }
   };
 
-  const handleReceipt = async (material: Material) => {
-    const qtyStr = prompt(`"${material.name}" қабылдау мөлшері (лист):`);
-    if (qtyStr === null) return;
-    const qty = parseInt(qtyStr, 10);
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    if (!auth.user || !auth.userData) return;
+  // Which row's "+ Қабылдау" sheet is open. Looked up live, like `correcting`, so the "қоймада
+  // қазір" figure in it moves if someone else receives or cuts while it is open.
+  const [receivingId, setReceivingId] = useState<string | null>(null);
+  const receiving = receivingId ? materials.find((m) => m.id === receivingId) ?? null : null;
+
+  const receiveSheets = async (material: Material, qty: number): Promise<boolean> => {
+    if (!auth.user || !auth.userData) return false;
     try {
       await recordInventoryMovement(db, { user: auth.user, userData: auth.userData }, {
         materialId: material.id,
@@ -275,8 +277,10 @@ export function MaterialsTab({
         comment: "Жеткізушіден қабылданды",
       });
       showToast(`✅ +${qty} лист қабылданды`);
+      return true;
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
+      return false;
     }
   };
 
@@ -359,7 +363,7 @@ export function MaterialsTab({
                             { label: "🗑 Өшіру", onClick: () => handleDelete(m) },
                           ]}
                         >
-                          <button className="btn btn-outline btn-sm" onClick={() => handleReceipt(m)}>
+                          <button className="btn btn-outline btn-sm" onClick={() => setReceivingId(m.id)}>
                             + Қабылдау
                           </button>
                         </RowMenu>
@@ -375,6 +379,18 @@ export function MaterialsTab({
             </tbody>
           </table>
         </div>
+      )}
+
+      {receiving && (
+        <ReceiveModal
+          key={receiving.id}
+          name={receiving.name}
+          unit="лист"
+          onHand={receiving.qtyOnHand}
+          decimals={false}
+          onReceive={(qty) => receiveSheets(receiving, qty)}
+          onClose={() => setReceivingId(null)}
+        />
       )}
 
       {correcting && (
@@ -541,6 +557,89 @@ function StockCorrectionModal({
               disabled={submitting || (delta === 0 && !priceChanged)}
             >
               Сақтау
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "+ Қабылдау" — sheets (or ПВХ metres) arriving from the supplier.
+ *
+ * This used to be window.prompt(), which a phone draws itself: on an iPhone 17 Pro the owner saw
+ * only the edge of it, and nothing the page does can style or move that box. This is the same
+ * bottom sheet as every other form here, lifted above the iOS keyboard (useKeyboardInset) — which
+ * otherwise slides up over a bottom sheet and leaves only its top edge showing — and it says what
+ * the prompt never did: what is on the rack now, and what it will be after.
+ *
+ * `onReceive` does the write and reports its own toast; it resolves true once the stock is in.
+ */
+function ReceiveModal({
+  name,
+  unit,
+  onHand,
+  decimals,
+  onReceive,
+  onClose,
+}: {
+  name: string;
+  unit: "лист" | "м";
+  onHand: number;
+  /** Metres can be fractional; sheets are whole. */
+  decimals: boolean;
+  onReceive: (qty: number) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const keyboard = useKeyboardInset();
+
+  const qty = Number(text.trim().replace(",", "."));
+  const valid = text.trim() !== "" && Number.isFinite(qty) && qty > 0 && (decimals || Number.isInteger(qty));
+  const fmt = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid || saving) return;
+    setSaving(true);
+    const done = await onReceive(qty);
+    setSaving(false);
+    if (done) onClose();
+  };
+
+  return (
+    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal receive-modal" role="dialog" aria-modal="true" aria-labelledby="receive-title"
+        style={keyboard > 0 ? { marginBottom: keyboard } : undefined}>
+        <div className="modal-handle" />
+        <h2 id="receive-title">📦 {name}</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="receive-qty">Қанша {unit} келді?</label>
+            <input
+              id="receive-qty"
+              type="text"
+              inputMode={decimals ? "decimal" : "numeric"}
+              className="form-input receive-qty"
+              value={text}
+              placeholder="0"
+              autoFocus
+              autoComplete="off"
+              onChange={(e) => setText(e.target.value)}
+            />
+            <p className="form-hint">
+              Қоймада қазір: {fmt(onHand)} {unit}
+              {valid ? ` → қабылдаған соң ${fmt(Math.round((onHand + qty) * 100) / 100)} ${unit}` : ""}
+            </p>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Болдырмау
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={!valid || saving}>
+              {valid ? `+${fmt(qty)} ${unit} қабылдау` : "Қабылдау"}
             </button>
           </div>
         </form>
@@ -852,21 +951,20 @@ function PvcTab({
   onEdit: (p: PvcType | "new") => void;
   showToast: (msg: string) => void;
 }) {
+  // The roll whose "+ Қабылдау" sheet is open, looked up live so its metres stay current.
+  const [receivingId, setReceivingId] = useState<string | null>(null);
+  const receiving = receivingId ? pvcTypes.find((p) => p.id === receivingId) ?? null : null;
+
   /** Receiving a roll. Metres only — the rule forbids this path from touching colour or price. */
-  const handlePvcReceipt = async (p: PvcType) => {
-    const raw = prompt(`"${p.colorName} ${p.thicknessMm} мм" қабылдау мөлшері (метр):`);
-    if (raw === null) return;
-    const meters = parseFloat(raw.replace(",", "."));
-    if (!Number.isFinite(meters) || meters <= 0) {
-      showToast("Метрді дұрыс енгізіңіз");
-      return;
-    }
+  const receivePvc = async (p: PvcType, meters: number): Promise<boolean> => {
     try {
       const next = Math.round(((p.metersOnHand ?? 0) + meters) * 100) / 100;
       await updateDoc(doc(db, "pvcTypes", p.id), { metersOnHand: next });
       showToast(`✅ +${meters} м қабылданды — барлығы ${next} м`);
+      return true;
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
+      return false;
     }
   };
 
@@ -937,7 +1035,7 @@ function PvcTab({
                           { label: p.active ? "Архивке" : "Белсендіру", onClick: () => handleToggleActive(p) },
                         ]}
                       >
-                        <button className="btn btn-outline btn-sm" onClick={() => handlePvcReceipt(p)}>
+                        <button className="btn btn-outline btn-sm" onClick={() => setReceivingId(p.id)}>
                           + Қабылдау
                         </button>
                       </RowMenu>
@@ -950,6 +1048,18 @@ function PvcTab({
             </tbody>
           </table>
         </div>
+      )}
+
+      {receiving && (
+        <ReceiveModal
+          key={receiving.id}
+          name={`ПВХ ${receiving.colorName} ${receiving.thicknessMm} мм`}
+          unit="м"
+          onHand={receiving.metersOnHand ?? 0}
+          decimals
+          onReceive={(meters) => receivePvc(receiving, meters)}
+          onClose={() => setReceivingId(null)}
+        />
       )}
     </div>
   );

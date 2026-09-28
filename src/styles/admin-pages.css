@@ -323,3 +323,15 @@
 .aps-big.is-money.is-negative { color: var(--aps-out); }
 .aps-deposit .aps-flow,
 .aps-deposit .aps-detail { margin-left: 0; }
+
+/* Қойма "+ Қабылдау" (AdminMaterials ReceiveModal): one number, typed at the rack with the
+   delivery note in the other hand — so the box is big, and the sheet rides above the iPhone
+   keyboard (its margin-bottom is set from useKeyboardInset) instead of disappearing behind it. */
+.receive-modal { transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), margin-bottom 0.2s ease; }
+.receive-qty {
+  min-height: 56px;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
