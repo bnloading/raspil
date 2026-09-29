@@ -6270,6 +6270,21 @@ body {
   font-size: 0.74rem;
   font-weight: 700;
 }
+/* A money figure is one thing: "16 200 ₸" never breaks with its ₸ alone on the next line. */
+.invoice-table .invoice-money,
+.invoice-table td.jt-num { white-space: nowrap; }
+.invoice-unit-inline { display: none; }
+/* A phone: № and Бірлік fold away, the unit rides in Саны, and the cells tighten, so a journal
+   row's worth of lines fits a 320px screen instead of running off its edge. Print keeps all six. */
+@media screen and (max-width: 520px) {
+  .invoice-table .invoice-col-no,
+  .invoice-table .invoice-col-unit { display: none; }
+  .invoice-unit-inline { display: inline; }
+  .invoice-table { font-size: 0.78rem; }
+  .invoice-table th,
+  .invoice-table td { padding: 7px 6px; }
+  .invoice-table td:first-of-type { overflow-wrap: anywhere; }
+}
 .invoice-totals {
   margin-top: 16px;
   margin-left: auto;

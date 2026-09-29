@@ -14,6 +14,9 @@ import type { CashboxSummary } from "../src/lib/cashbox";
 import { computeOrderProfits, pvcCostKey, PVC_DEFAULT_COST_KEY } from "../src/lib/orderProfit";
 import { ProfitView } from "../src/pages/admin/AdminProfit";
 import { DepositCard } from "../src/components/DepositCard";
+import { InvoiceDocument } from "../src/components/InvoiceDocument";
+import { buildInvoiceLines } from "../src/lib/invoices";
+import type { Invoice } from "../src/types/domain";
 import { CashboxAccounts } from "../src/pages/manager/ManagerCashbox";
 import { BottomNav } from "../src/components/layout/BottomNav";
 import { getNavForRole } from "../src/components/layout/navConfig";
@@ -141,6 +144,22 @@ const prfOrders = [
 const prfCategories = new Map(prfMaterials.map((m) => [m.id, m.category ?? "ldsp"] as const));
 const prfFree = new Set(["ext"]);
 const apsProfit = computeOrderProfits({ orders: prfOrders, costs: prfCosts, categoryByMaterialId: prfCategories, freeMaterialIds: prfFree });
+/** A накладной as the journal row reads, on ORD-2026-000175's lines plus a second board and распил. */
+function InvoicePanel(){
+  const o = {...order, orderNumber:"ORD-2026-000175", customerName:"Алмат", customerPhone:"+7 700 111 22 33", pvcByType:undefined,
+    items:[line("m1","ЛДСП Ақ Томск",2,16200,51,200,"p1"), line("m2","ЛДСП Кашемир",3,17000,40,220,"p3"), line("hdf","ХДФ",1,7500), line("ext","Сырттан келетін лист",4,0,20,160)],
+    cuttingCostTiyn:T(4*1600), discountTiyn:T(2000), deliveryCostTiyn:T(5000)} as unknown as Order;
+  (o.items![0] as {pvcColorName?:string}).pvcColorName = "Ақ";
+  (o.items![1] as {pvcColorName?:string}).pvcColorName = "Кашемир";
+  const lines = buildInvoiceLines(o);
+  const subtotal = lines.reduce((s, l) => s + l.totalTiyn, 0);
+  const inv = { id:"i1", orderId:"o", orderNumber:o.orderNumber, invoiceNumber:"INV-2026-00005", version:1, customerName:o.customerName, customerPhone:o.customerPhone,
+    lines, subtotalTiyn:subtotal, discountTiyn:T(2000), totalTiyn:subtotal-T(2000), paidTiyn:T(50000), debtTiyn:subtotal-T(2000)-T(50000), paymentMethods:["Нұр"],
+    issuedByUid:"u", issuedByName:"Нур менеджер", issuedAt:now, sentToCustomer:false } as unknown as Invoice;
+  return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content narrow" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>
+    <InvoiceDocument invoice={inv} companyName="Цех Трекер" />
+  </main></div></div></BrowserRouter>;
+}
 function ProfitPanel(){
   const [costs, setCosts] = useState(prfCosts);
   const summary = computeOrderProfits({ orders: prfOrders, costs, categoryByMaterialId: prfCategories, freeMaterialIds: prfFree });
@@ -170,6 +189,7 @@ if(panel==="ocr") return <OcrSmoke/>;
 if(panel==="pvh") return <PvcPanels/>;
 if(panel==="admin") return <AdminPhonePanel/>;
 if(panel==="profit") return <ProfitPanel/>;
+if(panel==="invoice") return <InvoicePanel/>;
 if(panel==="nav") return <BrowserRouter><div className="app-shell"><div className="app-main" style={{minHeight:"100vh"}}><BottomNav items={getNavForRole("admin","ldsp",false)} activeKey="admin-profit" fab={{ onClick: () => {} }} /></div></div></BrowserRouter>;
 if(panel==="cashbox") return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}><CashboxAccounts cashbox={nurCashbox} cashboxNow={nurCashbox} openingBalanceTiyn={{deposit:T(4253791)}} period={null} startDate="2026-09-22" /><div style={{height:16}}/><CashboxAccounts cashbox={{...nurCashbox, accounts: nurCashbox.accounts.map(a => ({...a, inTiyn: Math.round(a.inTiyn/3), outTiyn: Math.round(a.outTiyn/3)}))}} cashboxNow={nurCashbox} openingBalanceTiyn={{deposit:T(4253791)}} period="2026-09" /></main></div></div></BrowserRouter>;
 if(panel==="materials") return <div className="app-shell"><div style={{background:"#f8f9fc",minHeight:"100vh",padding:12}}><h1 style={{fontSize:22,margin:"6px 0 16px"}}>Қойма · Материалдар</h1><MaterialsTab materials={materials} movements={[]} loading={false} canEdit onEdit={()=>{}} onLedger={()=>{}} showToast={()=>{}} /></div></div>;

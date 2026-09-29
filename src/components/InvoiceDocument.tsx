@@ -42,13 +42,15 @@ export function InvoiceDocument({ invoice, companyName }: { invoice: Invoice; co
         </div>
       </div>
 
+      {/* On a phone the № and Бірлік columns fold away and the unit rides in Саны ("2 лист"):
+          six columns of a journal row's worth of lines ran 47px past a 390px screen. */}
       <table className="invoice-table">
         <thead>
           <tr>
-            <th>№</th>
+            <th className="invoice-col-no">№</th>
             <th>Атауы</th>
             <th className="jt-num">Саны</th>
-            <th>Бірлік</th>
+            <th className="invoice-col-unit">Бірлік</th>
             <th className="jt-num">Бағасы</th>
             <th className="jt-num">Сомасы</th>
           </tr>
@@ -56,12 +58,15 @@ export function InvoiceDocument({ invoice, companyName }: { invoice: Invoice; co
         <tbody>
           {invoice.lines.map((line, i) => (
             <tr key={`${line.name}-${i}`}>
-              <td>{i + 1}</td>
+              <td className="invoice-col-no">{i + 1}</td>
               <td>{line.name}</td>
-              <td className="jt-num">{line.qty}</td>
-              <td>{line.unit}</td>
-              <td className="jt-num">{formatMoney(line.unitPriceTiyn)}</td>
-              <td className="jt-num">{formatMoney(line.totalTiyn)}</td>
+              <td className="jt-num">
+                {line.qty.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                <span className="invoice-unit-inline"> {line.unit}</span>
+              </td>
+              <td className="invoice-col-unit">{line.unit}</td>
+              <td className="jt-num invoice-money">{formatMoney(line.unitPriceTiyn)}</td>
+              <td className="jt-num invoice-money">{formatMoney(line.totalTiyn)}</td>
             </tr>
           ))}
         </tbody>

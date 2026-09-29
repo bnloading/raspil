@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { Invoice, InvoiceLine, Order, Payment, UserDoc } from "../types/domain";
-import { netPaidTiyn } from "./journal";
+import { computeLineTotals, netPaidTiyn, PVC_JOINTING_SURCHARGE_TIYN } from "./journal";
 import { logAudit } from "./audit";
 
 type Actor = { user: User; userData: UserDoc };
@@ -31,40 +31,112 @@ async function generateInvoiceNumber(db: Firestore): Promise<string> {
 }
 
 /**
- * Builds the invoice's line items from an order. Only non-zero components appear, so a plain
- * cutting job doesn't carry empty "ХДФ — 0 ₸" filler rows.
+ * Builds the invoice's line items from an order, the way the journal row reads: each sheet on its
+ * own line at its own price, followed by that sheet's own edge banding in its own colour —
+ *
+ *   ЛДСП Ақ Томск      12 лист × 16 200 = 194 400
+ *   ПВХ Ақ            120 м    ×    200 =  24 000
+ *   ЛДСП Кашемир        9 лист × 17 000 = 153 000
+ *   ПВХ Кашемир        64 м    ×    220 =  14 080
+ *
+ * then ХДФ, распил, services and delivery. Each figure is lib/journal.ts computeLineTotals, the
+ * arithmetic the journal priced the row with, so the invoice adds up to the same total. (It used
+ * to print one material line under the FIRST sheet's name for every sheet on the order, and one
+ * "ПВХ жиек" line at a blended rate, which is not what anyone was charged per line.)
+ *
+ * Only non-zero components appear, so a plain cutting job doesn't carry empty "ХДФ — 0 ₸" rows.
  */
 export function buildInvoiceLines(order: Order): InvoiceLine[] {
   const lines: InvoiceLine[] = [];
   const sheets = order.confirmedSheets ?? order.estimatedSheets;
+  const colourById = new Map((order.pvcByType ?? []).map((u) => [u.pvcTypeId, u.colorName]));
 
-  if (order.materialCostTiyn > 0) {
+  // МДФ is priced by the square metre of wrapped panel, not by sheet: "МДФ · Капучино Матовый —
+  // 28,4 м² × 16 500". With no sheet lines at all, it used to reach the invoice as nothing.
+  if (order.orderKind === "mdf_wrap" && (order.mdfAreaM2 ?? 0) > 0 && (order.mdfPricePerM2Tiyn ?? 0) > 0) {
     lines.push({
-      name: order.materialSnapshot.name || "Материал",
-      qty: sheets,
-      unit: "лист",
-      unitPriceTiyn: order.materialSnapshot.sellingPriceTiyn,
-      totalTiyn: order.materialCostTiyn,
+      name: `МДФ${order.mdfFilmColor ? ` · ${order.mdfFilmColor}` : ""}`,
+      qty: order.mdfAreaM2!,
+      unit: "м²",
+      unitPriceTiyn: order.mdfPricePerM2Tiyn!,
+      totalTiyn: Math.round(order.mdfAreaM2! * order.mdfPricePerM2Tiyn!),
     });
   }
-  if (order.pvcCostTiyn > 0) {
-    lines.push({
-      name: "ПВХ жиек",
-      qty: order.pvcMetersTotal,
-      unit: "м",
-      unitPriceTiyn: order.pvcPricePerMeterTiyn ?? 0,
-      totalTiyn: order.pvcCostTiyn,
-    });
+
+  if (order.items && order.items.length > 0) {
+    for (const item of order.items) {
+      const totals = computeLineTotals(item);
+      if (totals.materialCostTiyn > 0) {
+        lines.push({
+          name: item.materialName || "Материал",
+          qty: item.sheetQty,
+          unit: /столешниц/i.test(item.materialName ?? "") ? "дана" : "лист",
+          unitPriceTiyn: item.sheetPriceTiyn,
+          totalTiyn: totals.materialCostTiyn,
+        });
+      }
+      if (totals.pvcCostTiyn > 0) {
+        const colour = item.pvcColorName || (item.pvcTypeId ? colourById.get(item.pvcTypeId) : "") || "";
+        lines.push({
+          name: `ПВХ${colour ? ` ${colour}` : " жиек"}${item.pvcJointed ? " · прифуговка" : ""}`,
+          qty: item.pvcMeters,
+          unit: "м",
+          unitPriceTiyn: item.pvcPricePerMeterTiyn + (item.pvcJointed ? PVC_JOINTING_SURCHARGE_TIYN : 0),
+          totalTiyn: totals.pvcCostTiyn,
+        });
+      }
+    }
+  } else {
+    // An order with no journal lines (built from parts by the customer): one material, and its
+    // ПВХ split by colour where the parts recorded one.
+    if (order.materialCostTiyn > 0) {
+      lines.push({
+        name: order.materialSnapshot.name || "Материал",
+        qty: sheets,
+        unit: "лист",
+        unitPriceTiyn: order.materialSnapshot.sellingPriceTiyn,
+        totalTiyn: order.materialCostTiyn,
+      });
+    }
+    if (order.pvcCostTiyn > 0) {
+      const byColour = (order.pvcByType ?? []).filter((u) => u.meters > 0 && u.costTiyn > 0);
+      const colouredTiyn = byColour.reduce((s, u) => s + u.costTiyn, 0);
+      if (byColour.length > 0 && colouredTiyn === order.pvcCostTiyn) {
+        for (const u of byColour) {
+          lines.push({
+            name: `ПВХ ${u.colorName}`,
+            qty: u.meters,
+            unit: "м",
+            unitPriceTiyn: Math.round(u.costTiyn / u.meters),
+            totalTiyn: u.costTiyn,
+          });
+        }
+      } else {
+        lines.push({
+          name: "ПВХ жиек",
+          qty: order.pvcMetersTotal,
+          unit: "м",
+          unitPriceTiyn: order.pvcPricePerMeterTiyn ?? 0,
+          totalTiyn: order.pvcCostTiyn,
+        });
+      }
+    }
   }
   if (order.hdfCostTiyn > 0) {
     lines.push({ name: "ХДФ", qty: 1, unit: "дана", unitPriceTiyn: order.hdfCostTiyn, totalTiyn: order.hdfCostTiyn });
   }
   if (order.cuttingCostTiyn > 0) {
+    // On a journal row распил is charged for the customer's own boards only — the lines with no
+    // sheet price (lib/journalPricing.ts cuttingCostForLines) — so those are the sheets it is per.
+    // Spread over every sheet on the order it read "21 лист × 1 067" for a 14-sheet job at 1 600.
+    const cutSheets = order.items && order.items.length > 0
+      ? order.items.filter((l) => !(l.sheetPriceTiyn > 0)).reduce((s, l) => s + (l.sheetQty || 0), 0)
+      : sheets;
     lines.push({
       name: "Распил қызметі",
-      qty: sheets,
-      unit: "лист",
-      unitPriceTiyn: sheets > 0 ? Math.round(order.cuttingCostTiyn / sheets) : order.cuttingCostTiyn,
+      qty: cutSheets > 0 ? cutSheets : 1,
+      unit: cutSheets > 0 ? "лист" : "қызмет",
+      unitPriceTiyn: cutSheets > 0 ? Math.round(order.cuttingCostTiyn / cutSheets) : order.cuttingCostTiyn,
       totalTiyn: order.cuttingCostTiyn,
     });
   }
