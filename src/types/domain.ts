@@ -875,6 +875,13 @@ export interface Payment {
   correctedByName?: string;
   correctedAt?: Timestamp;
   createdAt?: Timestamp;
+  /**
+   * Admin's call that this payment is today's money even though its order predates the accounting
+   * restart — the exception to lib/cashbox.ts leaving such payments out of Касса (a customer
+   * settling an old debt in real cash after the books reopened). Admin-only: firestore.rules lets a
+   * Manager change a payment's method or reverse it, never this.
+   */
+  countsInCurrentBooks?: boolean;
 }
 
 export type InventoryMovementType =
@@ -970,6 +977,26 @@ export interface ApplicationSettings {
    * mean deleting payments that orders depend on. Unset means count everything, as before.
    */
   cashStartDate?: string;
+  /**
+   * Dated corrections that bring a pot in line with the real account — "Банкпен теңестіру
+   * +1 407 385 ₸, 28.09". Kept beside `cashOpeningBalanceTiyn` (same department keying, same
+   * Admin-only write) rather than folded into it, so the opening balance keeps meaning what the
+   * account held on `cashStartDate`, and every correction stays visible with its date and reason.
+   */
+  cashAdjustments?: Partial<Record<Department, CashAdjustment[]>>;
+}
+
+/** One dated correction to a Касса pot (see ApplicationSettings.cashAdjustments). */
+export interface CashAdjustment {
+  id: string;
+  account: CashAccount;
+  /** Signed: + adds to the pot, − takes from it. */
+  amountTiyn: number;
+  /** "YYYY-MM-DD" in Almaty — which period it falls in, like an expense's date. */
+  date: string;
+  note: string;
+  byUid: string;
+  byName: string;
 }
 
 /** The columns the cutting-program CSV export can include, in the spec's default order. */

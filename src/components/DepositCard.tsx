@@ -26,7 +26,8 @@ export function DepositCard({
   openingTiyn: number;
   startDate: string | null;
 }) {
-  const monthIsEverything = month.inTiyn === now.inTiyn && month.outTiyn === now.outTiyn;
+  const monthIsEverything =
+    month.inTiyn === now.inTiyn && month.outTiyn === now.outTiyn && month.adjustTiyn === now.adjustTiyn;
 
   return (
     <section className="aps-card aps-deposit" aria-labelledby="aps-deposit-title">
@@ -56,6 +57,13 @@ export function DepositCard({
           <dt>− Шықты</dt>
           <dd className={now.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(now.outTiyn)}</dd>
         </div>
+        {/* "Банкпен теңестіру" and any other dated correction — without it the sum would not add up. */}
+        {now.adjustTiyn !== 0 && (
+          <div>
+            <dt>± Түзету</dt>
+            <dd>{now.adjustTiyn < 0 ? `−${formatMoney(-now.adjustTiyn)}` : `+${formatMoney(now.adjustTiyn)}`}</dd>
+          </div>
+        )}
       </dl>
       {!monthIsEverything && (
         <p className="aps-detail">

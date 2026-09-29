@@ -99,10 +99,10 @@ function PvcPanels(){
 
 /** The Admin's phone home, on the figures from the owner's Касса screenshot (all time). */
 const T = (tenge: number) => tenge * 100;
-const apsCashbox: CashboxSummary = { monthKey:null, excludedOldOrders:[], totalInTiyn:T(4881960), totalOutTiyn:T(2828404), totalBalanceTiyn:T(6307347), accounts:[
-  {account:"deposit", inTiyn:T(2309420), outTiyn:T(2820164), balanceTiyn:T(3743047), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2309420)}], expenseCount:18},
-  {account:"pay", inTiyn:T(1251080), outTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
-  {account:"cash", inTiyn:T(1321460), outTiyn:T(8240), balanceTiyn:T(1313220), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321460)}], expenseCount:1},
+const apsCashbox: CashboxSummary = { monthKey:null, excludedOldOrders:[], adjustments:[], totalAdjustTiyn:0, totalInTiyn:T(4881960), totalOutTiyn:T(2828404), totalBalanceTiyn:T(6307347), accounts:[
+  {account:"deposit", inTiyn:T(2309420), outTiyn:T(2820164) , adjustTiyn:0, balanceTiyn:T(3743047), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2309420)}], expenseCount:18},
+  {account:"pay", inTiyn:T(1251080), outTiyn:0 , adjustTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
+  {account:"cash", inTiyn:T(1321460), outTiyn:T(8240) , adjustTiyn:0, balanceTiyn:T(1313220), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321460)}], expenseCount:1},
 ]};
 /** The Таза пайда page's view on a handful of orders since 22.09, through the real calculation. */
 const at = (d: string) => Timestamp.fromDate(new Date(`${d}T12:00:00+05:00`));
@@ -151,12 +151,14 @@ function ProfitPanel(){
   </main></div></div></BrowserRouter>;
 }
 /** The Касса cards on the owner's latest screenshot: Нұр 4 253 791 + 2 763 520 − 3 821 804 = 3 195 507. */
-const nurCashbox: CashboxSummary = { monthKey:null, excludedOldOrders:[
+const nurCashbox: CashboxSummary = { monthKey:null, totalAdjustTiyn:T(1234975),
+  adjustments:[{id:"a1",account:"deposit",amountTiyn:T(1234975),date:"2026-09-29",note:"Банкпен теңестіру",byUid:"u",byName:"Нур"}],
+  excludedOldOrders:[
   {paymentId:"x1",orderNumber:"ORD-2026-000043",orderDay:"2026-09-07",paymentDay:"2026-09-25",amountTiyn:T(333360),methodName:"Pay",account:"pay"},
-  {paymentId:"x2",orderNumber:"ORD-2026-000049",orderDay:"2026-09-07",paymentDay:"2026-09-28",amountTiyn:T(6400),methodName:"Нұр",account:"deposit"}], totalInTiyn:T(5335680), totalOutTiyn:T(3830044), totalBalanceTiyn:T(5759427), accounts:[
-  {account:"deposit", inTiyn:T(2763520), outTiyn:T(3821804), balanceTiyn:T(3195507), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2763520)}], expenseCount:25},
-  {account:"pay", inTiyn:T(1251080), outTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
-  {account:"cash", inTiyn:T(1321080), outTiyn:T(8240), balanceTiyn:T(1312840), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321080)}], expenseCount:1},
+  {paymentId:"x2",orderNumber:"ORD-2026-000049",orderDay:"2026-09-07",paymentDay:"2026-09-28",amountTiyn:T(6400),methodName:"Нұр",account:"deposit"}], totalInTiyn:T(5335680), totalOutTiyn:T(3830044), totalBalanceTiyn:T(6994402), accounts:[
+  {account:"deposit", inTiyn:T(2763520), outTiyn:T(3821804), adjustTiyn:T(1234975), balanceTiyn:T(4430482), byMethod:[{methodId:"nur",methodName:"Нұр",amountTiyn:T(2763520)}], expenseCount:25},
+  {account:"pay", inTiyn:T(1251080), outTiyn:0, adjustTiyn:0, balanceTiyn:T(1251080), byMethod:[{methodId:"pay",methodName:"Pay",amountTiyn:T(1051080)},{methodId:"kaspi",methodName:"Kaspi",amountTiyn:T(200000)}], expenseCount:0},
+  {account:"cash", inTiyn:T(1321080), outTiyn:T(8240), adjustTiyn:0, balanceTiyn:T(1312840), byMethod:[{methodId:"cash",methodName:"Нал / Қолма-қол",amountTiyn:T(1321080)}], expenseCount:1},
 ]};
 function AdminPhonePanel(){
   return <BrowserRouter><div className="app-shell"><div className="app-main"><main className="app-content" style={{padding:12,background:"var(--bg)",minHeight:"100vh"}}>

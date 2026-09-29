@@ -345,3 +345,42 @@ describe("payments on orders from before the accounting restart", () => {
     expect(noRestart.excludedOldOrders).toEqual([]);
   });
 });
+
+describe("the owner's exceptions and corrections", () => {
+  const SEP28 = Timestamp.fromDate(new Date("2026-09-28T12:00:00+05:00"));
+  const at = (day: string) => Timestamp.fromDate(new Date(`${day}T12:00:00+05:00`));
+  const orders = [{ id: "o145", orderNumber: "ORD-2026-000145", createdAt: at("2026-09-18") }];
+
+  it("counts a pre-restart payment the Admin marked as today's money", () => {
+    // ORD-2026-000145: an order from 18.09 paid 80 000 ₸ in cash on 28.09, which the owner confirmed
+    // was real money taken that day.
+    const s = computeCashbox({
+      payments: [payment({ orderId: "o145", methodId: "cash", amountTiyn: T(80000), paymentDate: SEP28, countsInCurrentBooks: true })],
+      expenses: [], methods, period: null, startDate: "2026-09-22", orders,
+    });
+    expect(s.accounts.find((a) => a.account === "cash")!.inTiyn).toBe(T(80000));
+    expect(s.excludedOldOrders).toEqual([]);
+  });
+
+  it("adds a dated correction to its pot's balance, and shows it apart from in and out", () => {
+    const adj = { id: "a1", account: "deposit" as const, amountTiyn: T(1385385), date: "2026-09-29", note: "Банкпен теңестіру", byUid: "u", byName: "Нур" };
+    const s = computeCashbox({
+      payments: [payment({ amountTiyn: T(100000), paymentDate: SEP28 })],
+      expenses: [expense({ account: "deposit", amountTiyn: T(30000), date: "2026-09-28" })],
+      methods, period: null, openingBalanceTiyn: { deposit: T(4253791) }, startDate: "2026-09-22", adjustments: [adj],
+    });
+    const nur = s.accounts.find((a) => a.account === "deposit")!;
+    expect(nur).toMatchObject({ inTiyn: T(100000), outTiyn: T(30000), adjustTiyn: T(1385385) });
+    expect(nur.balanceTiyn).toBe(T(4253791 + 100000 - 30000 + 1385385));
+    expect(s.totalAdjustTiyn).toBe(T(1385385));
+    expect(s.adjustments).toEqual([adj]);
+  });
+
+  it("dates a correction like an expense: not before the restart, and only in its own month", () => {
+    const adj = (date: string) => ({ id: date, account: "deposit" as const, amountTiyn: T(1000), date, note: "", byUid: "u", byName: "" });
+    const all = computeCashbox({ payments: [], expenses: [], methods, period: null, startDate: "2026-09-22", adjustments: [adj("2026-09-20"), adj("2026-09-29"), adj("2026-10-02")] });
+    expect(all.totalAdjustTiyn).toBe(T(2000));
+    const sept = computeCashbox({ payments: [], expenses: [], methods, period: "2026-09", startDate: "2026-09-22", adjustments: [adj("2026-09-29"), adj("2026-10-02")] });
+    expect(sept.totalAdjustTiyn).toBe(T(1000));
+  });
+});

@@ -5,6 +5,7 @@ import type {
   Order,
   Payment,
   PaymentMethodDef,
+  CashAdjustment,
 } from "../types/domain";
 
 /**
@@ -79,7 +80,10 @@ export interface AccountSummary {
   inTiyn: number;
   /** Expenses paid out of this pot in the period. */
   outTiyn: number;
-  /** in − out. Negative is real and is shown: you can spend a drawer past what came in that month. */
+  /** Signed sum of the pot's dated corrections in the period (ApplicationSettings.cashAdjustments). */
+  adjustTiyn: number;
+  /** in − out ± corrections (+ opening, all-time only). Negative is real and is shown: you can
+   *  spend a drawer past what came in that month. */
   balanceTiyn: number;
   /** The split behind `inTiyn`, biggest first — "Нұр 195 200 · Kaspi 42 480". */
   byMethod: MethodTotal[];
@@ -105,9 +109,12 @@ export interface CashboxSummary {
   accounts: AccountSummary[];
   totalInTiyn: number;
   totalOutTiyn: number;
+  totalAdjustTiyn: number;
   totalBalanceTiyn: number;
   /** Payments on pre-restart orders, oldest payment first — shown, never counted (see `orders`). */
   excludedOldOrders: ExcludedPayment[];
+  /** The corrections counted in this period, oldest first. */
+  adjustments: CashAdjustment[];
 }
 
 function emptyAccount(account: CashAccount): AccountSummary {
@@ -115,6 +122,7 @@ function emptyAccount(account: CashAccount): AccountSummary {
     account,
     inTiyn: 0,
     outTiyn: 0,
+    adjustTiyn: 0,
     balanceTiyn: 0,
     byMethod: [],
     expenseCount: 0,
@@ -142,6 +150,7 @@ export function computeCashbox({
   openingBalanceTiyn = {},
   startDate = null,
   orders,
+  adjustments = [],
 }: {
   payments: Payment[];
   expenses: Expense[];
@@ -159,9 +168,13 @@ export function computeCashbox({
    * `startDate`, a payment on an order CREATED before it is left out of every pot even when it was
    * recorded after — the owner's rule: the books closed on the restart, and marking a 07.09 order
    * paid on the 25th must not add to today's deposit. Such payments are reported in
-   * `excludedOldOrders` instead of vanishing. Omitted, every payment is dated by itself alone.
+   * `excludedOldOrders` instead of vanishing — unless an Admin marked the payment
+   * `countsInCurrentBooks`. Omitted, every payment is dated by itself alone.
    */
   orders?: readonly Pick<Order, "id" | "orderNumber" | "createdAt">[];
+  /** This line's dated corrections (ApplicationSettings.cashAdjustments), filtered by date like an
+   *  expense: nothing before `startDate`, and only the chosen month's when `period` is set. */
+  adjustments?: readonly CashAdjustment[];
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
   const orderById = new Map((orders ?? []).map((o) => [o.id, o]));
@@ -193,7 +206,7 @@ export function computeCashbox({
     );
     // Settles an order from before the restart: the old books, not today's money.
     const order = orderById.get(payment.orderId);
-    if (startDate && order?.createdAt && dayKey(order.createdAt) < startDate) {
+    if (startDate && order?.createdAt && dayKey(order.createdAt) < startDate && !payment.countsInCurrentBooks) {
       excludedOldOrders.push({
         paymentId: payment.id,
         orderNumber: order.orderNumber,
@@ -231,12 +244,19 @@ export function computeCashbox({
     summary.expenseCount += 1;
   }
 
+  // Dated corrections ("Банкпен теңестіру"), filtered exactly like an expense.
+  const counted = adjustments
+    .filter((a) => (!startDate || a.date >= startDate) && (period === null || a.date.startsWith(period)))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (const adjustment of counted) summaries.get(adjustment.account)!.adjustTiyn += adjustment.amountTiyn;
+
   const accounts = CASH_ACCOUNTS.map((account) => {
     const summary = summaries.get(account)!;
     const opening = period === null ? (openingBalanceTiyn[account] ?? 0) : 0;
     return {
       ...summary,
-      balanceTiyn: summary.inTiyn - summary.outTiyn + opening,
+      balanceTiyn: summary.inTiyn - summary.outTiyn + summary.adjustTiyn + opening,
       byMethod: [...byMethod.get(account)!.values()].sort(
         (a, b) => b.amountTiyn - a.amountTiyn,
       ),
@@ -248,8 +268,10 @@ export function computeCashbox({
     accounts,
     totalInTiyn: accounts.reduce((s, a) => s + a.inTiyn, 0),
     totalOutTiyn: accounts.reduce((s, a) => s + a.outTiyn, 0),
+    totalAdjustTiyn: accounts.reduce((s, a) => s + a.adjustTiyn, 0),
     totalBalanceTiyn: accounts.reduce((s, a) => s + a.balanceTiyn, 0),
     excludedOldOrders: excludedOldOrders.sort((a, b) => a.paymentDay.localeCompare(b.paymentDay)),
+    adjustments: counted,
   };
 }
 

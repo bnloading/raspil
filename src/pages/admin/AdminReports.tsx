@@ -604,8 +604,11 @@ function FinanceTab({
     [settings.cashOpeningBalanceTiyn, department],
   );
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate, orders }),
-    [payments, expenses, methods, openingBalanceTiyn, startDate, orders],
+    () => computeCashbox({
+      payments, expenses, methods, period: null, openingBalanceTiyn, startDate, orders,
+      adjustments: settings.cashAdjustments?.[department] ?? [],
+    }),
+    [payments, expenses, methods, openingBalanceTiyn, startDate, orders, settings.cashAdjustments, department],
   );
   const periodName = period ? monthName(period) : "Барлық уақыт";
 

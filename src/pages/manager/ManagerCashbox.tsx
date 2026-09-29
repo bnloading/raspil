@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { arrayRemove, arrayUnion, collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -26,11 +26,12 @@ import {
 } from "../../lib/cashbox";
 import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
 import { availableMonths } from "../../lib/finance";
-import { formatMoney } from "../../lib/money";
+import { formatMoney, parseMoneyInput } from "../../lib/money";
+import { logAudit } from "../../lib/audit";
 import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
-import type { CashAccount, Department, Expense, PaymentMethodDef } from "../../types/domain";
+import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef } from "../../types/domain";
 import type { CashboxSummary } from "../../lib/cashbox";
 
 /**
@@ -82,6 +83,11 @@ export default function ManagerCashbox() {
     () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
     [settings.cashOpeningBalanceTiyn, myDepartment],
   );
+  // This line's dated corrections ("Банкпен теңестіру") — see ApplicationSettings.cashAdjustments.
+  const adjustments = useMemo(
+    () => settings.cashAdjustments?.[myDepartment] ?? [],
+    [settings.cashAdjustments, myDepartment],
+  );
 
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   useEffect(() => {
@@ -112,15 +118,15 @@ export default function ManagerCashbox() {
   );
 
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate, orders }),
-    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate, orders],
+    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate, orders, adjustments }),
+    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate, orders, adjustments],
   );
   // "Қазір бізде бар" is what is in each account today — the all-time balance, opening included —
   // whichever month the picker shows. A month's own in − out is that month's flow, not money on
   // hand, and labelling it as the balance is how the card came to be read wrong.
   const cashboxNow = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate, orders }),
-    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, orders],
+    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate, orders, adjustments }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, orders, adjustments],
   );
   const rows = useMemo(
     () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
@@ -142,6 +148,40 @@ export default function ManagerCashbox() {
     try {
       await deleteExpense(db, { user, userData }, expense);
       showToast("✅ Жазба өшірілді");
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  /** Admin: a payment on a pre-restart order that really was today's money — count it after all. */
+  const handleCountPayment = async (paymentId: string) => {
+    if (!user || !userData) return;
+    const excluded = cashboxNow.excludedOldOrders.find((p) => p.paymentId === paymentId);
+    try {
+      await updateDoc(doc(db, "payments", paymentId), { countsInCurrentBooks: true });
+      await logAudit(db, { user, userData }, {
+        action: "payment.countsInCurrentBooks", entityType: "payment", entityId: paymentId,
+        before: { countsInCurrentBooks: false }, after: { countsInCurrentBooks: true },
+        comment: excluded ? `${excluded.orderNumber} ${formatMoney(excluded.amountTiyn)} ${excluded.methodName}` : undefined,
+      }).catch(() => {});
+      showToast(`✅ ${excluded?.orderNumber ?? "Төлем"} Кассаға қосылды`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  /** Admin: take back a correction entered by mistake. */
+  const handleRemoveAdjustment = async (adjustment: CashAdjustment) => {
+    if (!user || !userData) return;
+    try {
+      await updateDoc(doc(db, "applicationSettings", "global"), {
+        [`cashAdjustments.${myDepartment}`]: arrayRemove(adjustment),
+      });
+      await logAudit(db, { user, userData }, {
+        action: "cash.adjustment.remove", entityType: "applicationSettings", entityId: "global",
+        before: { ...adjustment }, comment: adjustment.note,
+      }).catch(() => {});
+      showToast("✅ Түзету өшірілді");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -201,7 +241,9 @@ export default function ManagerCashbox() {
           </div>
 
           <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod}
-            startDate={cashStartDate} />
+            startDate={cashStartDate}
+            onCountPayment={isAdmin ? handleCountPayment : undefined}
+            onRemoveAdjustment={isAdmin ? handleRemoveAdjustment : undefined} />
 
           <ExpenseForm
             defaultDate={expenseDefaultDate(effectivePeriod)}
@@ -296,6 +338,8 @@ export default function ManagerCashbox() {
               onError={showToast}
             />
           )}
+
+          {isAdmin && <ReconcileEditor department={myDepartment} cashboxNow={cashboxNow} onToast={showToast} />}
         </>
       )}
 
@@ -568,6 +612,8 @@ export function CashboxAccounts({
   openingBalanceTiyn,
   period: effectivePeriod,
   startDate = null,
+  onCountPayment,
+  onRemoveAdjustment,
 }: {
   /** The picked period's flows. */
   cashbox: CashboxSummary;
@@ -577,9 +623,22 @@ export function CashboxAccounts({
   period: string | null;
   /** The accounting restart — names the date in the "left out" note. */
   startDate?: string | null;
+  /** Admin only: count a left-out payment as today's money after all (Payment.countsInCurrentBooks). */
+  onCountPayment?: (paymentId: string) => void;
+  /** Admin only: take back a correction entered by mistake. */
+  onRemoveAdjustment?: (adjustment: CashAdjustment) => void;
 }) {
   const nowByAccount = new Map(cashboxNow.accounts.map((a) => [a.account, a.balanceTiyn]));
   const totalOpeningTiyn = CASH_ACCOUNTS.reduce((s, a) => s + (openingBalanceTiyn[a] ?? 0), 0);
+  // Two taps for anything that moves a balance: the first arms the button ("Растау?"), the second
+  // acts. Not window.confirm() — a phone draws that itself, and on an iPhone it showed only its edge.
+  const [armed, setArmed] = useState<string | null>(null);
+  const twoTap = (key: string, act: () => void) => () => {
+    if (armed === key) {
+      setArmed(null);
+      act();
+    } else setArmed(key);
+  };
 
   return (
     <>
@@ -596,7 +655,7 @@ export function CashboxAccounts({
                 {formatMoney(nowByAccount.get(acc.account) ?? 0)}
               </strong>
             </div>
-            {/* The sum behind the figure above: бастапқы + түсті − шықты. It used to read
+            {/* The sum behind the figure above: бастапқы + түсті − шықты ± түзету. It used to read
                 "Қалдық 3 195 507 (оның ішінде бастапқы 4 253 791)" — a balance that "includes"
                 a larger number. For a single month it is that month's flow instead, named as such. */}
             {effectivePeriod !== null && <p className="cashbox-flow-title">{monthLabel(effectivePeriod)}</p>}
@@ -616,6 +675,12 @@ export function CashboxAccounts({
                 <dd className={acc.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(acc.outTiyn)}</dd>
                 {acc.expenseCount > 0 && <dd className="cashbox-count">{acc.expenseCount} жазба</dd>}
               </div>
+              {acc.adjustTiyn !== 0 && (
+                <div>
+                  <dt>± Түзету</dt>
+                  <dd>{signed(acc.adjustTiyn)}</dd>
+                </div>
+              )}
             </dl>
             {/* One method is the "Түсті" figure again; the split only says something when
                 two methods share the account (Kaspi and Pay). */}
@@ -632,7 +697,7 @@ export function CashboxAccounts({
           </section>
         ))}
       </div>
-  
+
       <div className="cashbox-total">
         <span className="cashbox-total-now">
           Қазір бізде барлығы <strong className={cashboxNow.totalBalanceTiyn < 0 ? "is-out" : undefined}>
@@ -647,11 +712,40 @@ export function CashboxAccounts({
           <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong>
         </span>
         <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
+        {cashbox.totalAdjustTiyn !== 0 && <span>± Түзету <strong>{signed(cashbox.totalAdjustTiyn)}</strong></span>}
       </div>
+
+      {/* Every correction, with its date and reason — a balance brought in line with the bank has
+          to say by how much and why, or the next person to read it cannot tell it was touched. */}
+      {cashboxNow.adjustments.length > 0 && (
+        <details className="cashbox-excluded cashbox-adjustments" open>
+          <summary>
+            Түзетулер: {cashboxNow.adjustments.length} — <strong>{signed(cashboxNow.totalAdjustTiyn)}</strong>
+          </summary>
+          <ul>
+            {cashboxNow.adjustments.map((a) => (
+              <li key={a.id}>
+                <span>
+                  {dmy(a.date)} · {CASH_ACCOUNT_LABELS[a.account]} · {a.note}{a.byName ? ` · ${a.byName}` : ""}
+                </span>
+                <strong>{signed(a.amountTiyn)}</strong>
+                {onRemoveAdjustment && (
+                  <button type="button" className={armed === `adj-${a.id}` ? "btn btn-outline btn-sm is-armed" : "jt-icon-btn"}
+                    title="Өшіру" aria-label={`${a.note} түзетуін өшіру`}
+                    onClick={twoTap(`adj-${a.id}`, () => onRemoveAdjustment(a))}>
+                    {armed === `adj-${a.id}` ? "Өшіру?" : "✕"}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {/* Money taken since the restart on orders from before it — left out of every figure above
           (lib/cashbox.ts computeCashbox), but listed, so a late payment on an old order is never
-          simply gone: it is the old books', and this is where the owner can see it went. */}
+          simply gone: it is the old books', and this is where the owner can see it went. An Admin
+          can count one in after all, when it was real money taken today. */}
       {cashboxNow.excludedOldOrders.length > 0 && (
         <details className="cashbox-excluded">
           <summary>
@@ -667,12 +761,113 @@ export function CashboxAccounts({
                   {p.orderNumber} · заказ {dmy(p.orderDay)} · төленді {dmy(p.paymentDay)} · {p.methodName}
                 </span>
                 <strong>{formatMoney(p.amountTiyn)}</strong>
+                {onCountPayment && (
+                  <button type="button" className={`btn btn-outline btn-sm${armed === `pay-${p.paymentId}` ? " is-armed" : ""}`}
+                    onClick={twoTap(`pay-${p.paymentId}`, () => onCountPayment(p.paymentId))}>
+                    {armed === `pay-${p.paymentId}` ? "Растау?" : "Кассаға қосу"}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         </details>
       )}
     </>
+  );
+}
+
+/** "+1 385 385 ₸" / "−22 000 ₸" */
+const signed = (tiyn: number) => (tiyn < 0 ? `−${formatMoney(-tiyn)}` : `+${formatMoney(tiyn)}`);
+
+/**
+ * "Банкпен теңестіру" — Admin types what the account really holds right now, and the difference
+ * from what Касса computes is saved as one dated correction (ApplicationSettings.cashAdjustments).
+ *
+ * The opening balance is left alone on purpose: it says what the account held on the restart day,
+ * and folding today's gap into it would rewrite that. A correction keeps the gap visible — how
+ * much, when, and why — beside the figures it corrects, and can be taken back if it was wrong.
+ */
+function ReconcileEditor({
+  department,
+  cashboxNow,
+  onToast,
+}: {
+  department: Department;
+  /** All-time figures — the balance being brought in line. */
+  cashboxNow: CashboxSummary;
+  onToast: (message: string) => void;
+}) {
+  const { user, userData } = useAuth();
+  const [account, setAccount] = useState<CashAccount>("deposit");
+  const [actualText, setActualText] = useState("");
+  const [note, setNote] = useState("Банкпен теңестіру");
+  const [saving, setSaving] = useState(false);
+
+  const computed = cashboxNow.accounts.find((a) => a.account === account)?.balanceTiyn ?? 0;
+  const hasActual = actualText.trim() !== "";
+  const actual = parseMoneyInput(actualText);
+  const diff = hasActual ? actual - computed : 0;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || !userData || !hasActual || diff === 0) return;
+    const adjustment: CashAdjustment = {
+      id: crypto.randomUUID(),
+      account,
+      amountTiyn: diff,
+      date: dayKey(new Date()),
+      note: note.trim() || "Банкпен теңестіру",
+      byUid: user.uid,
+      byName: userData.name,
+    };
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "applicationSettings", "global"), {
+        [`cashAdjustments.${department}`]: arrayUnion(adjustment),
+      });
+      await logAudit(db, { user, userData }, {
+        action: "cash.adjustment.add", entityType: "applicationSettings", entityId: "global",
+        before: { balanceTiyn: computed }, after: { ...adjustment, balanceTiyn: actual }, comment: adjustment.note,
+      }).catch(() => {});
+      onToast(`✅ ${CASH_ACCOUNT_LABELS[account]}: ${signed(diff)} түзету жазылды`);
+      setActualText("");
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <section className="panel-card reconcile-card">
+      <div className="panel-head">
+        <h3>Банкпен теңестіру</h3>
+      </div>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="reconcile-account">Шот</label>
+          <select id="reconcile-account" className="form-input" value={account}
+            onChange={(e) => setAccount(e.target.value as CashAccount)}>
+            {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label htmlFor="reconcile-actual">Шотта қазір нақты қанша бар? (₸)</label>
+          <input id="reconcile-actual" className="form-input" type="text" inputMode="numeric" autoComplete="off"
+            value={actualText} placeholder="4 430 482" onChange={(e) => setActualText(e.target.value)} />
+          <p className="form-hint">
+            Кассада: {formatMoney(computed)}
+            {hasActual ? (diff === 0 ? " · сәйкес, түзету керек емес" : ` · айырма ${signed(diff)}`) : ""}
+          </p>
+        </div>
+        <div className="form-group">
+          <label htmlFor="reconcile-note">Себебі</label>
+          <input id="reconcile-note" className="form-input" value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        <button type="submit" className="btn btn-primary" disabled={saving || !hasActual || diff === 0}>
+          {hasActual && diff !== 0 ? `${signed(diff)} түзету жазу` : "Түзету жазу"}
+        </button>
+      </form>
+    </section>
   );
 }
 

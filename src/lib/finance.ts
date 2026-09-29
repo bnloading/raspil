@@ -137,7 +137,7 @@ export function computeFinanceSummary({
     ? new Set(orders.filter((o) => o.createdAt && dayKey(o.createdAt) < startDate).map((o) => o.id))
     : new Set<string>();
   const receivedTiyn = payments
-    .filter((p) => !p.reversed && inPeriod(p.paymentDate) && !preRestartOrderIds.has(p.orderId))
+    .filter((p) => !p.reversed && inPeriod(p.paymentDate) && (p.countsInCurrentBooks || !preRestartOrderIds.has(p.orderId)))
     .reduce((s, p) => s + p.amountTiyn, 0);
 
   const grossProfitTiyn = billedTiyn - costTiyn;

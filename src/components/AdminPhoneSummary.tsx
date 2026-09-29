@@ -69,6 +69,7 @@ export function AdminPhoneSummary({
             openingTiyn={openingBalanceTiyn[acc.account] ?? 0}
             inTiyn={acc.inTiyn}
             outTiyn={acc.outTiyn}
+            adjustTiyn={acc.adjustTiyn}
             detail={acc.byMethod.length > 1
               ? acc.byMethod.map((m) => `${m.methodName} ${formatMoney(m.amountTiyn)}`).join(" · ")
               : undefined}
@@ -81,6 +82,7 @@ export function AdminPhoneSummary({
           openingTiyn={totalOpening}
           inTiyn={cashbox.totalInTiyn}
           outTiyn={cashbox.totalOutTiyn}
+          adjustTiyn={cashbox.totalAdjustTiyn}
         />
       </section>
 
@@ -94,7 +96,7 @@ export function AdminPhoneSummary({
   );
 }
 
-/** "Нұр 3 743 047 ₸" over the sum that makes it: бастапқы + түсті − шықты. */
+/** "Нұр 3 743 047 ₸" over the sum that makes it: бастапқы + түсті − шықты ± түзету. */
 function MoneyRow({
   className,
   name,
@@ -102,6 +104,7 @@ function MoneyRow({
   openingTiyn,
   inTiyn,
   outTiyn,
+  adjustTiyn,
   detail,
 }: {
   className: string;
@@ -110,6 +113,8 @@ function MoneyRow({
   openingTiyn: number;
   inTiyn: number;
   outTiyn: number;
+  /** Dated corrections ("Банкпен теңестіру") — a column only when there are any. */
+  adjustTiyn: number;
   detail?: string;
 }) {
   return (
@@ -133,6 +138,12 @@ function MoneyRow({
           <dt>− Шықты</dt>
           <dd className={outTiyn > 0 ? "is-out" : undefined}>{formatMoney(outTiyn)}</dd>
         </div>
+        {adjustTiyn !== 0 && (
+          <div>
+            <dt>± Түзету</dt>
+            <dd>{adjustTiyn < 0 ? `−${formatMoney(-adjustTiyn)}` : `+${formatMoney(adjustTiyn)}`}</dd>
+          </div>
+        )}
       </dl>
       {detail && <p className="aps-detail">{detail}</p>}
     </div>
