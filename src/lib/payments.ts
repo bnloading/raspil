@@ -1,6 +1,6 @@
 import { collection, doc, runTransaction, serverTimestamp, Timestamp, writeBatch, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import type { Order, UserDoc } from "../types/domain";
+import type { Order, Payment, UserDoc } from "../types/domain";
 import type { StrandedPayment } from "./orderMerge";
 import { logAudit } from "./audit";
 import { computePaymentStatus } from "./statuses";
@@ -161,6 +161,34 @@ export async function correctPaymentAmount(
       ...(newProductionStatus ? { productionStatus: newProductionStatus } : {}),
     });
   });
+}
+
+/**
+ * How to take an overpayment back off an order's live payments without moving any money in time
+ * or between accounts. Newest first: a payment larger than what is still over keeps its date and
+ * its method, and only its amount comes down (correctPaymentAmount); one the excess covers whole
+ * is reversed, and the rest comes off the one before it.
+ *
+ * The journal's "Артық төлем түзетілді" used to reverse every payment and write one new payment
+ * for the order total, dated the moment it was pressed and under the last payment's method. Касса
+ * dates money by the payment, so ORD-2026-000224's 26.09 money moved to 29.09, and
+ * ORD-2026-000150's 100 000 ₸ Нұр + 50 000 ₸ cash became 148 400 ₸ cash.
+ */
+export function planOverpaymentTrim(
+  live: readonly Pick<Payment, "id" | "amountTiyn" | "paymentDate" | "createdAt">[],
+  excessTiyn: number,
+): { reverse: string[]; correct: { paymentId: string; amountTiyn: number } | null } {
+  const when = (p: (typeof live)[number]) => p.paymentDate?.toMillis() ?? p.createdAt?.toMillis() ?? 0;
+  const newestFirst = [...live].sort((a, b) => when(b) - when(a));
+  const reverse: string[] = [];
+  let left = excessTiyn;
+  for (const p of newestFirst) {
+    if (left <= 0) break;
+    if (p.amountTiyn > left) return { reverse, correct: { paymentId: p.id, amountTiyn: p.amountTiyn - left } };
+    reverse.push(p.id);
+    left -= p.amountTiyn;
+  }
+  return { reverse, correct: null };
 }
 
 /**

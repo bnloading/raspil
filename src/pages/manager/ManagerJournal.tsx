@@ -82,7 +82,7 @@ import {
 } from "../../lib/customerSuggest";
 import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
-import { correctPaymentAmount, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
+import { correctPaymentAmount, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
 import {
   canEnterCuttingQueue,
@@ -686,31 +686,24 @@ export default function ManagerJournal() {
 
       if (choice === "paid") {
         if (remaining < 0) {
-          // Keep the money where it came in by: the correction is about the amount, not the
-          // method — and this order's own last payment is the only honest source for that. If
-          // that method can no longer be resolved (deleted/renamed since), there is nothing
-          // safe to replay it as — reversing anyway would wipe the payment and leave the order
-          // looking unpaid, so this falls back to the dialog exactly as a payment-less order
-          // does, instead of touching anything.
+          // The correction is about the amount only: the excess comes off the newest payments,
+          // and whatever stays keeps its own date and method (lib/payments.ts
+          // planOverpaymentTrim), so Касса still sees each tenge on the day and in the account it
+          // came in by. Stranded payments are re-filed first, as reverseLivePayments does.
+          await attachPayments(stranded.filter((m) => m.toOrderId === order.id));
           const live = livePaymentsFor(order.id);
-          const method = methods.find((m) => m.id === live[live.length - 1]?.methodId);
-          if (!method) {
-            setPayFor(order);
-            return;
+          const plan = planOverpaymentTrim(live, -remaining);
+          const byId = new Map(live.map((p) => [p.id, p]));
+          const said = (p: Payment) => `${formatDateDMY(p.paymentDate)} ${p.methodName} ${formatMoney(p.amountTiyn)}`;
+          const steps = [
+            ...plan.reverse.map((id) => `${said(byId.get(id)!)} — қайтарылады`),
+            ...(plan.correct ? [`${said(byId.get(plan.correct.paymentId)!)} → ${formatMoney(plan.correct.amountTiyn)}`] : []),
+          ];
+          if (!confirm(`Артық төленген: ${formatMoney(-remaining)}.\n${steps.join("\n")}\nЖалғастырасыз ба?`)) return;
+          for (const paymentId of plan.reverse) {
+            await reversePayment(db, actor, { paymentId, reason: "Артық төлем түзетілді" });
           }
-          if (!confirm(
-            `Артық төленген: ${formatMoney(-remaining)}. Тіркелген төлемдер қайтарылып, орнына дәл ${formatMoney(order.totalTiyn)} жазылады. Жалғастырасыз ба?`,
-          )) return;
-          await reverseLivePayments(order, "Артық төлем түзетілді");
-          if (order.totalTiyn > 0) {
-            await recordPayment(db, actor, {
-              orderId: order.id,
-              amountTiyn: order.totalTiyn,
-              methodId: method.id,
-              methodName: method.name,
-              comment: "Артық төлем түзетілді",
-            });
-          }
+          if (plan.correct) await correctPaymentAmount(db, actor, plan.correct);
           showToast("✅ Артық төлем түзетілді");
           return;
         }
