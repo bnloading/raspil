@@ -10,7 +10,7 @@ import { useOrderDetail } from "../hooks/useOrderDetail";
 import { useOrderInvoices } from "../hooks/useInvoices";
 import { useOrderPayments } from "../hooks/usePayments";
 import { useAppSettings } from "../hooks/useAppSettings";
-import { issueInvoice, sendInvoiceToCustomer } from "../lib/invoices";
+import { buildInvoiceLines, issueInvoice, sendInvoiceToCustomer } from "../lib/invoices";
 import { downloadInvoicePdf } from "../lib/invoicePdf";
 import { isAdminOrManager } from "../lib/rbac";
 import { formatDateTimeDMY } from "../lib/dates";
@@ -36,6 +36,23 @@ export default function InvoicePage() {
     [invoices, staff],
   );
   const latest = visible_[0];
+  // An issued invoice is a frozen copy. When the order now reads differently — the copy was
+  // written by older code (ORD-2026-000264's "20 лист Кашемир" for 7 Кашемир, 7 Вотан, 2 own
+  // sheets and 4 ХДФ), or the order was edited since — the page says so instead of showing the
+  // old lines as if they were the order's.
+  const stale = useMemo(() => {
+    if (!order || !latest) return false;
+    const now = buildInvoiceLines(order);
+    return (
+      latest.totalTiyn !== order.totalTiyn ||
+      now.length !== latest.lines.length ||
+      now.some((l, i) => {
+        const was = latest.lines[i];
+        return l.name !== was.name || l.qty !== was.qty || l.unit !== was.unit
+          || l.unitPriceTiyn !== was.unitPriceTiyn || l.totalTiyn !== was.totalTiyn;
+      })
+    );
+  }, [order, latest]);
 
   if (loading || invoicesLoading) return <Spinner />;
   if (!user || !userData || !order) {
@@ -121,6 +138,17 @@ export default function InvoicePage() {
         </div>
       ) : (
         <>
+          {staff && stale && (
+            <div className="invoice-stale no-print">
+              <span>
+                Бұл накладной ескі: {latest.issuedAt ? `${formatDateTimeDMY(latest.issuedAt)} жасалған, ` : ""}
+                заказ қазір басқаша жазылады. Клиентке бермес бұрын жаңасын шығарыңыз.
+              </span>
+              <button className="btn btn-primary btn-sm" onClick={handleIssue}>
+                🔄 Қайта жасау
+              </button>
+            </div>
+          )}
           <InvoiceDocument invoice={latest} companyName={settings.companyName} />
 
           {!staff && (
