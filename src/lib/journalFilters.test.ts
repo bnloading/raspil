@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { Timestamp } from "firebase/firestore";
 import {
   JOURNAL_QUICK_FILTERS,
   journalCutState,
+  journalMaterialOptions,
   matchesQuickFilter,
+  materialSheetTotals,
+  orderUsesMaterial,
   quickFilterCounts,
   journalProgress,
 } from "./journalFilters";
-import type { Order } from "../types/domain";
+import type { Order, OrderMaterialLine } from "../types/domain";
 
 const T = (n: number) => n * 100;
 
@@ -34,6 +38,43 @@ function order(overrides: Partial<Order> = {}): Order {
     ...overrides,
   };
 }
+
+describe("the Материал filter — «МДФ» shows the orders MDF was cut for", () => {
+  const line = (materialId: string, materialName: string, sheetQty: number): OrderMaterialLine => ({
+    materialId, materialName, sheetQty, sheetPriceTiyn: T(23500), pvcMeters: 0, pvcPricePerMeterTiyn: 0,
+  });
+  const cutAt = Timestamp.fromDate(new Date("2026-09-28T12:00:00+05:00"));
+  // A merged order: 3 МДФ бізден (cut, the cutter counted 3) and 4 Ақ Томск (still waiting).
+  const merged = order({
+    id: "o254", orderNumber: "ORD-2026-000254",
+    items: [line("mdf", "МДФ бізден", 3), line("ak", "ЛДСП Ақ Томск", 4)],
+    lineJobs: [
+      { index: 0, materialId: "mdf", materialName: "МДФ бізден", sheetQty: 3, pvcMeters: 0, cuttingCompletedAt: cutAt, confirmedSheets: 3 },
+      { index: 1, materialId: "ak", materialName: "ЛДСП Ақ Томск", sheetQty: 4, pvcMeters: 0 },
+    ],
+  });
+  // A single-material order not yet on the saw.
+  const single = order({ id: "o290", orderNumber: "ORD-2026-000290", materialId: "mdf", materialSnapshot: { ...order().materialSnapshot, name: "МДФ бізден" }, estimatedSheets: 2 });
+
+  it("matches an order by any of its lines", () => {
+    expect(orderUsesMaterial(merged, "mdf")).toBe(true);
+    expect(orderUsesMaterial(merged, "ak")).toBe(true);
+    expect(orderUsesMaterial(single, "ak")).toBe(false);
+  });
+
+  it("counts the material's sheets, and how many the saw has confirmed", () => {
+    expect(materialSheetTotals([merged, single], "mdf")).toEqual({ billed: 5, cut: 3 });
+    expect(materialSheetTotals([merged, single], "ak")).toEqual({ billed: 4, cut: 0 });
+  });
+
+  it("offers each material once, under the catalogue's name, alphabetically", () => {
+    const catalogue = new Map([["ak", { name: "ЛДСП Ақ Томск" }], ["mdf", { name: "МДФ бізден" }]]);
+    expect(journalMaterialOptions([single, merged], catalogue)).toEqual([
+      { id: "ak", name: "ЛДСП Ақ Томск" },
+      { id: "mdf", name: "МДФ бізден" },
+    ]);
+  });
+});
 
 describe("matchesQuickFilter", () => {
   const o = order({ totalTiyn: T(100000) });

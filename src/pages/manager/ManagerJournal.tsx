@@ -28,8 +28,11 @@ import {
 import {
   JOURNAL_QUICK_FILTERS,
   journalCutState,
+  journalMaterialOptions,
   journalProgress,
   matchesQuickFilter,
+  materialSheetTotals,
+  orderUsesMaterial,
   quickFilterCounts,
   type JournalQuickFilter,
   type ProgressStep,
@@ -154,7 +157,8 @@ const PAYMENT_CHOICES: { value: PaymentChoice; label: string }[] = [
   { value: "unpaid", label: JOURNAL_STATUS_LABELS.unpaid! },
 ];
 
-type DateFilter = "all" | "today" | "week" | "month";
+/** "from" is "Күннен бастап…": everything written on or after a picked day ("21-інен бергі"). */
+type DateFilter = "all" | "today" | "week" | "month" | "from";
 
 /** Same shape as OrderActionPanels.tsx's own constant — the stages a row still has to be pushed
  *  out of before it reaches the cutting queue by any route. */
@@ -296,6 +300,10 @@ export default function ManagerJournal() {
   }, [hiddenColumns]);
   /** "Барлық төлем" — narrows to how the money actually came in, which the chips do not cover. */
   const [methodFilter, setMethodFilter] = useState("all");
+  /** "Барлық материал" — or one material's orders ("МДФ бізден", "ЛДСП Ақ Томск"), by id. */
+  const [materialFilter, setMaterialFilter] = useState("all");
+  /** The day "Күннен бастап…" counts from, "YYYY-MM-DD" in Almaty. */
+  const [dateFrom, setDateFrom] = useState(() => dayKey(new Date()));
   // Null means "wherever the newest rows are". With the oldest order first, that is the last page —
   // a ledger opens at today, not at the day it was started. Paging by hand pins a page until the
   // filters change.
@@ -507,6 +515,7 @@ export default function ManagerJournal() {
       dateFilter === "today" ? todayStart
       : dateFilter === "week" ? todayStart - 6 * 86400000
       : dateFilter === "month" ? todayStart - 29 * 86400000
+      : dateFilter === "from" && dateFrom ? new Date(`${dateFrom}T00:00:00+05:00`).getTime()
       : null;
 
     return orders.filter((o) => {
@@ -532,9 +541,10 @@ export default function ManagerJournal() {
         const id = methodIdOf([...paidByMethod(paymentsByOrder.get(o.id) ?? []).keys()]);
         if (methodFilter === "none" ? id !== null : id !== methodFilter) return false;
       }
+      if (materialFilter !== "all" && !orderUsesMaterial(o, materialFilter)) return false;
       return true;
     }).sort(byLedgerOrder);
-  }, [orders, search, dateFilter, methodFilter, paymentsByOrder, myDepartment]);
+  }, [orders, search, dateFilter, dateFrom, methodFilter, materialFilter, paymentsByOrder, myDepartment]);
 
   const paidFor = useCallback(
     (order: Order) => netPaidTiyn(paymentsByOrder.get(order.id) ?? []),
@@ -565,6 +575,30 @@ export default function ManagerJournal() {
   }, [filtered, booksStartOrderNumber]);
   const booksLine = booksStartOrderNumber
     ? { orderNumber: booksStartOrderNumber, date: settings.cashStartDate ?? null }
+    : null;
+
+  /**
+   * "Материал" — the materials this line's ledger is cut from. Taken from every live row rather
+   * than the filtered ones, so the list does not shrink as the other filters narrow the page.
+   */
+  const materialOptions = useMemo(
+    () => journalMaterialOptions(
+      orders.filter((o) => departmentOfOrder(o) === myDepartment && o.productionStatus !== "draft"
+        && o.productionStatus !== "cancelled" && !o.mergedIntoOrderId),
+      materialsById,
+    ),
+    [orders, myDepartment, materialsById],
+  );
+  const materialFilterName = materialOptions.find((m) => m.id === materialFilter)?.name ?? null;
+  /** With a material picked: how many of its sheets the rows on screen carry, and how many are cut. */
+  const materialTotals = useMemo(
+    () => (materialFilter === "all" ? null : materialSheetTotals(filtered, materialFilter)),
+    [filtered, materialFilter],
+  );
+  // "17 лист · бәрі кесілген" / "17 лист · кесілгені 12"
+  const materialTotalsText = materialTotals
+    ? `${materialTotals.billed} лист${materialTotals.billed === 0 ? ""
+      : materialTotals.cut === materialTotals.billed ? " · бәрі кесілген" : ` · кесілгені ${materialTotals.cut}`}`
     : null;
 
   /**
@@ -1149,6 +1183,21 @@ export default function ManagerJournal() {
           <option value="today">Бүгін</option>
           <option value="week">7 күн</option>
           <option value="month">30 күн</option>
+          <option value="from">Күннен бастап…</option>
+        </select>
+        {dateFilter === "from" && (
+          <input type="date" className="journal-select journal-date-from" value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPinnedPage(null); }}
+            aria-label="Қай күннен бастап" />
+        )}
+
+        {/* "МДФ" shows the orders MDF was cut for, "Ақ" the ones Ақ was — and the foot of the page
+            then counts that material's sheets, which is the question it is usually picked for. */}
+        <select className="journal-select" value={materialFilter}
+          onChange={(e) => { setMaterialFilter(e.target.value); setPinnedPage(null); }}
+          aria-label="Материал бойынша сүзу">
+          <option value="all">Барлық материал</option>
+          {materialOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
 
         {/* Not a second copy of the Қарыз chip: that one asks whether money is still owed, this
@@ -1282,6 +1331,12 @@ export default function ManagerJournal() {
                 <span>Қарыз</span>
                 <strong className="is-debt">{formatMoney(summary.debtTiyn)}</strong>
               </div>
+              {materialTotalsText && (
+                <div className="journal-card-stat is-material">
+                  <span>{materialFilterName}</span>
+                  <strong>{materialTotalsText}</strong>
+                </div>
+              )}
             </div>
 
             {pageItems.length === 0 ? (
@@ -1544,6 +1599,12 @@ export default function ManagerJournal() {
                 <span className="journal-summary-label">Тізімде</span>
                 <strong>{summary.shownCount} заказ</strong>
               </div>
+              {materialTotalsText && (
+                <div className="journal-summary-item is-material">
+                  <span className="journal-summary-label">{materialFilterName}</span>
+                  <strong>{materialTotalsText}</strong>
+                </div>
+              )}
               <div className="journal-summary-item">
                 <span className="journal-summary-label">Жалпы</span>
                 <strong>{formatMoney(summary.totalTiyn)}</strong>

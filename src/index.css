@@ -5081,6 +5081,9 @@ body {
   background: var(--border);
 }
 .journal-summary-item.is-scope strong { color: var(--text-secondary); }
+/* The picked material's sheets ("МДФ бізден 17 лист · бәрі кесілген") — only with a material filter. */
+.journal-summary-item.is-material strong { color: var(--primary); }
+.journal-date-from { min-width: 140px; }
 
 /* Mobile card list — hidden on desktop, replaces the spreadsheet on phones. */
 .journal-cards {
@@ -9695,6 +9698,8 @@ body {
 }
 .journal-card-stat strong.is-paid { color: var(--emerald); }
 .journal-card-stat strong.is-debt { color: var(--danger); }
+.journal-card-stat.is-material { grid-column: 1 / -1; }
+.journal-card-stat.is-material strong { color: var(--primary); }
 
 /* The card is a container now, not a button: the body opens the order and the action button at
    the bottom does something else entirely, and nesting those was never valid markup. */

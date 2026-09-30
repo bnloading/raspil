@@ -1,4 +1,6 @@
 import type { Order } from "../types/domain";
+import { linesOf } from "./orderMerge";
+import { jobsOf } from "./orderLines";
 
 /**
  * The journal's quick filters — the row of counted chips above the ledger.
@@ -82,6 +84,52 @@ export function quickFilterCounts(
     }
   }
   return counts;
+}
+
+/**
+ * The "Материал" filter — "МДФ" shows the orders MDF was cut for, "Ақ" the ones Ақ was.
+ *
+ * The options are every material a ledger line names, under the catalogue's current name where it
+ * still has one (a line keeps the name it was typed with), alphabetical so "ЛДСП Ақ Томск" and
+ * "МДФ бізден" sit where the eye looks for them.
+ */
+export function journalMaterialOptions(
+  orders: readonly Order[],
+  catalogue: ReadonlyMap<string, { name: string }>,
+): { id: string; name: string }[] {
+  const names = new Map<string, string>();
+  for (const order of orders) {
+    for (const line of linesOf(order)) {
+      if (!line.materialId || names.has(line.materialId)) continue;
+      names.set(line.materialId, catalogue.get(line.materialId)?.name || line.materialName || line.materialId);
+    }
+  }
+  return [...names].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "kk"));
+}
+
+/** Does any line of the order use the material? A merged order counts for each material in it. */
+export function orderUsesMaterial(order: Order, materialId: string): boolean {
+  return linesOf(order).some((line) => line.materialId === materialId);
+}
+
+/**
+ * The sheets of one material the rows carry, and how many the saw has confirmed — "МДФ бізден:
+ * 17 лист, кесілгені 17", the answer to "how much MDF did we cut since the 21st?". Billed is the
+ * line's own count; cut is the cutter's count on each line already through the saw.
+ */
+export function materialSheetTotals(orders: readonly Order[], materialId: string): { billed: number; cut: number } {
+  let billed = 0;
+  let cut = 0;
+  for (const order of orders) {
+    const jobs = jobsOf(order);
+    linesOf(order).forEach((line, index) => {
+      if (line.materialId !== materialId) return;
+      billed += line.sheetQty || 0;
+      const job = jobs.find((j) => j.index === index);
+      if (job?.cuttingCompletedAt) cut += job.confirmedSheets ?? line.sheetQty ?? 0;
+    });
+  }
+  return { billed, cut };
 }
 
 /**
