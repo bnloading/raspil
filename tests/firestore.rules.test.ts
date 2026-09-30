@@ -745,6 +745,40 @@ describe("logged expenses (Касса шығындары) are written by the Man
   });
 });
 
+/**
+ * "Аренда" — rent the owner takes on the side, counted on the Admin's Касса. The owner's alone:
+ * unlike the expense log, a Manager neither sees nor writes it.
+ */
+describe("rent entries (Аренда) are the Admin's alone", () => {
+  const rent = (uid: string) => ({
+    payerName: "Жалға алушы", amountTiyn: 15000000, methodId: "nur", methodName: "Нұр", date: "2026-10-01",
+    comment: "", department: "ldsp", createdByUid: uid, createdByName: uid === ADMIN_UID ? "Admin" : "Manager",
+  });
+
+  it("admin can write, read, correct and delete a rent entry", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "rentPayments", "rent-1"), rent(ADMIN_UID)));
+    await assertSucceeds(getDoc(doc(db, "rentPayments", "rent-1")));
+    await assertSucceeds(updateDoc(doc(db, "rentPayments", "rent-1"), { amountTiyn: 16000000 }));
+    await assertSucceeds(deleteDoc(doc(db, "rentPayments", "rent-1")));
+  });
+
+  it("admin cannot write one under someone else's name", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertFails(setDoc(doc(db, "rentPayments", "rent-2"), rent(MANAGER_UID)));
+  });
+
+  it("a manager can neither read nor write it", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "rentPayments", "rent-1"), rent(ADMIN_UID));
+    });
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(getDoc(doc(db, "rentPayments", "rent-1")));
+    await assertFails(setDoc(doc(db, "rentPayments", "rent-3"), rent(MANAGER_UID)));
+    await assertFails(deleteDoc(doc(db, "rentPayments", "rent-1")));
+  });
+});
+
 describe("PVC worker cannot touch warehouse", () => {
   it("PVC worker cannot create an inventory movement", async () => {
     const db = testEnv.authenticatedContext(PVC_UID).firestore();

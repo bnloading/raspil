@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { collection, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -8,7 +8,9 @@ import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
+import { useAppSettings } from "../../hooks/useAppSettings";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
+import { isBeforeRestart } from "../../lib/cashbox";
 import { NumberField } from "../../components/NumberField";
 import { MaterialPicker } from "../../components/MaterialPicker";
 import { formatMoney, formatMoneyBare } from "../../lib/money";
@@ -256,6 +258,8 @@ export default function ManagerJournal() {
   // offered for it. An order already carrying a retired colour still names it (see the cell).
   const { pvcTypes } = usePvcTypes(true);
   const { message, visible, showToast } = useToast();
+  // Where the last settlement was drawn ("№281 заказға дейін расчет істелді") — see booksLineBefore.
+  const { settings } = useAppSettings();
 
   const [searchParams] = useSearchParams();
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
@@ -540,6 +544,25 @@ export default function ManagerJournal() {
     () => (quickFilter === "all" ? inScope : inScope.filter((o) => matchesQuickFilter(o, paidFor(o), quickFilter))),
     [inScope, quickFilter, paidFor],
   );
+
+  /**
+   * The row the settlement line is drawn above: the first order of the new books that follows one
+   * of the old, as the owner would rule it across the paper journal. Found over `filtered` rather
+   * than the page, so the line stays with №281 whichever page it lands on, and is not drawn at all
+   * when nothing from the settled books is on screen to separate it from.
+   */
+  const booksStartOrderNumber = settings.cashStartOrderNumber ?? null;
+  const booksLineBefore = useMemo(() => {
+    if (!booksStartOrderNumber) return null;
+    const settled = (o: Order) => isBeforeRestart(o, null, booksStartOrderNumber);
+    for (let i = 1; i < filtered.length; i++) {
+      if (settled(filtered[i - 1]) && !settled(filtered[i])) return filtered[i].id;
+    }
+    return null;
+  }, [filtered, booksStartOrderNumber]);
+  const booksLine = booksStartOrderNumber
+    ? { orderNumber: booksStartOrderNumber, date: settings.cashStartDate ?? null }
+    : null;
 
   /**
    * The row the detail panel is showing, resolved from the live order list rather than kept as a
@@ -1265,7 +1288,11 @@ export default function ManagerJournal() {
                 const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
 
                 return (
-                  <div key={order.id} className={`journal-card is-${journalCutState(order)}`}>
+                  <Fragment key={order.id}>
+                  {booksLine && order.id === booksLineBefore && (
+                    <div className="journal-card-books" role="separator"><BooksLine {...booksLine} /></div>
+                  )}
+                  <div className={`journal-card is-${journalCutState(order)}`}>
                     <button className="journal-card-main" onClick={() => navigate(`/manager/order/${order.id}`)}>
                       <div className="journal-card-top">
                         <strong>{order.orderNumber}</strong>
@@ -1351,6 +1378,7 @@ export default function ManagerJournal() {
                       🗑 Жолды өшіру
                     </button>
                   </div>
+                  </Fragment>
                 );
               })
             )}
@@ -1407,8 +1435,11 @@ export default function ManagerJournal() {
                     />
                   )}
                   {pageItems.map((order) => (
+                    <Fragment key={order.id}>
+                    {booksLine && order.id === booksLineBefore && (
+                      <tr className="jt-books"><td colSpan={bodyColSpan}><BooksLine {...booksLine} /></td></tr>
+                    )}
                     <JournalRow
-                      key={order.id}
                       order={order}
                       hidden={activeHidden}
                       pvcTypesById={pvcTypesById}
@@ -1434,6 +1465,7 @@ export default function ManagerJournal() {
                       onDelete={() => handleDeleteOrder(order)}
                       onError={showToast}
                     />
+                    </Fragment>
                   ))}
                   {pageView.newerCount > 0 && (
                     <HiddenRowsNotice
@@ -1891,6 +1923,23 @@ function HiddenRowsNotice({
         </button>
       </td>
     </tr>
+  );
+}
+
+/**
+ * The settlement line — "№281 заказға дейін расчет істелді" — ruled across the ledger above the
+ * first order of the new books, as the owner would draw it in the paper journal. Everything above
+ * it has been counted and handed over; Касса counts from the row under it
+ * (ApplicationSettings.cashStartOrderNumber, lib/cashbox.ts isBeforeRestart).
+ */
+function BooksLine({ orderNumber, date }: { orderNumber: string; date: string | null }) {
+  const n = shortOrderNumber(orderNumber);
+  return (
+    <>
+      <span className="jt-books-text">✓ <b>№{n}</b> заказға дейін расчет істелді</span>
+      {date && <span className="jt-books-date">{formatDateDMY(new Date(`${date}T12:00:00+05:00`))}</span>}
+      <span className="jt-books-next">↓ келесі расчет №{n} заказдан басталады</span>
+    </>
   );
 }
 

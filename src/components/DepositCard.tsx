@@ -27,7 +27,8 @@ export function DepositCard({
   startDate: string | null;
 }) {
   const monthIsEverything =
-    month.inTiyn === now.inTiyn && month.outTiyn === now.outTiyn && month.adjustTiyn === now.adjustTiyn;
+    month.inTiyn === now.inTiyn && month.outTiyn === now.outTiyn && month.adjustTiyn === now.adjustTiyn
+    && (month.rentTiyn ?? 0) === (now.rentTiyn ?? 0);
 
   return (
     <section className="aps-card aps-deposit" aria-labelledby="aps-deposit-title">
@@ -53,6 +54,13 @@ export function DepositCard({
           <dt>+ Түсті</dt>
           <dd className="is-in">{formatMoney(now.inTiyn)}</dd>
         </div>
+        {/* Rent that came into Нұр (Аренда page) — without it the sum would not reach the balance. */}
+        {(now.rentTiyn ?? 0) > 0 && (
+          <div>
+            <dt>+ Аренда</dt>
+            <dd className="is-in">{formatMoney(now.rentTiyn ?? 0)}</dd>
+          </div>
+        )}
         <div>
           <dt>− Шықты</dt>
           <dd className={now.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(now.outTiyn)}</dd>
@@ -67,7 +75,8 @@ export function DepositCard({
       </dl>
       {!monthIsEverything && (
         <p className="aps-detail">
-          {monthLabel(monthKey)}: түсті {formatMoney(month.inTiyn)} · шықты {formatMoney(month.outTiyn)}
+          {monthLabel(monthKey)}: түсті {formatMoney(month.inTiyn)}
+          {(month.rentTiyn ?? 0) > 0 ? ` · аренда ${formatMoney(month.rentTiyn ?? 0)}` : ""} · шықты {formatMoney(month.outTiyn)}
         </p>
       )}
     </section>

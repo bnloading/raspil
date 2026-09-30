@@ -304,6 +304,29 @@ export interface Expense {
 }
 
 /**
+ * Rent the owner takes on the side — "Аренда". It lands in the same accounts the shop's money
+ * does (Нұр, Pay, қолма-қол), so without it Касса never matches the bank; it is not an order's
+ * money, so it lives apart from `payments` and counts on Касса as its own "+ Аренда" line
+ * (lib/cashbox.ts computeCashbox). The owner's alone: firestore.rules keeps it Admin-only.
+ */
+export interface RentPayment {
+  id: string;
+  /** Who paid — the tenant, as the owner calls them. */
+  payerName: string;
+  amountTiyn: number;
+  /** A paymentMethods id — its `account` says which pot the money is in, as for a payment. */
+  methodId: string;
+  methodName: string;
+  date: string; // YYYY-MM-DD in Asia/Almaty, the day the money arrived
+  comment?: string;
+  /** Which line's Касса it counts in — see UserDoc.department. Unset means "ldsp". */
+  department?: Department;
+  createdByUid: string;
+  createdByName: string;
+  createdAt?: Timestamp;
+}
+
+/**
  * The single master workflow-stage field (spec: "INTERNAL ORDER STATUSES"). Deliberately includes
  * payment-shaped stages (waiting_payment/partially_paid/paid) alongside pure production stages —
  * this is the *workflow position*, kept in sync with (but not a replacement for) the independent
@@ -977,6 +1000,15 @@ export interface ApplicationSettings {
    * mean deleting payments that orders depend on. Unset means count everything, as before.
    */
   cashStartDate?: string;
+  /**
+   * "ORD-2026-000281" — the first order of the current books, when the owner closed the old ones
+   * at an order rather than at midnight: "№281 заказға дейін расчет істелді" (30.09). Orders
+   * numbered before it belong to the settled books whatever day they were written, so their
+   * payments stay out of Касса even when recorded after (lib/cashbox.ts isBeforeRestart); the
+   * journal draws the settlement line above it. `cashStartDate` still dates the money itself.
+   * Unset means the order's own day decides, as it did before.
+   */
+  cashStartOrderNumber?: string;
   /**
    * Dated corrections that bring a pot in line with the real account — "Банкпен теңестіру
    * +1 407 385 ₸, 28.09". Kept beside `cashOpeningBalanceTiyn` (same department keying, same

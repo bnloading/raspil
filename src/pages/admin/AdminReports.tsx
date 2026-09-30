@@ -12,6 +12,7 @@ import { useExpenseCategories } from "../../hooks/useExpenseCategories";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useAppSettings } from "../../hooks/useAppSettings";
+import { useRentPayments } from "../../hooks/useRentPayments";
 import { useToast } from "../../hooks";
 import { BarChart } from "../../components/BarChart";
 import { formatMoney } from "../../lib/money";
@@ -580,14 +581,15 @@ function FinanceTab({
   // profit figure that counted the old expenses against the new revenue would be neither.
   const { settings } = useAppSettings();
   const startDate = settings.cashStartDate ?? null;
+  const startOrderNumber = settings.cashStartOrderNumber ?? null;
 
   const s = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period, startDate }),
-    [orders, payments, purchaseByMaterialId, categories, expenses, period, startDate],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period, startDate, startOrderNumber }),
+    [orders, payments, purchaseByMaterialId, categories, expenses, period, startDate, startOrderNumber],
   );
   const allTime = useMemo(
-    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null, startDate }),
-    [orders, payments, purchaseByMaterialId, categories, expenses, startDate],
+    () => computeFinanceSummary({ orders, payments, purchaseByMaterialId, categories, expenses, period: null, startDate, startOrderNumber }),
+    [orders, payments, purchaseByMaterialId, categories, expenses, startDate, startOrderNumber],
   );
 
   // Депозиттегі ақша — Admin-only, same as the purchase-cost margin above: a Manager already has
@@ -603,12 +605,18 @@ function FinanceTab({
     () => settings.cashOpeningBalanceTiyn?.[department] ?? {},
     [settings.cashOpeningBalanceTiyn, department],
   );
+  // Rent (Аренда) is in these same accounts; the hook gives it to the Admin only.
+  const { rentPayments } = useRentPayments();
+  const rent = useMemo(
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),
+    [rentPayments, department],
+  );
   const cashbox = useMemo(
     () => computeCashbox({
-      payments, expenses, methods, period: null, openingBalanceTiyn, startDate, orders,
-      adjustments: settings.cashAdjustments?.[department] ?? [],
+      payments, expenses, methods, period: null, openingBalanceTiyn, startDate, startOrderNumber, orders,
+      adjustments: settings.cashAdjustments?.[department] ?? [], rent,
     }),
-    [payments, expenses, methods, openingBalanceTiyn, startDate, orders, settings.cashAdjustments, department],
+    [payments, expenses, methods, openingBalanceTiyn, startDate, startOrderNumber, orders, settings.cashAdjustments, department, rent],
   );
   const periodName = period ? monthName(period) : "Барлық уақыт";
 

@@ -25,6 +25,7 @@ import { useExpenseCategories } from "../../hooks/useExpenseCategories";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useMaterialCosts } from "../../hooks/useMaterialCosts";
 import { useAppSettings } from "../../hooks/useAppSettings";
+import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
@@ -122,16 +123,24 @@ export default function AdminHome() {
   // The phone summary's "Ақша қайда тұр" and sheet counts — the Касса page's own figures, all-time,
   // counted from the shop's accounting restart.
   const cashStartDate = settings.cashStartDate ?? null;
+  const cashStartOrderNumber = settings.cashStartOrderNumber ?? null;
   const openingBalanceTiyn = useMemo(
     () => settings.cashOpeningBalanceTiyn?.[myDepartment] ?? {},
     [settings.cashOpeningBalanceTiyn, myDepartment],
   );
+  // Rent the owner takes on the side lands in these same accounts (Аренда page).
+  const { rentPayments } = useRentPayments();
+  const rent = useMemo(
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === myDepartment),
+    [rentPayments, myDepartment],
+  );
   const cashbox = useMemo(
     () => computeCashbox({
       payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate: cashStartDate,
-      orders: allOrders, adjustments: settings.cashAdjustments?.[myDepartment] ?? [],
+      startOrderNumber: cashStartOrderNumber, orders: allOrders, adjustments: settings.cashAdjustments?.[myDepartment] ?? [],
+      rent,
     }),
-    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, allOrders, settings.cashAdjustments, myDepartment],
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, cashStartOrderNumber, allOrders, settings.cashAdjustments, myDepartment, rent],
   );
   const deptMaterialIds = useMemo(
     () => new Set(materials.filter((m) => (m.category === "mdf") === (myDepartment === "mdf")).map((m) => m.id)),

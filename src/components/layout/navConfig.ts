@@ -80,6 +80,8 @@ function adminNav(department: Department): NavItem[] {
       { key: "admin-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main", mobile: true },
       { key: "admin-salary", label: "Айлық", path: "/admin/salary", icon: IconReports, group: "main" },
       { key: "admin-cashbox", label: "Касса / Шығын", path: "/manager/cashbox", icon: IconReports, group: "main" },
+      // Admin only, like the rent it records — a Manager's nav has no entry for it.
+      { key: "admin-rent", label: "Аренда", path: "/admin/rent", icon: IconReports, group: "main" },
       { key: "admin-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
       { key: "admin-settings", label: "Баптаулар", path: "/admin/csv-settings", icon: IconAudit, group: "main" },
       { key: "admin-camera", label: "Камера", short: "Камера", path: "/camera", icon: IconCamera, group: "main", mobile: true },

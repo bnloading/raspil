@@ -6,6 +6,7 @@ import type {
   Payment,
   PaymentMethodDef,
   CashAdjustment,
+  RentPayment,
 } from "../types/domain";
 
 /**
@@ -82,8 +83,11 @@ export interface AccountSummary {
   outTiyn: number;
   /** Signed sum of the pot's dated corrections in the period (ApplicationSettings.cashAdjustments). */
   adjustTiyn: number;
-  /** in − out ± corrections (+ opening, all-time only). Negative is real and is shown: you can
-   *  spend a drawer past what came in that month. */
+  /** Rent received into this pot in the period ("Аренда", Admin only) — not order money, so not
+   *  in `inTiyn`. Absent on summaries built by hand (tests/mobile-design-preview.tsx): read as 0. */
+  rentTiyn?: number;
+  /** in + rent − out ± corrections (+ opening, all-time only). Negative is real and is shown: you
+   *  can spend a drawer past what came in that month. */
   balanceTiyn: number;
   /** The split behind `inTiyn`, biggest first — "Нұр 195 200 · Kaspi 42 480". */
   byMethod: MethodTotal[];
@@ -110,6 +114,8 @@ export interface CashboxSummary {
   totalInTiyn: number;
   totalOutTiyn: number;
   totalAdjustTiyn: number;
+  /** See AccountSummary.rentTiyn. */
+  totalRentTiyn?: number;
   totalBalanceTiyn: number;
   /** Payments on pre-restart orders, oldest payment first — shown, never counted (see `orders`). */
   excludedOldOrders: ExcludedPayment[];
@@ -123,10 +129,30 @@ function emptyAccount(account: CashAccount): AccountSummary {
     inTiyn: 0,
     outTiyn: 0,
     adjustTiyn: 0,
+    rentTiyn: 0,
     balanceTiyn: 0,
     byMethod: [],
     expenseCount: 0,
   };
+}
+
+/**
+ * Whether an order belongs to the books the last restart closed — its payments are then the old
+ * books' money even when they were recorded after (see computeCashbox below).
+ *
+ * A restart drawn at an order ("№281 заказға дейін расчет істелді", 30.09) decides by the number
+ * alone: №279 and №280 were written the same morning as №281 and were settled with the old books,
+ * so their day cannot tell them apart, and a row dated back a day after the settlement is still
+ * new business. Without one, the order's own day decides, as it always has. "ORD-{year}-{seq:6}"
+ * is fixed width, so comparing the strings orders them across years as well.
+ */
+export function isBeforeRestart(
+  order: Pick<Order, "orderNumber" | "createdAt">,
+  startDate: string | null,
+  startOrderNumber: string | null = null,
+): boolean {
+  if (startOrderNumber && order.orderNumber) return order.orderNumber < startOrderNumber;
+  return !!startDate && !!order.createdAt && dayKey(order.createdAt) < startDate;
 }
 
 /**
@@ -135,7 +161,8 @@ function emptyAccount(account: CashAccount): AccountSummary {
  * A payment is dated by `paymentDate` (when the money actually arrived), not by the order it
  * settles — an order billed in March and paid in April is April's cash, and the drawer knows it.
  * The one exception is the accounting restart: given `orders`, a payment on an order created
- * before `startDate` belongs to the closed books and is listed in `excludedOldOrders` instead.
+ * before `startDate` — or numbered before `startOrderNumber`, when the restart names one — belongs
+ * to the closed books and is listed in `excludedOldOrders` instead.
  * Reversed payments never count: the money went back.
  *
  * `openingBalanceTiyn` is what was already in a pot before this app started tracking money —
@@ -149,8 +176,10 @@ export function computeCashbox({
   period,
   openingBalanceTiyn = {},
   startDate = null,
+  startOrderNumber = null,
   orders,
   adjustments = [],
+  rent = [],
 }: {
   payments: Payment[];
   expenses: Expense[];
@@ -172,9 +201,15 @@ export function computeCashbox({
    * `countsInCurrentBooks`. Omitted, every payment is dated by itself alone.
    */
   orders?: readonly Pick<Order, "id" | "orderNumber" | "createdAt">[];
+  /** The first order of the current books (ApplicationSettings.cashStartOrderNumber): when set, an
+   *  order's number rather than its day says which books its payments belong to. */
+  startOrderNumber?: string | null;
   /** This line's dated corrections (ApplicationSettings.cashAdjustments), filtered by date like an
    *  expense: nothing before `startDate`, and only the chosen month's when `period` is set. */
   adjustments?: readonly CashAdjustment[];
+  /** This line's rent received ("Аренда") — only an Admin can read it, so a Manager's Касса passes
+   *  none. Into the pot of its method like a payment, dated by its own day like an expense. */
+  rent?: readonly Pick<RentPayment, "amountTiyn" | "methodId" | "date">[];
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
   const orderById = new Map((orders ?? []).map((o) => [o.id, o]));
@@ -206,11 +241,11 @@ export function computeCashbox({
     );
     // Settles an order from before the restart: the old books, not today's money.
     const order = orderById.get(payment.orderId);
-    if (startDate && order?.createdAt && dayKey(order.createdAt) < startDate && !payment.countsInCurrentBooks) {
+    if (order && isBeforeRestart(order, startDate, startOrderNumber) && !payment.countsInCurrentBooks) {
       excludedOldOrders.push({
         paymentId: payment.id,
         orderNumber: order.orderNumber,
-        orderDay: dayKey(order.createdAt),
+        orderDay: order.createdAt ? dayKey(order.createdAt) : "",
         paymentDay: dayKey(payment.paymentDate),
         amountTiyn: payment.amountTiyn,
         methodName: methodById.get(payment.methodId)?.name ?? payment.methodName ?? payment.methodId,
@@ -251,12 +286,19 @@ export function computeCashbox({
     .sort((a, b) => a.date.localeCompare(b.date));
   for (const adjustment of counted) summaries.get(adjustment.account)!.adjustTiyn += adjustment.amountTiyn;
 
+  for (const r of rent) {
+    if (startDate && r.date < startDate) continue;
+    if (period !== null && !r.date.startsWith(period)) continue;
+    const summary = summaries.get(accountForMethod(methodById.get(r.methodId) ?? { id: r.methodId }))!;
+    summary.rentTiyn = (summary.rentTiyn ?? 0) + r.amountTiyn;
+  }
+
   const accounts = CASH_ACCOUNTS.map((account) => {
     const summary = summaries.get(account)!;
     const opening = period === null ? (openingBalanceTiyn[account] ?? 0) : 0;
     return {
       ...summary,
-      balanceTiyn: summary.inTiyn - summary.outTiyn + summary.adjustTiyn + opening,
+      balanceTiyn: summary.inTiyn + (summary.rentTiyn ?? 0) - summary.outTiyn + summary.adjustTiyn + opening,
       byMethod: [...byMethod.get(account)!.values()].sort(
         (a, b) => b.amountTiyn - a.amountTiyn,
       ),
@@ -269,6 +311,7 @@ export function computeCashbox({
     totalInTiyn: accounts.reduce((s, a) => s + a.inTiyn, 0),
     totalOutTiyn: accounts.reduce((s, a) => s + a.outTiyn, 0),
     totalAdjustTiyn: accounts.reduce((s, a) => s + a.adjustTiyn, 0),
+    totalRentTiyn: accounts.reduce((s, a) => s + (a.rentTiyn ?? 0), 0),
     totalBalanceTiyn: accounts.reduce((s, a) => s + a.balanceTiyn, 0),
     excludedOldOrders: excludedOldOrders.sort((a, b) => a.paymentDay.localeCompare(b.paymentDay)),
     adjustments: counted,

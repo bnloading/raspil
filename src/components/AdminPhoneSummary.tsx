@@ -68,6 +68,7 @@ export function AdminPhoneSummary({
             balanceTiyn={acc.balanceTiyn}
             openingTiyn={openingBalanceTiyn[acc.account] ?? 0}
             inTiyn={acc.inTiyn}
+            rentTiyn={acc.rentTiyn ?? 0}
             outTiyn={acc.outTiyn}
             adjustTiyn={acc.adjustTiyn}
             detail={acc.byMethod.length > 1
@@ -81,6 +82,7 @@ export function AdminPhoneSummary({
           balanceTiyn={cashbox.totalBalanceTiyn}
           openingTiyn={totalOpening}
           inTiyn={cashbox.totalInTiyn}
+          rentTiyn={cashbox.totalRentTiyn ?? 0}
           outTiyn={cashbox.totalOutTiyn}
           adjustTiyn={cashbox.totalAdjustTiyn}
         />
@@ -96,13 +98,14 @@ export function AdminPhoneSummary({
   );
 }
 
-/** "Нұр 3 743 047 ₸" over the sum that makes it: бастапқы + түсті − шықты ± түзету. */
+/** "Нұр 3 743 047 ₸" over the sum that makes it: бастапқы + түсті + аренда − шықты ± түзету. */
 function MoneyRow({
   className,
   name,
   balanceTiyn,
   openingTiyn,
   inTiyn,
+  rentTiyn,
   outTiyn,
   adjustTiyn,
   detail,
@@ -112,6 +115,8 @@ function MoneyRow({
   balanceTiyn: number;
   openingTiyn: number;
   inTiyn: number;
+  /** Rent received into the account (Аренда page) — a column only when there is any. */
+  rentTiyn: number;
   outTiyn: number;
   /** Dated corrections ("Банкпен теңестіру") — a column only when there are any. */
   adjustTiyn: number;
@@ -134,6 +139,12 @@ function MoneyRow({
           <dt>+ Түсті</dt>
           <dd className="is-in">{formatMoney(inTiyn)}</dd>
         </div>
+        {rentTiyn > 0 && (
+          <div>
+            <dt>+ Аренда</dt>
+            <dd className="is-in">{formatMoney(rentTiyn)}</dd>
+          </div>
+        )}
         <div>
           <dt>− Шықты</dt>
           <dd className={outTiyn > 0 ? "is-out" : undefined}>{formatMoney(outTiyn)}</dd>

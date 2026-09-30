@@ -310,6 +310,28 @@ describe("computeFinanceSummary — есеп басталатын күн (accoun
     });
     expect(s.receivedTiyn).toBe(T(90000));
   });
+
+  it("bills by the order's number when the restart names one, as Касса counts its payments", () => {
+    // «№281 заказға дейін расчет істелді»: №280 of the same morning is the settled books', and a
+    // row typed after the settlement but dated back a day is not.
+    const s = run({
+      period: null,
+      startDate: "2026-09-30",
+      startOrderNumber: "ORD-2026-000281",
+      orders: [
+        order({ id: "o280", orderNumber: "ORD-2026-000280", totalTiyn: T(51180), createdAt: at("2026-09-30") }),
+        order({ id: "o281", orderNumber: "ORD-2026-000281", totalTiyn: T(111060), createdAt: at("2026-09-30") }),
+        order({ id: "o282", orderNumber: "ORD-2026-000282", totalTiyn: T(20000), createdAt: at("2026-09-29") }),
+      ],
+      payments: [
+        payment({ id: "p280", orderId: "o280", amountTiyn: T(51180), paymentDate: at("2026-09-30") }),
+        payment({ id: "p281", orderId: "o281", amountTiyn: T(111060), paymentDate: at("2026-09-30") }),
+      ],
+    });
+    expect(s.billedTiyn).toBe(T(111060 + 20000));
+    expect(s.orderCount).toBe(2);
+    expect(s.receivedTiyn).toBe(T(111060));
+  });
 });
 
 describe("computeFinanceSummary — uncosted sheets", () => {

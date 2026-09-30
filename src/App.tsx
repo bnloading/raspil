@@ -19,6 +19,7 @@ const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMaterials = lazy(() => import("./pages/admin/AdminMaterials"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminProfit = lazy(() => import("./pages/admin/AdminProfit"));
+const AdminRent = lazy(() => import("./pages/admin/AdminRent"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
 const ManagerCashbox = lazy(() => import("./pages/manager/ManagerCashbox"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
@@ -197,6 +198,16 @@ export default function App() {
                 // firestore.rules.
                 <RouteGuard roles={["admin"]}>
                   <AdminProfit />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/admin/rent"
+              element={
+                // Rent the owner takes on the side: the owner's alone, as rentPayments is in
+                // firestore.rules.
+                <RouteGuard roles={["admin"]}>
+                  <AdminRent />
                 </RouteGuard>
               }
             />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { arrayRemove, arrayUnion, collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { arrayRemove, arrayUnion, collection, deleteField, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -11,6 +11,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { useExpenses } from "../../hooks/useExpenses";
+import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
 import { addExpense, deleteExpense, expenseDefaultDate } from "../../lib/expenses";
@@ -31,6 +32,7 @@ import { logAudit } from "../../lib/audit";
 import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
+import { shortOrderNumber } from "../../lib/orderCode";
 import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef } from "../../types/domain";
 import type { CashboxSummary } from "../../lib/cashbox";
 
@@ -88,6 +90,13 @@ export default function ManagerCashbox() {
     () => settings.cashAdjustments?.[myDepartment] ?? [],
     [settings.cashAdjustments, myDepartment],
   );
+  // Rent the owner takes on the side ("Аренда") — only the Admin's Касса counts it; for a Manager
+  // the hook hands back nothing (firestore.rules keeps it Admin-only).
+  const { rentPayments, loading: rentLoading } = useRentPayments();
+  const rent = useMemo(
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === myDepartment),
+    [rentPayments, myDepartment],
+  );
 
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   useEffect(() => {
@@ -111,6 +120,9 @@ export default function ManagerCashbox() {
   // The day this line's money accounting starts over — everything before it stays in the order
   // history but is left out of every figure here (see ApplicationSettings.cashStartDate).
   const cashStartDate = settings.cashStartDate ?? null;
+  // …and, when the owner closed the books at an order ("№281 заказға дейін расчет істелді"), the
+  // first order of the new ones: orders before it are the old books' whatever day they carry.
+  const cashStartOrderNumber = settings.cashStartOrderNumber ?? null;
   // Counted from the same day the money is: sheets cut before the restart belong to the old books.
   const sheetsCut = useMemo(
     () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds, cashStartDate),
@@ -118,15 +130,21 @@ export default function ManagerCashbox() {
   );
 
   const cashbox = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate, orders, adjustments }),
-    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate, orders, adjustments],
+    () => computeCashbox({
+      payments, expenses, methods, period: effectivePeriod, openingBalanceTiyn, startDate: cashStartDate,
+      startOrderNumber: cashStartOrderNumber, orders, adjustments, rent,
+    }),
+    [payments, expenses, methods, effectivePeriod, openingBalanceTiyn, cashStartDate, cashStartOrderNumber, orders, adjustments, rent],
   );
   // "Қазір бізде бар" is what is in each account today — the all-time balance, opening included —
   // whichever month the picker shows. A month's own in − out is that month's flow, not money on
   // hand, and labelling it as the balance is how the card came to be read wrong.
   const cashboxNow = useMemo(
-    () => computeCashbox({ payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate, orders, adjustments }),
-    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, orders, adjustments],
+    () => computeCashbox({
+      payments, expenses, methods, period: null, openingBalanceTiyn, startDate: cashStartDate,
+      startOrderNumber: cashStartOrderNumber, orders, adjustments, rent,
+    }),
+    [payments, expenses, methods, openingBalanceTiyn, cashStartDate, cashStartOrderNumber, orders, adjustments, rent],
   );
   const rows = useMemo(
     () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
@@ -140,7 +158,7 @@ export default function ManagerCashbox() {
   // from the very beginning, no restart applied) and then silently replace it with the real one the
   // moment settings caught up. Waiting on every input this page's own number depends on is what
   // makes the Spinner honest instead of a number that quietly changes under the reader.
-  const loading = paymentsLoading || expensesLoading || ordersLoading || settingsLoading;
+  const loading = paymentsLoading || expensesLoading || ordersLoading || settingsLoading || rentLoading;
 
   const handleDelete = async (expense: Expense) => {
     if (!user || !userData) return;
@@ -242,6 +260,7 @@ export default function ManagerCashbox() {
 
           <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod}
             startDate={cashStartDate}
+            startOrderNumber={cashStartOrderNumber}
             onCountPayment={isAdmin ? handleCountPayment : undefined}
             onRemoveAdjustment={isAdmin ? handleRemoveAdjustment : undefined} />
 
@@ -335,6 +354,7 @@ export default function ManagerCashbox() {
               department={myDepartment}
               openingBalanceTiyn={openingBalanceTiyn}
               cashStartDate={cashStartDate}
+              cashStartOrderNumber={cashStartOrderNumber}
               onError={showToast}
             />
           )}
@@ -525,11 +545,13 @@ function OpeningBalanceEditor({
   department,
   openingBalanceTiyn,
   cashStartDate,
+  cashStartOrderNumber,
   onError,
 }: {
   department: Department;
   openingBalanceTiyn: Partial<Record<CashAccount, number>>;
   cashStartDate: string | null;
+  cashStartOrderNumber: string | null;
   onError: (message: string) => void;
 }) {
   const [saving, setSaving] = useState<CashAccount | null>(null);
@@ -551,10 +573,38 @@ function OpeningBalanceEditor({
   };
 
   // Shop-wide, not per line: "we start counting from this day" is one decision for the business.
+  // A new day is a new restart, so it drops the order the last one was drawn at — left behind, that
+  // order would quietly go on deciding which books every order since belongs to.
   const changeStartDate = async (value: string) => {
     setSavingDate(true);
     try {
-      await setDoc(doc(db, "applicationSettings", "global"), { cashStartDate: value }, { merge: true });
+      await setDoc(
+        doc(db, "applicationSettings", "global"),
+        { cashStartDate: value, cashStartOrderNumber: deleteField() },
+        { merge: true },
+      );
+    } catch (err: unknown) {
+      onError("Қате: " + (err as Error).message);
+    } finally {
+      setSavingDate(false);
+    }
+  };
+
+  // "№281 заказға дейін расчет істелді" — the books closed at an order rather than at midnight.
+  // Typed as the short number the journal shows; the year is the start date's, the way
+  // lib/orderNumber.ts writes ORD-{year}-{seq:6}. Empty goes back to splitting by the order's day.
+  const changeStartOrder = async (text: string) => {
+    const seq = Number(text.replace(/\D/g, ""));
+    const year = (cashStartDate ?? dayKey(new Date())).slice(0, 4);
+    const value = seq > 0 ? `ORD-${year}-${String(seq).padStart(6, "0")}` : null;
+    if (value === cashStartOrderNumber) return;
+    setSavingDate(true);
+    try {
+      await setDoc(
+        doc(db, "applicationSettings", "global"),
+        { cashStartOrderNumber: value ?? deleteField() },
+        { merge: true },
+      );
     } catch (err: unknown) {
       onError("Қате: " + (err as Error).message);
     } finally {
@@ -581,6 +631,24 @@ function OpeningBalanceEditor({
         <p className="form-hint">
           Осы күннен бұрынғы төлемдер мен шығындар Кассада есептелмейді (заказдар тарихы
           сақталады).{savingDate ? " сақталуда…" : ""}
+        </p>
+      </div>
+      <div className="form-group">
+        <label>Қай заказдан басталады</label>
+        <input
+          key={cashStartOrderNumber ?? ""}
+          className="form-input"
+          inputMode="numeric"
+          placeholder="Заказ күні бойынша"
+          defaultValue={cashStartOrderNumber ? shortOrderNumber(cashStartOrderNumber) : ""}
+          onBlur={(e) => changeStartOrder(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          aria-label="Есеп басталатын заказ нөмірі"
+        />
+        <p className="form-hint">
+          «№281 заказға дейін расчет істелді» деген сияқты: осы нөмірден бұрынғы заказдардың
+          төлемдері Кассаға кірмейді, қай күні жазылса да, ал журналда осы заказдың үстіне сызық
+          түседі. Бос болса, заказ күні бойынша бөлінеді. Күнді өзгертсеңіз, бұл өріс тазаланады.
         </p>
       </div>
       <ul className="cashbox-mapping">
@@ -612,6 +680,7 @@ export function CashboxAccounts({
   openingBalanceTiyn,
   period: effectivePeriod,
   startDate = null,
+  startOrderNumber = null,
   onCountPayment,
   onRemoveAdjustment,
 }: {
@@ -623,6 +692,8 @@ export function CashboxAccounts({
   period: string | null;
   /** The accounting restart — names the date in the "left out" note. */
   startDate?: string | null;
+  /** …or the order it was drawn at, which is what then decides what was left out. */
+  startOrderNumber?: string | null;
   /** Admin only: count a left-out payment as today's money after all (Payment.countsInCurrentBooks). */
   onCountPayment?: (paymentId: string) => void;
   /** Admin only: take back a correction entered by mistake. */
@@ -655,7 +726,7 @@ export function CashboxAccounts({
                 {formatMoney(nowByAccount.get(acc.account) ?? 0)}
               </strong>
             </div>
-            {/* The sum behind the figure above: бастапқы + түсті − шықты ± түзету. It used to read
+            {/* The sum behind the figure above: бастапқы + түсті (+ аренда) − шықты ± түзету. It used to read
                 "Қалдық 3 195 507 (оның ішінде бастапқы 4 253 791)" — a balance that "includes"
                 a larger number. For a single month it is that month's flow instead, named as such. */}
             {effectivePeriod !== null && <p className="cashbox-flow-title">{monthLabel(effectivePeriod)}</p>}
@@ -670,6 +741,13 @@ export function CashboxAccounts({
                 <dt>+ Түсті</dt>
                 <dd className="is-in">{formatMoney(acc.inTiyn)}</dd>
               </div>
+              {/* Admin only: the rent that landed in this account (Аренда page). */}
+              {(acc.rentTiyn ?? 0) > 0 && (
+                <div>
+                  <dt>+ Аренда</dt>
+                  <dd className="is-in">{formatMoney(acc.rentTiyn ?? 0)}</dd>
+                </div>
+              )}
               <div>
                 <dt>− Шықты</dt>
                 <dd className={acc.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(acc.outTiyn)}</dd>
@@ -711,6 +789,9 @@ export function CashboxAccounts({
           {effectivePeriod === null ? "+ Түсті" : `${monthLabel(effectivePeriod)}: түсті`}{" "}
           <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong>
         </span>
+        {(cashbox.totalRentTiyn ?? 0) > 0 && (
+          <span>+ Аренда <strong className="is-in">{formatMoney(cashbox.totalRentTiyn ?? 0)}</strong></span>
+        )}
         <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
         {cashbox.totalAdjustTiyn !== 0 && <span>± Түзету <strong>{signed(cashbox.totalAdjustTiyn)}</strong></span>}
       </div>
@@ -749,7 +830,9 @@ export function CashboxAccounts({
       {cashboxNow.excludedOldOrders.length > 0 && (
         <details className="cashbox-excluded">
           <summary>
-            {startDate ? `${dmy(startDate)}-ға дейінгі` : "Ескі"} заказдарға кейін түскен{" "}
+            {startOrderNumber
+              ? `№${shortOrderNumber(startOrderNumber)} заказға дейінгі`
+              : startDate ? `${dmy(startDate)}-ға дейінгі` : "Ескі"} заказдарға кейін түскен{" "}
             {cashboxNow.excludedOldOrders.length} төлем —{" "}
             <strong>{formatMoney(cashboxNow.excludedOldOrders.reduce((s, p) => s + p.amountTiyn, 0))}</strong>.
             Бұл Кассаға кірмейді.

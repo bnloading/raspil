@@ -1,4 +1,5 @@
 import { dayKey, monthKey } from "./dates";
+import { isBeforeRestart } from "./cashbox";
 import { monthlyExpensesTotal } from "./expenses";
 import { linesOf } from "./orderMerge";
 import type { Expense, ExpenseCategory, Order, Payment } from "../types/domain";
@@ -89,6 +90,7 @@ export function computeFinanceSummary({
   expenses = [],
   period,
   startDate = null,
+  startOrderNumber = null,
 }: {
   orders: Order[];
   payments: Payment[];
@@ -107,6 +109,9 @@ export function computeFinanceSummary({
    * than either counting everything or counting nothing. Unset means count everything, as before.
    */
   startDate?: string | null;
+  /** The first order of the current books (ApplicationSettings.cashStartOrderNumber) — when set,
+   *  an order's number rather than its day says which books it was billed in, as on Касса. */
+  startOrderNumber?: string | null;
 }): FinanceSummary {
   const inPeriod = (ts: { seconds: number } | undefined): boolean => {
     if (!ts) return period === null && !startDate;
@@ -114,8 +119,15 @@ export function computeFinanceSummary({
     if (period === null) return true;
     return monthKey(ts) === period;
   };
+  // Money and expenses are dated; an order is in these books by the restart's own rule
+  // (lib/cashbox.ts isBeforeRestart), and in the month by its day.
+  const orderInPeriod = (o: Order): boolean => {
+    if (isBeforeRestart(o, startDate, startOrderNumber)) return false;
+    if (!o.createdAt) return period === null && !startDate;
+    return period === null || monthKey(o.createdAt) === period;
+  };
 
-  const billedOrders = orders.filter((o) => isBillable(o) && inPeriod(o.createdAt));
+  const billedOrders = orders.filter((o) => isBillable(o) && orderInPeriod(o));
 
   const billedTiyn = billedOrders.reduce((s, o) => s + o.totalTiyn, 0);
   const debtTiyn = billedOrders.reduce((s, o) => s + Math.max(0, o.debtTiyn), 0);
@@ -133,9 +145,9 @@ export function computeFinanceSummary({
   // Касса's rule too (lib/cashbox.ts computeCashbox): a payment on an order from before the
   // restart belongs to the closed books, even when it was recorded after — otherwise "Түскен"
   // here and the Касса would disagree by exactly those payments.
-  const preRestartOrderIds = startDate
-    ? new Set(orders.filter((o) => o.createdAt && dayKey(o.createdAt) < startDate).map((o) => o.id))
-    : new Set<string>();
+  const preRestartOrderIds = new Set(
+    orders.filter((o) => isBeforeRestart(o, startDate, startOrderNumber)).map((o) => o.id),
+  );
   const receivedTiyn = payments
     .filter((p) => !p.reversed && inPeriod(p.paymentDate) && (p.countsInCurrentBooks || !preRestartOrderIds.has(p.orderId)))
     .reduce((s, p) => s + p.amountTiyn, 0);

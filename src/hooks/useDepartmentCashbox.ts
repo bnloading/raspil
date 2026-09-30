@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { useAllPayments } from "./useReports";
 import { useExpenses } from "./useExpenses";
 import { useAppSettings } from "./useAppSettings";
+import { useRentPayments } from "./useRentPayments";
 import { computeCashbox } from "../lib/cashbox";
 import type { CashboxSummary } from "../lib/cashbox";
 import { dayKey } from "../lib/dates";
@@ -52,21 +53,32 @@ export function useDepartmentCashbox({ orders, department }: { orders: Order[]; 
     [settings.cashOpeningBalanceTiyn, department],
   );
   const startDate = settings.cashStartDate ?? null;
+  const startOrderNumber = settings.cashStartOrderNumber ?? null;
   const monthKey = dayKey(new Date()).slice(0, 7);
 
   const adjustments = useMemo(
     () => settings.cashAdjustments?.[department] ?? [],
     [settings.cashAdjustments, department],
   );
+  // Admin only — the hook hands anyone else nothing (see useRentPayments).
+  const { rentPayments, loading: rentLoading } = useRentPayments();
+  const rent = useMemo(
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),
+    [rentPayments, department],
+  );
 
   // `orders` too: a payment on an order from before the restart stays out of today's money.
   const now = useMemo(
-    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate, orders, adjustments }),
-    [payments, expenses, methods, openingBalanceTiyn, startDate, orders, adjustments],
+    () => computeCashbox({
+      payments, expenses, methods: methods ?? [], period: null, openingBalanceTiyn, startDate, startOrderNumber, orders, adjustments, rent,
+    }),
+    [payments, expenses, methods, openingBalanceTiyn, startDate, startOrderNumber, orders, adjustments, rent],
   );
   const thisMonth = useMemo(
-    () => computeCashbox({ payments, expenses, methods: methods ?? [], period: monthKey, openingBalanceTiyn, startDate, orders, adjustments }),
-    [payments, expenses, methods, monthKey, openingBalanceTiyn, startDate, orders, adjustments],
+    () => computeCashbox({
+      payments, expenses, methods: methods ?? [], period: monthKey, openingBalanceTiyn, startDate, startOrderNumber, orders, adjustments, rent,
+    }),
+    [payments, expenses, methods, monthKey, openingBalanceTiyn, startDate, startOrderNumber, orders, adjustments, rent],
   );
 
   return {
@@ -75,6 +87,6 @@ export function useDepartmentCashbox({ orders, department }: { orders: Order[]; 
     monthKey,
     openingBalanceTiyn,
     startDate,
-    loading: paymentsLoading || expensesLoading || settingsLoading || methods === null,
+    loading: paymentsLoading || expensesLoading || settingsLoading || rentLoading || methods === null,
   };
 }

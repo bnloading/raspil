@@ -6,6 +6,7 @@ import {
   computeCashbox,
   expensesInPeriod,
   groupExpensesByName,
+  isBeforeRestart,
   CASH_ACCOUNT_LABELS,
 } from "./cashbox";
 import type { Expense, Payment, PaymentMethodDef } from "../types/domain";
@@ -343,6 +344,99 @@ describe("payments on orders from before the accounting restart", () => {
     const noRestart = computeCashbox({ payments: [payment({ orderId: "old", amountTiyn: T(6400), paymentDate: SEP25 })], expenses: [], methods, period: null, orders });
     expect(noRestart.totalInTiyn).toBe(T(6400));
     expect(noRestart.excludedOldOrders).toEqual([]);
+  });
+});
+
+describe("a restart drawn at an order — «№281 заказға дейін расчет істелді»", () => {
+  // 30.09: the owner settled everything before №281 and set Нұр to 5 339 797 ₸. №280 was written
+  // that same morning and was in the settlement, so its day cannot tell it apart from №281.
+  const at = (iso: string) => Timestamp.fromDate(new Date(iso));
+  const SEP30 = at("2026-09-30T11:00:00+05:00");
+  const orders = [
+    { id: "o280", orderNumber: "ORD-2026-000280", createdAt: at("2026-09-30T10:33:00+05:00") },
+    { id: "o281", orderNumber: "ORD-2026-000281", createdAt: at("2026-09-30T10:49:00+05:00") },
+    // Typed up after the settlement but dated back a day — still new business.
+    { id: "o282", orderNumber: "ORD-2026-000282", createdAt: at("2026-09-29T12:00:00+05:00") },
+  ];
+  const s = computeCashbox({
+    payments: [
+      payment({ id: "p280", orderId: "o280", methodId: "cash", amountTiyn: T(51180), paymentDate: SEP30 }),
+      payment({ id: "p281", orderId: "o281", amountTiyn: T(111060), paymentDate: SEP30 }),
+      payment({ id: "p282", orderId: "o282", amountTiyn: T(20000), paymentDate: SEP30 }),
+    ],
+    expenses: [],
+    methods,
+    period: null,
+    openingBalanceTiyn: { deposit: T(5339797) },
+    startDate: "2026-09-30",
+    startOrderNumber: "ORD-2026-000281",
+    orders,
+  });
+
+  it("leaves out an order before it even when written on the restart day, and lists it", () => {
+    expect(s.accounts.find((a) => a.account === "cash")!.inTiyn).toBe(0);
+    expect(s.excludedOldOrders.map((p) => p.orderNumber)).toEqual(["ORD-2026-000280"]);
+  });
+
+  it("counts that order and every one after it, whatever day they carry", () => {
+    const nur = s.accounts.find((a) => a.account === "deposit")!;
+    expect(nur.inTiyn).toBe(T(111060 + 20000));
+    expect(nur.balanceTiyn).toBe(T(5339797 + 111060 + 20000));
+  });
+});
+
+describe("rent the owner takes on the side (Аренда)", () => {
+  const OCT2 = Timestamp.fromDate(new Date("2026-10-02T12:00:00+05:00"));
+
+  it("adds to its method's pot as its own line, dated by its day like an expense", () => {
+    const s = computeCashbox({
+      payments: [payment({ amountTiyn: T(100000), paymentDate: OCT2 })],
+      expenses: [],
+      methods,
+      period: null,
+      openingBalanceTiyn: { deposit: T(5228737) },
+      startDate: "2026-09-30",
+      rent: [
+        { amountTiyn: T(150000), methodId: "nur", date: "2026-10-01" },
+        { amountTiyn: T(50000), methodId: "cash", date: "2026-10-01" },
+        { amountTiyn: T(70000), methodId: "nur", date: "2026-09-29" }, // before the restart
+      ],
+    });
+    const nur = s.accounts.find((a) => a.account === "deposit")!;
+    expect(nur.inTiyn).toBe(T(100000));
+    expect(nur.rentTiyn).toBe(T(150000));
+    expect(nur.balanceTiyn).toBe(T(5228737 + 100000 + 150000));
+    expect(s.accounts.find((a) => a.account === "cash")!.rentTiyn).toBe(T(50000));
+    expect(s.totalRentTiyn).toBe(T(200000));
+    expect(s.totalInTiyn).toBe(T(100000)); // order money stays apart from rent
+  });
+
+  it("counts only the chosen month's rent when a month is picked", () => {
+    const s = computeCashbox({
+      payments: [], expenses: [], methods, period: "2026-10",
+      rent: [
+        { amountTiyn: T(150000), methodId: "nur", date: "2026-10-01" },
+        { amountTiyn: T(150000), methodId: "nur", date: "2026-11-01" },
+      ],
+    });
+    expect(s.totalRentTiyn).toBe(T(150000));
+  });
+});
+
+describe("isBeforeRestart", () => {
+  const at = (day: string) => Timestamp.fromDate(new Date(`${day}T12:00:00+05:00`));
+
+  it("goes by the order's day when the restart names no order", () => {
+    expect(isBeforeRestart({ orderNumber: "ORD-2026-000300", createdAt: at("2026-09-21") }, "2026-09-22")).toBe(true);
+    expect(isBeforeRestart({ orderNumber: "ORD-2026-000001", createdAt: at("2026-09-22") }, "2026-09-22")).toBe(false);
+    expect(isBeforeRestart({ orderNumber: "ORD-2026-000001", createdAt: at("2026-09-21") }, null)).toBe(false);
+  });
+
+  it("goes by the number when it does — across a new year too", () => {
+    const first = "ORD-2026-000281";
+    expect(isBeforeRestart({ orderNumber: "ORD-2026-000280", createdAt: at("2026-09-30") }, "2026-09-30", first)).toBe(true);
+    expect(isBeforeRestart({ orderNumber: "ORD-2026-000281", createdAt: at("2026-09-29") }, "2026-09-30", first)).toBe(false);
+    expect(isBeforeRestart({ orderNumber: "ORD-2027-000001", createdAt: at("2027-01-02") }, "2026-09-30", first)).toBe(false);
   });
 });
 

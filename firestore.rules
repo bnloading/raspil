@@ -185,6 +185,13 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isManager() && resource.data.createdByUid == uid());
     }
 
+    match /rentPayments/{id} {
+      // "Аренда" — rent the owner takes on the side (src/pages/admin/AdminRent.tsx), counted on the
+      // Admin's Касса. The owner's alone: a Manager neither reads nor writes it.
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.createdByUid == uid();
+    }
+
     match /birthdays/{userId} {
       // The shop-wide "whose birthday is it today" alert (AppShell) needs every signed-in user to
       // read every other user's entry — /users itself is tightly role-scoped and carries a phone
