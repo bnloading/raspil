@@ -70,6 +70,12 @@ describe("planMerge", () => {
     expect("refusal" in r && r.refusal).toContain("ORD-2026-000099");
   });
 
+  it("refuses a row already queued — its sheets are off the rack, and a merge would take them twice", () => {
+    const queued = order({ id: "c", orderNumber: "ORD-2026-000098", productionStatus: "cutting_queue", cuttingConsumedAt: at(2000) });
+    const r = planMerge([asetAk, queued]);
+    expect("refusal" in r && r.refusal).toContain("ORD-2026-000098");
+  });
+
   it("keeps the earliest row, so the customer keeps the number they were given", () => {
     const r = planMerge([asetHdf, asetAk]); // deliberately out of order
     expect("plan" in r && r.plan.keepId).toBe("a");

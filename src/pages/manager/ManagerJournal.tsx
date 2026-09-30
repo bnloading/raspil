@@ -86,13 +86,14 @@ import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
 import { correctPaymentAmount, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
+import { sheetsKeptOnCancel } from "../../lib/orderLines";
 import {
   canEnterCuttingQueue,
   computePaymentStatus,
   PAYMENT_STATUS_LABELS,
   PRODUCTION_STATUS_ORDER,
 } from "../../lib/statuses";
-import type { Material, Order, Payment, PaymentMethodDef, PaymentStatus, PvcType } from "../../types/domain";
+import type { Material, Order, OrderLineJob, Payment, PaymentMethodDef, PaymentStatus, PvcType } from "../../types/domain";
 
 // SHOW_ALL last: the escape hatch for "just show me everything", which is what a manager
 // reaches for the first time they notice the ledger has more pages than they expected.
@@ -324,6 +325,8 @@ export default function ManagerJournal() {
 
   /** Order whose payment dialog is open. */
   const [payFor, setPayFor] = useState<Order | null>(null);
+  /** A cut row being struck off — asks whether its sheets go back (see handleDeleteOrder). */
+  const [strikeFor, setStrikeFor] = useState<Order | null>(null);
 
   /**
    * Rows opened up to show their material lines at their own prices.
@@ -960,10 +963,25 @@ export default function ManagerJournal() {
       );
       return;
     }
+    // Already cut: a plain delete keeps these sheets off the rack, and a row struck off to be typed
+    // again then has them taken a second time (ORD-2026-000282 → 284, 30.09). Only the manager
+    // knows which it is, so they are asked rather than the delete deciding for them.
+    if (sheetsKeptOnCancel(order).length > 0) {
+      setStrikeFor(order);
+      return;
+    }
     if (!confirm(`${order.orderNumber} — ${order.customerName}\n\nОсы жолды өшіресіз бе?`)) return;
+    await strikeOff(order, false);
+  };
+
+  const strikeOff = async (order: Order, returnCutSheets: boolean) => {
     try {
-      await cancelOrder(db, actor, order, "Журналдан өшірілді — клиент кестірмеді");
-      showToast(`🗑 ${order.orderNumber} өшірілді`);
+      await cancelOrder(
+        db, actor, order,
+        returnCutSheets ? "Журналдан өшірілді — кесілген лист қоймаға қайтарылды" : "Журналдан өшірілді — клиент кестірмеді",
+        { returnCutSheets },
+      );
+      showToast(`🗑 ${order.orderNumber} өшірілді${returnCutSheets ? " — лист қоймаға қайтарылды" : ""}`);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -1593,8 +1611,77 @@ export default function ManagerJournal() {
         />
       )}
 
+      {strikeFor && (
+        <StrikeCutOrderDialog
+          order={strikeFor}
+          kept={sheetsKeptOnCancel(strikeFor)}
+          onClose={() => setStrikeFor(null)}
+          onStrike={async (returnCutSheets) => {
+            await strikeOff(strikeFor, returnCutSheets);
+            setStrikeFor(null);
+          }}
+        />
+      )}
+
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/**
+ * "🗑 Жолды өшіру" on a row whose sheets were already cut.
+ *
+ * A plain delete leaves cut sheets off the rack, which is right when the boards really were used —
+ * and wrong when the row is struck off only to be typed again, because the new order takes the
+ * same sheets a second time (ORD-2026-000282 → 284, 30.09). The manager knows which it is; this
+ * asks, with giving them back as the main answer since re-typing is what the delete is usually for.
+ */
+function StrikeCutOrderDialog({
+  order, kept, onStrike, onClose,
+}: {
+  order: Order;
+  /** The cut lines still holding stock — lib/orderLines.ts sheetsKeptOnCancel. */
+  kept: OrderLineJob[];
+  onStrike: (returnCutSheets: boolean) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const run = async (returnCutSheets: boolean) => {
+    setBusy(true);
+    await onStrike(returnCutSheets);
+    setBusy(false);
+  };
+
+  return (
+    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <h2>🗑 Кесілген заказды өшіру</h2>
+        <p className="scan-hint">{order.orderNumber} · {order.customerName}</p>
+        <p>
+          Бұл заказдың листтері кесіліп, қоймадан алынған:{" "}
+          <strong>{kept.map((j) => `${j.materialName} ×${j.consumedQty}`).join(", ")}</strong>.
+        </p>
+        <p className="pay-warn">
+          ⚠️ Қайта жазатын болсаңыз, листті қоймаға қайтарыңыз — әйтпесе жаңа заказ оны қоймадан
+          екінші рет алады.
+        </p>
+        <div className="modal-actions strike-actions">
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={onClose}>
+            Болдырмау
+          </button>
+          <button type="button" className="btn btn-outline" disabled={busy} onClick={() => run(false)}>
+            Өшіру, лист қайтпасын
+          </button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(true)}>
+            {busy ? "Сақталуда…" : "Өшіру + листті қоймаға қайтару"}
+          </button>
+        </div>
+        <p className="form-hint">
+          «Лист қайтпасын» — тек листтер шынымен кесіліп кеткен болса (клиент алмай кетті, т.б.).
+        </p>
+      </div>
+    </div>
   );
 }
 

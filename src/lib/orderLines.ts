@@ -74,6 +74,20 @@ export function jobsOf(order: Order): OrderLineJob[] {
   return order.lineJobs && order.lineJobs.length > 0 ? order.lineJobs : buildLineJobs(order);
 }
 
+/**
+ * The lines whose sheets a plain cancel leaves off the rack: taken when the order was queued and
+ * already cut, so lib/orderStatus.ts cancelOrder does not give them back.
+ *
+ * That is right when the boards really were cut and used. It is wrong when the order is struck
+ * off only to be typed again — ORD-2026-000282 was cut at 12:15, deleted at 12:20 and re-typed as
+ * ORD-2026-000284, and the new order took the same sheets a second time. So the journal asks
+ * before leaving these out, instead of deciding silently.
+ */
+export function sheetsKeptOnCancel(order: Order): OrderLineJob[] {
+  const beforeSaw = order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started";
+  return jobsOf(order).filter((j) => (j.consumedQty ?? 0) > 0 && (!beforeSaw || !!j.cuttingCompletedAt));
+}
+
 /** The part of a priced line the shop floor needs — what the work is, as opposed to its price. */
 export interface LineWork {
   materialId: string;

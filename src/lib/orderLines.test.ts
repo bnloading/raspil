@@ -8,6 +8,7 @@ import {
   jobsOf,
   orderNeedsPvc,
   patchJob,
+  sheetsKeptOnCancel,
   syncLineJobs,
   totalConfirmedSheets,
 } from "./orderLines";
@@ -35,6 +36,31 @@ const job = (over: Partial<OrderLineJob> = {}): OrderLineJob => ({
   sheetQty: 10,
   pvcMeters: 176,
   ...over,
+});
+
+describe("sheetsKeptOnCancel — what a plain delete leaves off the rack", () => {
+  // ORD-2026-000282: queued (1 Ақ Томск + 1 ХДФ taken), cut, then struck off to be typed again.
+  const cut = [
+    job({ index: 0, materialId: "ak-tomsk", materialName: "ЛДСП Ақ Томск", sheetQty: 1, consumedQty: 1, cuttingCompletedAt: ts() }),
+    job({ index: 1, materialId: "hdf", materialName: "ХДФ", sheetQty: 1, consumedQty: 1, cuttingCompletedAt: ts() }),
+  ];
+
+  it("names every line holding stock once the order is past the saw", () => {
+    const kept = sheetsKeptOnCancel(order({ productionStatus: "pvc_queue", lineJobs: cut }));
+    expect(kept.map((j) => j.materialName)).toEqual(["ЛДСП Ақ Томск", "ХДФ"]);
+  });
+
+  it("names only the cut lines while the order is still at the saw — the rest go back anyway", () => {
+    const mid = [cut[0], job({ index: 1, materialId: "hdf", materialName: "ХДФ", sheetQty: 1, consumedQty: 1 })];
+    const kept = sheetsKeptOnCancel(order({ productionStatus: "cutting_started", lineJobs: mid }));
+    expect(kept.map((j) => j.materialName)).toEqual(["ЛДСП Ақ Томск"]);
+  });
+
+  it("names nothing before the order was queued, or once its sheets were given back", () => {
+    expect(sheetsKeptOnCancel(order({ productionStatus: "waiting_payment" }))).toEqual([]);
+    const returned = cut.map((j) => ({ ...j, consumedQty: 0 }));
+    expect(sheetsKeptOnCancel(order({ productionStatus: "pvc_queue", lineJobs: returned }))).toEqual([]);
+  });
 });
 
 describe("buildLineJobs", () => {

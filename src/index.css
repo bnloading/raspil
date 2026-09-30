@@ -2014,6 +2014,9 @@ tr.blocked td:first-child {
 .modal-actions .btn {
   flex: 1;
 }
+/* Three answers (the cut-row delete): they wrap two-and-one on a phone rather than squeezing. */
+.modal-actions.strike-actions { flex-wrap: wrap; }
+.modal-actions.strike-actions .btn { flex: 1 1 180px; }
 
 /* ── Delete Button ── */
 .btn-delete {

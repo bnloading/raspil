@@ -534,8 +534,20 @@ export async function markDelivered(db: Firestore, actor: Actor, order: Order): 
   await notify(db, order.customerId, "Заказ берілді", `${order.orderNumber} сізге берілді`, order.id);
 }
 
-/** Cancels/rejects an order (any pre-cutting stage) — releases any active stock reservation. */
-export async function cancelOrder(db: Firestore, actor: Actor, order: Order, reason: string): Promise<void> {
+/**
+ * Cancels/rejects an order (any pre-cutting stage) — releases any active stock reservation.
+ *
+ * `returnCutSheets` also gives back the lines already cut (see lib/orderLines.ts
+ * sheetsKeptOnCancel) — the journal's choice when a cut row is struck off to be typed again, or
+ * was never really cut, so the re-typed order does not take the same sheets twice.
+ */
+export async function cancelOrder(
+  db: Firestore,
+  actor: Actor,
+  order: Order,
+  reason: string,
+  opts: { returnCutSheets?: boolean } = {},
+): Promise<void> {
   const orderRef = doc(db, "orders", order.id);
   await updateDoc(orderRef, { productionStatus: "cancelled", cancelledAt: serverTimestamp(), cancelReason: reason });
   await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "cancelled", reason);
@@ -550,7 +562,13 @@ export async function cancelOrder(db: Firestore, actor: Actor, order: Order, rea
   // saw already cut a given line, in which case those sheets are genuinely gone and cancelling
   // cannot un-cut them. A line still mid-cut (started but not confirmed) also returns: its
   // consumedQty was taken at queue time, and nothing was ever subtracted for the actual cut.
-  if (order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started") {
+  if (opts.returnCutSheets) {
+    await returnLinesToWarehouse(db, actor, {
+      orderId: order.id,
+      jobs: jobsOf(order),
+      comment: `${order.orderNumber} өшірілді — кесілген лист те қоймаға қайтарылды`,
+    });
+  } else if (order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started") {
     await returnLinesToWarehouse(db, actor, {
       orderId: order.id,
       jobs: jobsOf(order).filter((j) => !j.cuttingCompletedAt),

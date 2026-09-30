@@ -92,6 +92,13 @@ export function planMerge(orders: Order[]): { plan: MergePlan } | { refusal: Mer
   }
   const started = orders.find((o) => IN_PRODUCTION.has(o.productionStatus));
   if (started) return { refusal: `${started.orderNumber} өндіріске кеткен — біріктіруге болмайды` };
+  // Sheets leave the rack per row, when it is queued (lib/warehouse.ts consumeStockOnQueue).
+  // Folding a queued row in would take its sheets a second time once the survivor is queued — or,
+  // with the survivor queued first, never take the lines it gained — so rows merge before the saw.
+  const queued = orders.find((o) => o.productionStatus === "cutting_queue" || o.cuttingConsumedAt);
+  if (queued) {
+    return { refusal: `${queued.orderNumber} распил кезегінде, листі қоймадан алынған — біріктіруге болмайды` };
+  }
 
   // The earliest row survives, so the customer keeps the order number they were already given.
   const sorted = [...orders].sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
