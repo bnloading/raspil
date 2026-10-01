@@ -298,6 +298,17 @@ export interface Expense {
   /** Which line's касса this was paid out of — see UserDoc.department. Unset means "ldsp": every
    *  expense logged before the МДФ line got its own касса was a ЛДСП expense. */
   department?: Department;
+  /**
+   * Set when the money went to a worker — an advance or a week's/month's pay ("Олжас — аванс").
+   * Written together with a SalaryAdvance against `payPeriodKey` (its id in `advanceId`), so the
+   * worker's payslip takes it off what is still owed. Before this, pay handed out of the Касса
+   * reached only the Касса: Олжас's 300 000 ₸ of 29.09 never showed on his week, which read as
+   * 232 800 ₸ still to pay.
+   */
+  paidToUid?: string;
+  paidToName?: string;
+  payPeriodKey?: string;
+  advanceId?: string;
   createdByUid: string;
   createdByName: string;
   createdAt?: Timestamp;
@@ -862,6 +873,8 @@ export interface SalaryAdvance {
   reversed?: boolean;
   reversalReason?: string;
   reversedByName?: string;
+  /** The Касса expense it was handed out as, when it was paid from the Касса (Expense.advanceId). */
+  expenseId?: string;
   createdAt?: Timestamp;
 }
 

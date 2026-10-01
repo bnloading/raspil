@@ -8229,6 +8229,7 @@ body {
   line-height: 1.45;
 }
 .cashbox-warn.is-wide { grid-column: span 2; }
+.cashbox-form .form-hint.is-wide { grid-column: span 2; margin: 0; }
 .cashbox-field > span {
   font-size: 0.76rem;
   font-weight: 600;

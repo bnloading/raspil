@@ -7,7 +7,7 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import {
-  doc, getDoc, getDocs, collection, query, where, runTransaction, setDoc, updateDoc, deleteDoc,
+  doc, getDoc, getDocs, collection, query, where, runTransaction, setDoc, updateDoc, deleteDoc, writeBatch,
 } from "firebase/firestore";
 
 // Runs against the Firestore emulator only — see package.json's `test:rules` script, which
@@ -742,6 +742,28 @@ describe("logged expenses (Касса шығындары) are written by the Man
     const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
     await assertFails(getDoc(doc(db, "expenses", "exp-1")));
     await assertFails(setDoc(doc(db, "expenses", "exp-4"), expense(CUTTER_UID)));
+  });
+});
+
+/**
+ * Money handed to a worker out of the Касса: the expense and the advance on their payslip are
+ * written together by the Manager at the counter (lib/expenses.ts payWorkerFromCashbox).
+ */
+describe("paying a worker from the Касса writes the expense and the advance together", () => {
+  it("a manager can write both in one batch, and cannot reverse the advance afterwards", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    const batch = writeBatch(db);
+    batch.set(doc(db, "expenses", "exp-pay"), {
+      name: "Олжас", amountTiyn: 30000000, date: "2026-09-29", account: "deposit", department: "ldsp", comment: "аванс",
+      paidToUid: CUTTER_UID, paidToName: "Олжас", payPeriodKey: "2026-09-28", advanceId: "adv-pay",
+      createdByUid: MANAGER_UID, createdByName: "Manager",
+    });
+    batch.set(doc(db, "advances", "adv-pay"), {
+      userId: CUTTER_UID, userName: "Олжас", periodKey: "2026-09-28", amountTiyn: 30000000, note: "Касса: Олжас",
+      recordedByUid: MANAGER_UID, recordedByName: "Manager", reversed: false, expenseId: "exp-pay",
+    });
+    await assertSucceeds(batch.commit());
+    await assertFails(updateDoc(doc(db, "advances", "adv-pay"), { reversed: true }));
   });
 });
 

@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { CashAccount, Department, Expense, UserDoc } from "../types/domain";
 import { dayKey, monthKey } from "./dates";
@@ -60,10 +60,89 @@ export async function addExpense(
   return ref.id;
 }
 
-/** Removes a logged expense — the admin fixing a typo, not a reversal flow: nothing else in the
- *  app references an expense by id, so there is no ledger integrity to preserve by keeping it. */
+/**
+ * Money handed to a worker out of a Касса pot — "Олжас — аванс 300 000 ₸", or last week's pay.
+ *
+ * One action, two records, written together: the expense takes the money off the pot it left, and
+ * a SalaryAdvance against the worker's pay period takes it off what their payslip still owes. The
+ * counter used to record only the first, so Олжас's 300 000 ₸ of 29.09 never reached his week,
+ * which went on reading 232 800 ₸ still to pay. Each record names the other, and deleting the
+ * expense reverses the advance (deleteExpense).
+ */
+export async function payWorkerFromCashbox(
+  db: Firestore,
+  actor: Actor,
+  data: {
+    name: string;
+    amountTiyn: number;
+    date: string;
+    comment: string;
+    account: CashAccount;
+    department: Department;
+    worker: { uid: string; name: string };
+    /** The pay period it comes off — this week/month for an advance, the last one for its pay. */
+    periodKey: string;
+  },
+): Promise<string> {
+  const expenseRef = doc(collection(db, "expenses"));
+  const advanceRef = doc(collection(db, "advances"));
+  const batch = writeBatch(db);
+  batch.set(expenseRef, {
+    name: data.name,
+    amountTiyn: data.amountTiyn,
+    date: data.date,
+    account: data.account,
+    department: data.department,
+    comment: data.comment,
+    paidToUid: data.worker.uid,
+    paidToName: data.worker.name,
+    payPeriodKey: data.periodKey,
+    advanceId: advanceRef.id,
+    createdByUid: actor.user.uid,
+    createdByName: actor.userData.name,
+    createdAt: serverTimestamp(),
+  });
+  batch.set(advanceRef, {
+    userId: data.worker.uid,
+    userName: data.worker.name,
+    periodKey: data.periodKey,
+    amountTiyn: data.amountTiyn,
+    note: `Касса: ${data.name}${data.comment ? ` · ${data.comment}` : ""}`,
+    paidAt: serverTimestamp(),
+    recordedByUid: actor.user.uid,
+    recordedByName: actor.userData.name,
+    reversed: false,
+    expenseId: expenseRef.id,
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
+  await logAudit(db, actor, {
+    action: "expense.create",
+    entityType: "expense",
+    entityId: expenseRef.id,
+    after: { name: data.name, amountTiyn: data.amountTiyn, date: data.date, paidTo: data.worker.name, periodKey: data.periodKey },
+  });
+  return expenseRef.id;
+}
+
+/**
+ * Removes a logged expense — the admin fixing a typo, not a reversal flow. Money that went to a
+ * worker takes its advance with it (reversed, not deleted — advances are never deleted), or the
+ * payslip would keep a payment the Касса no longer shows. Reversing is Admin-only in the rules.
+ */
 export async function deleteExpense(db: Firestore, actor: Actor, expense: Expense): Promise<void> {
-  await deleteDoc(doc(db, "expenses", expense.id));
+  if (expense.advanceId) {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "expenses", expense.id));
+    batch.update(doc(db, "advances", expense.advanceId), {
+      reversed: true,
+      reversalReason: "Касса шығыны өшірілді",
+      reversedByName: actor.userData.name,
+    });
+    await batch.commit();
+  } else {
+    await deleteDoc(doc(db, "expenses", expense.id));
+  }
   await logAudit(db, actor, {
     action: "expense.delete",
     entityType: "expense",

@@ -14,7 +14,10 @@ import { useExpenses } from "../../hooks/useExpenses";
 import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
-import { addExpense, deleteExpense, expenseDefaultDate, expensesByWeek, type ExpenseWeek } from "../../lib/expenses";
+import { addExpense, deleteExpense, expenseDefaultDate, expensesByWeek, payWorkerFromCashbox, type ExpenseWeek } from "../../lib/expenses";
+import { advancePeriodKey } from "../../lib/advances";
+import { periodLabel, shiftPeriod } from "../../lib/salaryPeriod";
+import { useStaff } from "../../hooks/useStaff";
 import {
   accountForExpense,
   computeCashbox,
@@ -33,7 +36,7 @@ import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import { shortOrderNumber } from "../../lib/orderCode";
-import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef } from "../../types/domain";
+import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef, UserRole } from "../../types/domain";
 import type { CashboxSummary } from "../../lib/cashbox";
 
 /**
@@ -57,6 +60,12 @@ export default function ManagerCashbox() {
   const { payments: allPayments, loading: paymentsLoading } = useAllPayments();
   const { expenses: allExpenses, loading: expensesLoading } = useExpenses();
   const { message, visible, showToast } = useToast();
+  // Who can be paid out of the Касса — the same people the Аванс page lists.
+  const { staff } = useStaff();
+  const payable = useMemo(
+    () => staff.filter((s) => s.role !== "customer" && !s.blocked).sort((a, b) => a.name.localeCompare(b.name, "kk")),
+    [staff],
+  );
 
   // Each line's касса is counted on its own orders/payments/expenses — never summed together, so
   // ЛДСП revenue never bleeds into the МДФ number or back (see lib/rbac.ts departmentOf()).
@@ -172,7 +181,13 @@ export default function ManagerCashbox() {
 
   const handleDelete = async (expense: Expense) => {
     if (!user || !userData) return;
-    if (!confirm(`"${expense.name}" — ${formatMoney(expense.amountTiyn)} жазбасын өшіресіз бе?`)) return;
+    // Paid to a worker: deleting it reverses their advance too, which only an Admin may do.
+    if (expense.advanceId && !isAdmin) {
+      showToast(`Бұл — ${expense.paidToName ?? "қызметкерге"} берілген ақша. Өшіруді әкімші жасайды (аванс та бірге қайтарылады).`);
+      return;
+    }
+    const extra = expense.advanceId ? `\n\n${expense.paidToName}-нің айлығындағы аванс та қайтарылады.` : "";
+    if (!confirm(`"${expense.name}" — ${formatMoney(expense.amountTiyn)} жазбасын өшіресіз бе?${extra}`)) return;
     try {
       await deleteExpense(db, { user, userData }, expense);
       showToast("✅ Жазба өшірілді");
@@ -278,6 +293,7 @@ export default function ManagerCashbox() {
             defaultDate={expenseDefaultDate(effectivePeriod)}
             cashStartDate={cashStartDate}
             department={myDepartment}
+            staff={payable}
             onSaved={(name, amountTiyn) => showToast(`✅ ${name} — ${formatMoney(amountTiyn)} жазылды`)}
             onError={showToast}
           />
@@ -313,6 +329,9 @@ export default function ManagerCashbox() {
                         <td data-label="Атауы">
                           <strong>{e.name}</strong>
                           {e.comment && <div className="wh-sub">{e.comment}</div>}
+                          {e.paidToName && e.payPeriodKey && (
+                            <div className="wh-sub">👤 {e.paidToName} · {periodLabel(e.payPeriodKey)} айлығынан</div>
+                          )}
                         </td>
                         <td data-label="Қайдан">
                           <span className={`cashbox-tag is-${accountForExpense(e)}`}>
@@ -325,7 +344,7 @@ export default function ManagerCashbox() {
                           {/* firestore.rules lets a Manager remove only their own entry; anyone
                               else's is the Admin's to correct, so the button is hidden rather
                               than offered and then refused. */}
-                          {(isAdmin || e.createdByUid === user?.uid) && (
+                          {(isAdmin || (e.createdByUid === user?.uid && !e.advanceId)) && (
                             <button className="jt-icon-btn" onClick={() => handleDelete(e)} title="Өшіру"
                               aria-label={`"${e.name}" жазбасын өшіру`}>✕</button>
                           )}
@@ -391,6 +410,7 @@ function ExpenseForm({
   defaultDate,
   cashStartDate,
   department,
+  staff,
   onSaved,
   onError,
 }: {
@@ -398,6 +418,8 @@ function ExpenseForm({
   /** The accounting restart day — an expense dated before it is saved but never counted here. */
   cashStartDate: string | null;
   department: Department;
+  /** People who draw pay — money handed to one of them is also their advance (payWorkerFromCashbox). */
+  staff: { id: string; name: string; role: UserRole }[];
   onSaved: (name: string, amountTiyn: number) => void;
   onError: (message: string) => void;
 }) {
@@ -408,6 +430,13 @@ function ExpenseForm({
   const [date, setDate] = useState(defaultDate);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
+  // "Қызметкерге": the pay period it comes off — this week/month as an advance, or the last one
+  // as its pay. A cutter's period is a week, everyone else's a month (lib/advances.ts).
+  const [workerId, setWorkerId] = useState("");
+  const [forLastPeriod, setForLastPeriod] = useState(false);
+  const worker = staff.find((s) => s.id === workerId);
+  const thisPeriod = worker ? advancePeriodKey(worker.role) : "";
+  const payPeriodKey = worker ? (forLastPeriod ? shiftPeriod(thisPeriod, -1) : thisPeriod) : "";
 
   // Following the period picker: choosing an older month should offer that month's dates, not
   // today's, or every backdated entry has to be corrected by hand.
@@ -419,24 +448,41 @@ function ExpenseForm({
     e.preventDefault();
     if (!user || !userData) return;
     const amountTiyn = Math.round(amountTenge * 100);
-    if (!name.trim() || amountTiyn <= 0) {
+    // Paid to a worker, the name can be left blank — the worker's own name is what it is.
+    const title = name.trim() || worker?.name || "";
+    if (!title || amountTiyn <= 0) {
       onError("Атауы мен соманы толтырыңыз");
       return;
     }
     setSaving(true);
     try {
-      await addExpense(db, { user, userData }, {
-        name: name.trim(),
-        amountTiyn,
-        date,
-        account,
-        department,
-        comment: comment.trim(),
-      });
-      onSaved(name.trim(), amountTiyn);
+      if (worker) {
+        await payWorkerFromCashbox(db, { user, userData }, {
+          name: title,
+          amountTiyn,
+          date,
+          account,
+          department,
+          comment: comment.trim(),
+          worker: { uid: worker.id, name: worker.name },
+          periodKey: payPeriodKey,
+        });
+      } else {
+        await addExpense(db, { user, userData }, {
+          name: title,
+          amountTiyn,
+          date,
+          account,
+          department,
+          comment: comment.trim(),
+        });
+      }
+      onSaved(title, amountTiyn);
       setName("");
       setAmountTenge(0);
       setComment("");
+      setWorkerId("");
+      setForLastPeriod(false);
     } catch (err: unknown) {
       onError("Қате: " + (err as Error).message);
     }
@@ -473,6 +519,31 @@ function ExpenseForm({
           <input className="form-input" placeholder="Кімге, не үшін" value={comment}
             onChange={(e) => setComment(e.target.value)} />
         </label>
+        {/* Money to a worker goes on their payslip as well as off the Касса — written only here,
+            Олжас's 300 000 ₸ advance of 29.09 never reached his week (payWorkerFromCashbox). */}
+        <label className="cashbox-field">
+          <span>Қызметкерге (аванс / айлық)</span>
+          <select className="form-input" value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
+            <option value="">— жоқ —</option>
+            {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        {worker && (
+          <label className="cashbox-field">
+            <span>Не үшін</span>
+            <select className="form-input" value={forLastPeriod ? "last" : "this"}
+              onChange={(e) => setForLastPeriod(e.target.value === "last")}>
+              <option value="this">Аванс — {periodLabel(thisPeriod)}</option>
+              <option value="last">Айлығы — {periodLabel(shiftPeriod(thisPeriod, -1))}</option>
+            </select>
+          </label>
+        )}
+        {worker && (
+          <p className="form-hint is-wide">
+            {worker.name}-нің {periodLabel(payPeriodKey)} айлығынан шегеріледі — «Айлығым» бетінде
+            «Алынғаны» болып көрінеді.
+          </p>
+        )}
         {/* Said before the button, not after: an expense dated before the restart is written to
             the database and then left out of every figure on this page, so without this it looks
             for all the world like the save simply did nothing. */}
