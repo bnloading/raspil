@@ -113,8 +113,13 @@ export default function ManagerCashbox() {
     return [...set].sort().reverse();
   }, [deptOrders, expenses]);
 
-  /** "" means all time — the picker's first option, so a new shop sees something on day one. */
-  const [period, setPeriod] = useState<string>(() => dayKey(new Date()).slice(0, 7));
+  /**
+   * "" means all time — which, once the books have restarted, is the current books: everything
+   * since the restart day. That is where the page opens. It used to open on the calendar month, so
+   * on 1 October the 30.09 expenses — the first day of the new books — sat in September, out of
+   * the list and out of "Шықты", beside a balance that did count them.
+   */
+  const [period, setPeriod] = useState<string>("");
   const effectivePeriod = period === "" ? null : period;
 
   // The day this line's money accounting starts over — everything before it stays in the order
@@ -123,6 +128,8 @@ export default function ManagerCashbox() {
   // …and, when the owner closed the books at an order ("№281 заказға дейін расчет істелді"), the
   // first order of the new ones: orders before it are the old books' whatever day they carry.
   const cashStartOrderNumber = settings.cashStartOrderNumber ?? null;
+  // The picker's all-time option, named for what it is once the books have restarted.
+  const sinceLabel = cashStartDate ? `${dmy(cashStartDate)}-дан бері` : "Барлық уақыт";
   // Counted from the same day the money is: sheets cut before the restart belong to the old books.
   const sheetsCut = useMemo(
     () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds, cashStartDate),
@@ -223,13 +230,13 @@ export default function ManagerCashbox() {
   return (
     <AppShell
       title={`Касса — ${DEPARTMENT_LABELS[myDepartment]}`}
-      subtitle={`${effectivePeriod ? monthLabel(effectivePeriod) : "Барлық уақыт"} — түсім және шығын`}
+      subtitle={`${effectivePeriod ? monthLabel(effectivePeriod) : sinceLabel} — түсім және шығын`}
       back="/manager"
     >
       <div className="cashbox-toolbar">
         <select className="form-input cashbox-period" value={period} onChange={(e) => setPeriod(e.target.value)}
           aria-label="Кезең">
-          <option value="">Барлық уақыт</option>
+          <option value="">{sinceLabel}</option>
           {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
         </select>
         <button className="btn btn-outline btn-sm" onClick={() => exportCsv(exportName, exportRows())}>
@@ -718,6 +725,29 @@ export function CashboxAccounts({
 
   return (
     <>
+      {/* The answer first, above the accounts it adds up — the owner's choice (01.10): "Қазір бізде
+          барлығы" is the real money, and it used to sit under the three cards, below the fold on a
+          phone. The flows beside it are how it got there. */}
+      <div className="cashbox-total is-head">
+        <span className="cashbox-total-now">
+          Қазір бізде барлығы <strong className={cashboxNow.totalBalanceTiyn < 0 ? "is-out" : undefined}>
+            {formatMoney(cashboxNow.totalBalanceTiyn)}
+          </strong>
+        </span>
+        {effectivePeriod === null && totalOpeningTiyn > 0 && (
+          <span>Бастапқы <strong>{formatMoney(totalOpeningTiyn)}</strong></span>
+        )}
+        <span>
+          {effectivePeriod === null ? "+ Түсті" : `${monthLabel(effectivePeriod)}: түсті`}{" "}
+          <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong>
+        </span>
+        {(cashbox.totalRentTiyn ?? 0) > 0 && (
+          <span>+ Аренда <strong className="is-in">{formatMoney(cashbox.totalRentTiyn ?? 0)}</strong></span>
+        )}
+        <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
+        {cashbox.totalAdjustTiyn !== 0 && <span>± Түзету <strong>{signed(cashbox.totalAdjustTiyn)}</strong></span>}
+      </div>
+
       <div className="cashbox-accounts">
         {cashbox.accounts.map((acc) => (
           <section key={acc.account} className={`cashbox-card is-${acc.account}`}>
@@ -779,26 +809,6 @@ export function CashboxAccounts({
             )}
           </section>
         ))}
-      </div>
-
-      <div className="cashbox-total">
-        <span className="cashbox-total-now">
-          Қазір бізде барлығы <strong className={cashboxNow.totalBalanceTiyn < 0 ? "is-out" : undefined}>
-            {formatMoney(cashboxNow.totalBalanceTiyn)}
-          </strong>
-        </span>
-        {effectivePeriod === null && totalOpeningTiyn > 0 && (
-          <span>Бастапқы <strong>{formatMoney(totalOpeningTiyn)}</strong></span>
-        )}
-        <span>
-          {effectivePeriod === null ? "+ Түсті" : `${monthLabel(effectivePeriod)}: түсті`}{" "}
-          <strong className="is-in">{formatMoney(cashbox.totalInTiyn)}</strong>
-        </span>
-        {(cashbox.totalRentTiyn ?? 0) > 0 && (
-          <span>+ Аренда <strong className="is-in">{formatMoney(cashbox.totalRentTiyn ?? 0)}</strong></span>
-        )}
-        <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
-        {cashbox.totalAdjustTiyn !== 0 && <span>± Түзету <strong>{signed(cashbox.totalAdjustTiyn)}</strong></span>}
       </div>
 
       {/* Every correction, with its date and reason — a balance brought in line with the bank has

@@ -8137,6 +8137,9 @@ body {
 /* The day's answer first and biggest; the flows beside it are how it got there. */
 .cashbox-total-now { flex-basis: 100%; font-weight: 600; }
 .cashbox-total-now strong { font-size: 1.25rem; font-weight: 800; }
+/* At the head of the Касса, above the accounts: the biggest figure on the page. */
+.cashbox-total.is-head { margin: 0 0 14px; border-left: 4px solid var(--emerald); }
+.cashbox-total.is-head .cashbox-total-now strong { font-size: 1.6rem; }
 .cashbox-flow dd.cashbox-count { font-size: 0.72rem; font-weight: 400; color: var(--text-secondary); }
 /* Late payments on pre-restart orders: listed under the total, left out of it (computeCashbox). */
 .cashbox-excluded {
