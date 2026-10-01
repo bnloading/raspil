@@ -26,6 +26,18 @@ function nextProductionStatusForPayment(
   return "waiting_payment";
 }
 
+/** Comments the app writes on a payment itself — where it was taken, not anything a person typed. */
+const APP_PAYMENT_COMMENTS = new Set(["Журнал арқылы", "Журналда түзетілді", "Артық төлем түзетілді"]);
+
+/**
+ * What a person wrote on a payment — "Ерболға берілді" on cash taken at the counter — or null when
+ * the comment is only one of the app's own tags. The journal shows the first and hides the second.
+ */
+export function paymentNote(payment: Pick<Payment, "comment">): string | null {
+  const comment = payment.comment?.trim();
+  return comment && !APP_PAYMENT_COMMENTS.has(comment) ? comment : null;
+}
+
 /**
  * Records one payment (or one leg of a mixed payment — call once per method/amount pair) and
  * atomically recalculates the order's paidTiyn/debtTiyn/paymentStatus from the new total. Runs in

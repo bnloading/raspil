@@ -10,7 +10,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
-import { isBeforeRestart } from "../../lib/cashbox";
+import { accountForMethod, isBeforeRestart } from "../../lib/cashbox";
 import { NumberField } from "../../components/NumberField";
 import { MaterialPicker } from "../../components/MaterialPicker";
 import { formatMoney, formatMoneyBare } from "../../lib/money";
@@ -31,6 +31,7 @@ import {
   journalMaterialOptions,
   journalProgress,
   matchesQuickFilter,
+  materialOrderCounts,
   materialSheetTotals,
   orderUsesMaterial,
   quickFilterCounts,
@@ -87,7 +88,7 @@ import {
 } from "../../lib/customerSuggest";
 import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
-import { correctPaymentAmount, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
+import { correctPaymentAmount, paymentNote, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
 import { sheetsKeptOnCancel } from "../../lib/orderLines";
 import {
@@ -508,7 +509,7 @@ export default function ManagerJournal() {
    * Split from `filtered` deliberately: a chip that said "Қарыз 4" only when Қарыз was already
    * selected would be useless, so the counts are taken before the chip narrows anything.
    */
-  const inScope = useMemo(() => {
+  const scopeAnyMaterial = useMemo(() => {
     const q = search.trim().toLowerCase();
     const todayStart = startOfToday();
     const cutoff =
@@ -541,10 +542,17 @@ export default function ManagerJournal() {
         const id = methodIdOf([...paidByMethod(paymentsByOrder.get(o.id) ?? []).keys()]);
         if (methodFilter === "none" ? id !== null : id !== methodFilter) return false;
       }
-      if (materialFilter !== "all" && !orderUsesMaterial(o, materialFilter)) return false;
       return true;
     }).sort(byLedgerOrder);
-  }, [orders, search, dateFilter, dateFrom, methodFilter, materialFilter, paymentsByOrder, myDepartment]);
+  }, [orders, search, dateFilter, dateFrom, methodFilter, paymentsByOrder, myDepartment]);
+
+  // The material chips count over the rows before a material is picked, for the same reason the
+  // quick chips count before theirs: "МДФ бізден 8" must not drop to 0 the moment Ақ is chosen.
+  const materialCounts = useMemo(() => materialOrderCounts(scopeAnyMaterial), [scopeAnyMaterial]);
+  const inScope = useMemo(
+    () => (materialFilter === "all" ? scopeAnyMaterial : scopeAnyMaterial.filter((o) => orderUsesMaterial(o, materialFilter))),
+    [scopeAnyMaterial, materialFilter],
+  );
 
   const paidFor = useCallback(
     (order: Order) => netPaidTiyn(paymentsByOrder.get(order.id) ?? []),
@@ -590,6 +598,13 @@ export default function ManagerJournal() {
     [orders, myDepartment, materialsById],
   );
   const materialFilterName = materialOptions.find((m) => m.id === materialFilter)?.name ?? null;
+  /** The chips: materials with rows in the current scope, the busiest first — plus the picked one. */
+  const materialChips = useMemo(
+    () => materialOptions
+      .filter((m) => (materialCounts.get(m.id) ?? 0) > 0 || m.id === materialFilter)
+      .sort((a, b) => (materialCounts.get(b.id) ?? 0) - (materialCounts.get(a.id) ?? 0) || a.name.localeCompare(b.name, "kk")),
+    [materialOptions, materialCounts, materialFilter],
+  );
   /** With a material picked: how many of its sheets the rows on screen carry, and how many are cut. */
   const materialTotals = useMemo(
     () => (materialFilter === "all" ? null : materialSheetTotals(filtered, materialFilter)),
@@ -1064,7 +1079,7 @@ export default function ManagerJournal() {
    * sharing a single groupId so paidByMethod() can still show the split by real method rather than
    * one lump "Аралас" figure nobody can reconcile against the drawer/deposit.
    */
-  const handleAddPayment = async (order: Order, legs: { methodId: string; amountTiyn: number }[]) => {
+  const handleAddPayment = async (order: Order, legs: { methodId: string; amountTiyn: number }[], note = "") => {
     const resolved = legs
       .map((leg) => ({ ...leg, method: methods.find((m) => m.id === leg.methodId) }))
       .filter((leg) => leg.method && leg.amountTiyn > 0);
@@ -1080,7 +1095,8 @@ export default function ManagerJournal() {
           amountTiyn: leg.amountTiyn,
           methodId: leg.method!.id,
           methodName: leg.method!.name,
-          comment: "Журнал арқылы",
+          // What was typed for the cash goes on the cash leg; every other leg keeps the app's tag.
+          comment: note && accountForMethod(leg.method!) === "cash" ? note : "Журнал арқылы",
           ...(groupId ? { groupId } : {}),
         });
       }
@@ -1191,15 +1207,6 @@ export default function ManagerJournal() {
             aria-label="Қай күннен бастап" />
         )}
 
-        {/* "МДФ" shows the orders MDF was cut for, "Ақ" the ones Ақ was — and the foot of the page
-            then counts that material's sheets, which is the question it is usually picked for. */}
-        <select className="journal-select" value={materialFilter}
-          onChange={(e) => { setMaterialFilter(e.target.value); setPinnedPage(null); }}
-          aria-label="Материал бойынша сүзу">
-          <option value="all">Барлық материал</option>
-          {materialOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-
         {/* Not a second copy of the Қарыз chip: that one asks whether money is still owed, this
             one asks which pot it landed in — the question behind "how much came in on Kaspi
             today?", which the chips never answered. */}
@@ -1288,6 +1295,37 @@ export default function ManagerJournal() {
           </button>
         ))}
       </div>
+
+      {/* "МДФ" shows the orders MDF was cut for, "Ақ" the ones Ақ was — chips, like the row above,
+          because a dropdown of materials among the toolbar's selects went unnoticed. The foot of
+          the page then counts the picked material's sheets. "ЛДСП" is dropped from the chip: nearly
+          every board is one, and "Ақ Томск" is what the counter calls it. */}
+      {materialChips.length > 0 && (
+        <div className="journal-chips is-materials" role="tablist" aria-label="Материал бойынша сүзу">
+          <span className="journal-chips-label">Материал:</span>
+          <button
+            role="tab"
+            aria-selected={materialFilter === "all"}
+            className={`journal-chip${materialFilter === "all" ? " is-active" : ""}`}
+            onClick={() => { setMaterialFilter("all"); setPinnedPage(null); }}
+          >
+            Барлығы
+          </button>
+          {materialChips.map((m) => (
+            <button
+              key={m.id}
+              role="tab"
+              aria-selected={materialFilter === m.id}
+              className={`journal-chip${materialFilter === m.id ? " is-active" : ""}`}
+              title={m.name}
+              onClick={() => { setMaterialFilter(materialFilter === m.id ? "all" : m.id); setPinnedPage(null); }}
+            >
+              {m.name.replace(/^ЛДСП\s+/i, "")}
+              <span className="journal-chip-count">{materialCounts.get(m.id) ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 
@@ -1295,7 +1333,6 @@ export default function ManagerJournal() {
     <AppShell
       title="ЛДСП — Тапсырыс журналы"
       subtitle="Заказдарды тіркеу және өндіріске жіберу"
-      navKey="manager-journal"
       contentWidth="full"
       autoCollapse
       /* On a phone the toolbar's "Жаңа заказ" is below the fold by the time the list is scrolled;
@@ -1354,6 +1391,9 @@ export default function ManagerJournal() {
                   methods,
                   (paymentsByOrder.get(order.id) ?? []).find((p) => !p.reversed)?.methodName,
                 );
+                // A phone has no hover, so what was written on the cash is shown on the card itself.
+                const cardNotes = (paymentsByOrder.get(order.id) ?? [])
+                  .filter((p) => !p.reversed).map(paymentNote).filter((n): n is string => !!n);
                 const lines = linesOf(order);
                 const cardAbsorbed = absorbedByParent.get(order.id) ?? EMPTY_ORDERS;
                 const cardSheets = sheetSummary(lines);
@@ -1410,6 +1450,7 @@ export default function ManagerJournal() {
                         <span className={`jt-pill jt-pay-${cardStatus}`}>{journalStatusLabel(cardStatus)}</span>
                         <span className={`jt-method-pill is-${methodTone(cardMethodId)}`}>{cardMethodLabel}</span>
                       </div>
+                      {cardNotes.length > 0 && <div className="journal-card-note">💬 {cardNotes.join(" · ")}</div>}
                       {cardDebt > 0 && <div className="journal-card-owing">Қарыз: {formatMoney(cardDebt)}</div>}
                       {cardDebt < 0 && <div className="journal-card-owing is-over">Артық: {formatMoney(-cardDebt)}</div>}
                       <ProgressSteps steps={journalProgress(order, cardPaid)} compact />
@@ -1668,7 +1709,7 @@ export default function ManagerJournal() {
           order={payFor}
           methods={methods}
           onClose={() => setPayFor(null)}
-          onSubmit={(legs) => handleAddPayment(payFor, legs)}
+          onSubmit={(legs, note) => handleAddPayment(payFor, legs, note)}
         />
       )}
 
@@ -1777,8 +1818,9 @@ function PaymentDialog({
   onChangeAmount: (payment: Payment, amountTiyn: number) => Promise<void> | void;
   onClose: () => void;
   /** One call, one or more legs — "Аралас" submits every non-empty leg in a single batch, each a
-   *  real method with its own amount (500 нал + 500 Нұр), not one lump "Аралас" figure. */
-  onSubmit: (legs: { methodId: string; amountTiyn: number }[]) => Promise<void> | void;
+   *  real method with its own amount (500 нал + 500 Нұр), not one lump "Аралас" figure. `note` is
+   *  what was typed for the cash, if any — it goes on the cash legs only. */
+  onSubmit: (legs: { methodId: string; amountTiyn: number }[], note: string) => Promise<void> | void;
 }) {
   const remaining = remainingTiyn;
   /**
@@ -1815,6 +1857,18 @@ function PaymentDialog({
   const totalTiyn = isMixed ? mixedTotalTiyn : Math.round(amountTenge * 100);
   const overpaying = adding && totalTiyn > remaining;
 
+  /**
+   * Cash asks for a word — "Ерболға берілді", "сейфке салынды". A transfer leaves its own trail in
+   * the bank; cash taken at the counter has nothing but what is written here, so the box appears
+   * the moment the cash method is picked (or a cash leg of an Аралас split), and stays optional.
+   */
+  const [note, setNote] = useState("");
+  const isCash = (id: string) => {
+    const method = methods.find((m) => m.id === id);
+    return !!method && accountForMethod(method) === "cash";
+  };
+  const wantsNote = isMixed ? mixedLegs.some((l) => isCash(l.methodId)) : isCash(methodId);
+
   const patchLeg = (id: string, patch: Partial<{ methodId: string; amountTenge: number }>) =>
     setMixedLegs((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const addLeg = () => setMixedLegs((rows) => [...rows, { id: crypto.randomUUID(), methodId: "", amountTenge: 0 }]);
@@ -1825,7 +1879,7 @@ function PaymentDialog({
     const legs = isMixed
       ? mixedLegs.map((l) => ({ methodId: l.methodId, amountTiyn: Math.round((l.amountTenge || 0) * 100) }))
       : [{ methodId, amountTiyn: Math.round(amountTenge * 100) }];
-    await onSubmit(legs);
+    await onSubmit(legs, wantsNote ? note.trim() : "");
     setBusy(false);
   };
 
@@ -1846,24 +1900,27 @@ function PaymentDialog({
           <div className="pay-block">
             <label>Тіркелген төлем</label>
             {payments.map((p) => (
-              <div key={p.id} className="pay-recorded-row">
-                <RecordedAmountInput payment={p} onChangeAmount={onChangeAmount} />
-                <select
-                  className="form-input"
-                  value={p.methodId}
-                  onChange={(e) => onChangeMethod(p, e.target.value)}
-                  aria-label={`${formatMoney(p.amountTiyn)} — қандай әдіспен түскені`}
-                >
-                  {/* A method that has since been archived still has to show its own name here,
-                      otherwise the row would silently read as some other method. */}
-                  {!methods.some((m) => m.id === p.methodId) && (
-                    <option value={p.methodId}>{p.methodName}</option>
-                  )}
-                  {methods.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
+              <Fragment key={p.id}>
+                <div className="pay-recorded-row">
+                  <RecordedAmountInput payment={p} onChangeAmount={onChangeAmount} />
+                  <select
+                    className="form-input"
+                    value={p.methodId}
+                    onChange={(e) => onChangeMethod(p, e.target.value)}
+                    aria-label={`${formatMoney(p.amountTiyn)} — қандай әдіспен түскені`}
+                  >
+                    {/* A method that has since been archived still has to show its own name here,
+                        otherwise the row would silently read as some other method. */}
+                    {!methods.some((m) => m.id === p.methodId) && (
+                      <option value={p.methodId}>{p.methodName}</option>
+                    )}
+                    {methods.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {paymentNote(p) && <p className="pay-note">💬 {paymentNote(p)}</p>}
+              </Fragment>
             ))}
             {/* Says outright what each field does, because the consequence is invisible: changing
                 the method moves no money, only relabels it — changing the sum DOES recompute the
@@ -1945,6 +2002,14 @@ function PaymentDialog({
               <div className="form-group">
                 <label>Сома (₸)</label>
                 <NumberField value={amountTenge} min={0} onChange={setAmountTenge} ariaLabel="Төлем сомасы" />
+              </div>
+            )}
+
+            {wantsNote && (
+              <div className="form-group">
+                <label>Түсініктеме — қолма-қол (міндетті емес)</label>
+                <input className="form-input" value={note} onChange={(e) => setNote(e.target.value)}
+                  placeholder="Кімге берілді, қайда салынды…" aria-label="Қолма-қол төлемге түсініктеме" />
               </div>
             )}
 
@@ -2217,6 +2282,8 @@ function JournalRow({
       return `${name}: ${formatMoney(amount)}`;
     })
     .join(" · ");
+  // What was written on the cash ("Ерболға берілді") — the pill carries a 💬 and says it on hover.
+  const notes = payments.filter((p) => !p.reversed).map(paymentNote).filter((n): n is string => !!n);
 
   const shortNum = shortOrderNumber(order.orderNumber);
   /**
@@ -2377,8 +2444,8 @@ function JournalRow({
       {show("method") && (
         <td className="jt-w-method">
           <button className={`jt-method-pill is-${methodTone(methodId)}`} onClick={onAddPayment}
-            title={methodBreakdown || "Төлем тіркеу"}>
-            {methodLabel}
+            title={[methodBreakdown || "Төлем тіркеу", ...notes.map((n) => `💬 ${n}`)].join("\n")}>
+            {methodLabel}{notes.length > 0 && " 💬"}
           </button>
         </td>
       )}

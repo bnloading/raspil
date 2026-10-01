@@ -37,6 +37,7 @@ export interface NavItem {
 // departments' journals, queues and касса stay out of each other's sight (they now run as
 // separate businesses inside one app; see lib/rbac.ts departmentOf()/departmentOfOrder()).
 const LDSP_ONLY_KEYS = new Set([
+  "admin-journal",
   "admin-oversight-manager",
   "admin-oversight-cutting",
   "admin-oversight-pvc",
@@ -59,6 +60,9 @@ function adminNav(department: Department): NavItem[] {
       // In the phone bar where Заказдар used to be, at the owner's request, and under its full name:
       // it is the owner's own figure and the only place the wholesale prices behind it are set.
       { key: "admin-profit", label: "Таза пайда", path: "/admin/profit", icon: IconProfit, group: "main", mobile: true },
+      // The ledger the counter works in — the same page as the Manager's. The owner reached it only
+      // by typing the address, so "Журналға сүзгі қос" landed somewhere the owner never saw.
+      { key: "admin-journal", label: "Тапсырыс журналы", short: "Журнал", path: "/manager/journal", icon: IconOrders, group: "main" },
       // Off the phone bar (Таза пайда took its place); the phone home links here instead.
       { key: "admin-orders", label: "Заказдар", short: "Заказ", path: "/admin/orders", icon: IconOrders, group: "main" },
       { key: "admin-oversight-manager", label: "Менеджер", path: "/admin/oversight/manager", icon: IconUsers, group: "main" },

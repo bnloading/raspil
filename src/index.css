@@ -4846,6 +4846,13 @@ body {
   line-height: 1.45;
   color: var(--text-light);
 }
+/* What was written on a cash payment ("Ерболға берілді"), under the payment it belongs to. */
+.pay-note {
+  margin: -2px 0 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
 /* Overpaying is allowed — a customer really can hand over too much — but never silently. */
 .pay-warn {
   margin: 12px 0 0;
@@ -8317,6 +8324,21 @@ body {
 .journal-chip.is-debt.is-active { border-color: var(--danger); background: var(--danger); }
 .journal-chip.is-queued.is-active { border-color: var(--warning); background: var(--warning); color: #422006; }
 .journal-chip.is-queued.is-active .journal-chip-count { background: rgba(0, 0, 0, 0.12); color: #422006; }
+/* The material row ("Материал: МДФ бізден · Ақ Томск …") — its own colour when picked, so the two
+   rows' choices are never mistaken for each other. On a phone it scrolls sideways rather than
+   stacking a dozen chips above the list. */
+.journal-chips-label {
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.journal-chips.is-materials .journal-chip.is-active { border-color: var(--info); background: var(--info); }
+@media (max-width: 767px) {
+  .journal-chips.is-materials { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .journal-chips.is-materials::-webkit-scrollbar { display: none; }
+  .journal-chips.is-materials .journal-chip { flex: 0 0 auto; }
+}
 
 /* ── Export menu ────────────────────────────────────────────────────────────────────────────── */
 .journal-menu { position: relative; }
@@ -9805,6 +9827,12 @@ body {
   color: var(--danger);
 }
 .journal-card-owing.is-over { color: var(--info); }
+.journal-card-note {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
 .journal-card-main .jt-steps { margin-top: 10px; }
 .journal-card-chevron {
   position: absolute;

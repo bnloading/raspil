@@ -1,6 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { Timestamp } from "firebase/firestore";
-import { planOverpaymentTrim } from "./payments";
+import { paymentNote, planOverpaymentTrim } from "./payments";
+
+describe("paymentNote — what a person wrote on the cash, not the app's own tag", () => {
+  it("returns what was typed", () => {
+    expect(paymentNote({ comment: "  Ерболға берілді " })).toBe("Ерболға берілді");
+  });
+
+  it("hides the app's provenance tags and empty comments", () => {
+    expect(paymentNote({ comment: "Журнал арқылы" })).toBeNull();
+    expect(paymentNote({ comment: "Журналда түзетілді" })).toBeNull();
+    expect(paymentNote({ comment: "" })).toBeNull();
+    expect(paymentNote({})).toBeNull();
+  });
+});
 
 const T = (n: number) => n * 100; // ₸ → tiyn
 const pay = (id: string, amount: number, when: string) => ({

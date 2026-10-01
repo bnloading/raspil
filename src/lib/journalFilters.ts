@@ -112,6 +112,17 @@ export function orderUsesMaterial(order: Order, materialId: string): boolean {
   return linesOf(order).some((line) => line.materialId === materialId);
 }
 
+/** How many of the rows use each material — the count printed on its chip. */
+export function materialOrderCounts(orders: readonly Order[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const order of orders) {
+    for (const id of new Set(linesOf(order).map((line) => line.materialId).filter(Boolean))) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 /**
  * The sheets of one material the rows carry, and how many the saw has confirmed — "МДФ бізден:
  * 17 лист, кесілгені 17", the answer to "how much MDF did we cut since the 21st?". Billed is the

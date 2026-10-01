@@ -5,6 +5,7 @@ import {
   journalCutState,
   journalMaterialOptions,
   matchesQuickFilter,
+  materialOrderCounts,
   materialSheetTotals,
   orderUsesMaterial,
   quickFilterCounts,
@@ -65,6 +66,12 @@ describe("the Материал filter — «МДФ» shows the orders MDF was cu
   it("counts the material's sheets, and how many the saw has confirmed", () => {
     expect(materialSheetTotals([merged, single], "mdf")).toEqual({ billed: 5, cut: 3 });
     expect(materialSheetTotals([merged, single], "ak")).toEqual({ billed: 4, cut: 0 });
+  });
+
+  it("counts each order once per material on its chip, a merged order under every material in it", () => {
+    const counts = materialOrderCounts([merged, single]);
+    expect(counts.get("mdf")).toBe(2);
+    expect(counts.get("ak")).toBe(1);
   });
 
   it("offers each material once, under the catalogue's name, alphabetically", () => {
