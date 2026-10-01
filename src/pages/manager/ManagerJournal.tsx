@@ -103,6 +103,11 @@ import type { Material, Order, OrderLineJob, Payment, PaymentMethodDef, PaymentS
 // reaches for the first time they notice the ledger has more pages than they expected.
 const PAGE_SIZES = [25, 50, 100, SHOW_ALL];
 
+/** "ЛДСП Ақ Томск" → "Ақ Томск" — nearly every board is ЛДСП, and the counter names it by colour. */
+function shortMaterialName(name: string): string {
+  return name.replace(/^ЛДСП\s+/i, "");
+}
+
 /** "ORD-2026-000008" → "8". The year and the padding are the same on every row of the page. */
 function shortOrderNumber(orderNumber: string): string {
   return orderNumber.match(/(\d+)$/)?.[1]?.replace(/^0+/, "") ?? orderNumber;
@@ -303,6 +308,8 @@ export default function ManagerJournal() {
   const [methodFilter, setMethodFilter] = useState("all");
   /** "Барлық материал" — or one material's orders ("МДФ бізден", "ЛДСП Ақ Томск"), by id. */
   const [materialFilter, setMaterialFilter] = useState("all");
+  /** The material chips stay folded behind "Материал ▾" until it is pressed. */
+  const [materialsOpen, setMaterialsOpen] = useState(false);
   /** The day "Күннен бастап…" counts from, "YYYY-MM-DD" in Almaty. */
   const [dateFrom, setDateFrom] = useState(() => dayKey(new Date()));
   // Null means "wherever the newest rows are". With the oldest order first, that is the last page —
@@ -1297,33 +1304,58 @@ export default function ManagerJournal() {
       </div>
 
       {/* "МДФ" shows the orders MDF was cut for, "Ақ" the ones Ақ was — chips, like the row above,
-          because a dropdown of materials among the toolbar's selects went unnoticed. The foot of
-          the page then counts the picked material's sheets. "ЛДСП" is dropped from the chip: nearly
-          every board is one, and "Ақ Томск" is what the counter calls it. */}
+          because a dropdown of materials among the toolbar's selects went unnoticed. Folded behind
+          one "Материал ▾" button until it is pressed: thirty chips ran four lines deep above the
+          ledger (the owner, 01.10). Picking one folds them again, the button then naming the pick,
+          and ✕ beside it clears it. The foot of the page counts the picked material's sheets.
+          "ЛДСП" is dropped from the chip: nearly every board is one, and "Ақ Томск" is what the
+          counter calls it. */}
       {materialChips.length > 0 && (
-        <div className="journal-chips is-materials" role="tablist" aria-label="Материал бойынша сүзу">
-          <span className="journal-chips-label">Материал:</span>
+        <div className="journal-chips is-materials">
           <button
-            role="tab"
-            aria-selected={materialFilter === "all"}
-            className={`journal-chip${materialFilter === "all" ? " is-active" : ""}`}
-            onClick={() => { setMaterialFilter("all"); setPinnedPage(null); }}
+            type="button"
+            className={`journal-chip journal-chip-toggle${materialFilter !== "all" ? " is-active" : ""}`}
+            aria-expanded={materialsOpen}
+            onClick={() => setMaterialsOpen((open) => !open)}
           >
-            Барлығы
+            Материал{materialFilterName ? `: ${shortMaterialName(materialFilterName)}` : ""} {materialsOpen ? "▴" : "▾"}
           </button>
-          {materialChips.map((m) => (
+          {materialFilter !== "all" && (
             <button
-              key={m.id}
-              role="tab"
-              aria-selected={materialFilter === m.id}
-              className={`journal-chip${materialFilter === m.id ? " is-active" : ""}`}
-              title={m.name}
-              onClick={() => { setMaterialFilter(materialFilter === m.id ? "all" : m.id); setPinnedPage(null); }}
+              type="button"
+              className="journal-chip journal-chip-clear"
+              aria-label="Материал сүзгісін алу"
+              title="Сүзгіні алу"
+              onClick={() => { setMaterialFilter("all"); setPinnedPage(null); }}
             >
-              {m.name.replace(/^ЛДСП\s+/i, "")}
-              <span className="journal-chip-count">{materialCounts.get(m.id) ?? 0}</span>
+              ✕
             </button>
-          ))}
+          )}
+          {materialsOpen && (
+            <div className="journal-chips-list" role="tablist" aria-label="Материал бойынша сүзу">
+              <button
+                role="tab"
+                aria-selected={materialFilter === "all"}
+                className={`journal-chip${materialFilter === "all" ? " is-active" : ""}`}
+                onClick={() => { setMaterialFilter("all"); setMaterialsOpen(false); setPinnedPage(null); }}
+              >
+                Барлығы
+              </button>
+              {materialChips.map((m) => (
+                <button
+                  key={m.id}
+                  role="tab"
+                  aria-selected={materialFilter === m.id}
+                  className={`journal-chip${materialFilter === m.id ? " is-active" : ""}`}
+                  title={m.name}
+                  onClick={() => { setMaterialFilter(m.id); setMaterialsOpen(false); setPinnedPage(null); }}
+                >
+                  {shortMaterialName(m.name)}
+                  <span className="journal-chip-count">{materialCounts.get(m.id) ?? 0}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>
