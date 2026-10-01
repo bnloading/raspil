@@ -7,7 +7,7 @@ import { useCutterOrders, usePvcOrders, useMdfOrders } from "../hooks/useOrders"
 import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
 import { summariseAdvances } from "../lib/advances";
-import { measureWork, computeSalaryBase, sheetsAndCountertops } from "../lib/salary";
+import { measureWork, computeSalaryBase, pieceRateLines, sheetsAndCountertops } from "../lib/salary";
 import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -81,6 +81,7 @@ export default function MySalary() {
   // The confirmed entry's figures when there is one, the live count otherwise — sheets and
   // countertops apart (lib/salary.ts sheetsAndCountertops).
   const cut = sheetsAndCountertops(entry ?? work);
+  const rateLines = pieceRateLines(rule, entry ?? work);
   const liveFinalTiyn = Math.max(0, live.baseTiyn - live.deductionTiyn);
   const finalTiyn = entry?.finalTiyn ?? liveFinalTiyn;
   const isEstimate = !entry;
@@ -175,6 +176,29 @@ export default function MySalary() {
             )}
             <div className="rdash-tile is-green"><b>{entry?.ordersCompleted ?? work.ordersCompleted}</b><span>Заказдар</span></div>
           </div>
+
+          {/* What each kind of sheet is cut for — the owner asked to see it (01.10): the same lines
+              the pay adds up (lib/salary.ts pieceRateLines), so the sum here is the sum paid. */}
+          {(rule?.mode === "PER_SHEET" || rule?.mode === "MIXED") && (
+            <section className="panel-card">
+              <div className="panel-head"><h3>Кесу бағасы</h3></div>
+              <div className="data-list">
+                {rateLines.map((line) => (
+                  <div key={line.label} className="data-row">
+                    <div className="data-row-main">
+                      <strong>{line.label}</strong>
+                      <span>{line.qty} × {formatMoney(line.rateTiyn)}</span>
+                    </div>
+                    <span className="otable-strong">{formatMoney(line.amountTiyn)}</span>
+                  </div>
+                ))}
+                <div className="data-row">
+                  <div className="data-row-main"><strong>Барлығы</strong></div>
+                  <span className="otable-strong">{formatMoney(rateLines.reduce((s, l) => s + l.amountTiyn, 0))}</span>
+                </div>
+              </div>
+            </section>
+          )}
 
           {paymentHistory.length > 0 && (
             <section className="panel-card">

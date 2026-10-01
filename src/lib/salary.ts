@@ -179,20 +179,37 @@ export interface SalaryComputation {
  * priced the same as ЛДСП) is exactly what that fallback gives for free.
  */
 function pieceRateTotal(rule: SalaryRule | undefined, work: SalaryWorkTotals): number {
+  return pieceRateLines(rule, work).reduce((sum, line) => sum + line.amountTiyn, 0);
+}
+
+/** One category of cut sheets at its own rate — "ХДФ 82 × 300 ₸ = 24 600 ₸". */
+export interface PieceRateLine {
+  label: "ЛДСП" | "ХДФ" | "МДФ" | "Столешница";
+  qty: number;
+  rateTiyn: number;
+  amountTiyn: number;
+}
+
+/**
+ * What each kind of sheet is cut for, and what it came to — ЛДСП, ХДФ, МДФ, столешница — the lines
+ * pieceRateTotal adds up, so the breakdown a cutter is shown is the sum they are paid. A category
+ * with no rate of its own is cut for the ЛДСП rate. A total measured before categories existed
+ * carries only sheetsCut; paying 0 for it would silently underpay, so it is read as ЛДСП — the
+ * same fallback measureWork() applies to a material with no category set.
+ */
+export function pieceRateLines(
+  rule: Pick<SalaryRule, "perSheetTiyn" | "perHdfSheetTiyn" | "perMdfSheetTiyn" | "perCountertopTiyn"> | undefined,
+  work: { sheetsCut: number; ldspSheets?: number; hdfSheets?: number; mdfSheets?: number; countertopSheets?: number },
+): PieceRateLine[] {
   const base = rule?.perSheetTiyn ?? 0;
-  const hdf = rule?.perHdfSheetTiyn ?? base;
-  const countertop = rule?.perCountertopTiyn ?? base;
-  const mdf = rule?.perMdfSheetTiyn ?? base;
-
-  const categorised = work.ldspSheets + work.hdfSheets + work.countertopSheets + work.mdfSheets;
-  // Totals measured before categories existed carry only sheetsCut. Paying 0 for them would
-  // silently underpay, so an uncategorised total is treated as ЛДСП — the same fallback
-  // measureWork() applies to a material with no category set.
-  if (categorised === 0) return work.sheetsCut * base;
-
-  return (
-    work.ldspSheets * base + work.hdfSheets * hdf + work.countertopSheets * countertop + work.mdfSheets * mdf
-  );
+  const categorised = (work.ldspSheets ?? 0) + (work.hdfSheets ?? 0) + (work.mdfSheets ?? 0) + (work.countertopSheets ?? 0);
+  const lines: Omit<PieceRateLine, "amountTiyn">[] = [
+    { label: "ЛДСП", qty: categorised === 0 ? work.sheetsCut : work.ldspSheets ?? 0, rateTiyn: base },
+    { label: "ХДФ", qty: work.hdfSheets ?? 0, rateTiyn: rule?.perHdfSheetTiyn ?? base },
+    { label: "МДФ", qty: work.mdfSheets ?? 0, rateTiyn: rule?.perMdfSheetTiyn ?? base },
+    { label: "Столешница", qty: work.countertopSheets ?? 0, rateTiyn: rule?.perCountertopTiyn ?? base },
+  ];
+  return lines.map((line) => ({ ...line, amountTiyn: line.qty * line.rateTiyn }));
 }
 
 /**

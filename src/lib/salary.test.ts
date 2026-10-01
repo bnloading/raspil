@@ -8,7 +8,33 @@ import {
   availablePeriods,
   EMPTY_WORK_TOTALS,
   sheetsAndCountertops,
+  pieceRateLines,
 } from "./salary";
+
+describe("pieceRateLines — what each kind of sheet is cut for", () => {
+  // Declared here: this block sits above the file's own T helper, and describe runs at once.
+  const T = (n: number) => n * 100;
+  // Олжас's rule and week (01.10): ЛДСП and МДФ 600 ₸, ХДФ and столешница 300 ₸.
+  const rule = { perSheetTiyn: T(600), perHdfSheetTiyn: T(300), perMdfSheetTiyn: T(600), perCountertopTiyn: T(300) };
+  const week = { sheetsCut: 417, ldspSheets: 304, hdfSheets: 82, mdfSheets: 20, countertopSheets: 11 };
+
+  it("lists the four categories at their own rates, adding up to the pay", () => {
+    const lines = pieceRateLines(rule, week);
+    expect(lines.map((l) => [l.label, l.qty, l.amountTiyn])).toEqual([
+      ["ЛДСП", 304, T(182400)],
+      ["ХДФ", 82, T(24600)],
+      ["МДФ", 20, T(12000)],
+      ["Столешница", 11, T(3300)],
+    ]);
+    expect(lines.reduce((s, l) => s + l.amountTiyn, 0)).toBe(T(222300));
+  });
+
+  it("cuts a category with no rate of its own for the ЛДСП rate, and reads an uncategorised total as ЛДСП", () => {
+    const flat = pieceRateLines({ perSheetTiyn: T(600) }, week);
+    expect(flat.find((l) => l.label === "ХДФ")!.rateTiyn).toBe(T(600));
+    expect(pieceRateLines(rule, { sheetsCut: 30 })[0]).toMatchObject({ label: "ЛДСП", qty: 30, amountTiyn: T(18000) });
+  });
+});
 
 describe("sheetsAndCountertops — «406 лист · 11 столеш», not 417 «лист»", () => {
   it("takes the countertops out of the sheet count", () => {

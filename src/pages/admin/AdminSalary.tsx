@@ -10,7 +10,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
-import { availablePeriods, buildSalaryEntry, sheetsAndCountertops } from "../../lib/salary";
+import { availablePeriods, buildSalaryEntry, pieceRateLines, sheetsAndCountertops } from "../../lib/salary";
 import {
   currentPeriodKey,
   periodLabel,
@@ -420,6 +420,18 @@ export default function AdminSalary() {
                   <span>Заказ: {entry.ordersCompleted}</span>
                   <span>Күн: {entry.presentDays}</span>
                   <span>Сағат: {entry.workedHours.toFixed(1)}</span>
+                </div>
+              )}
+
+              {/* What each kind of sheet is cut for and what it came to (lib/salary.ts
+                  pieceRateLines) — the lines the piece-rate pay adds up. */}
+              {entry && (rule?.mode === "PER_SHEET" || rule?.mode === "MIXED") && (
+                <div className="salary-work-row">
+                  {pieceRateLines(rule, entry).map((line) => (
+                    <span key={line.label}>
+                      {line.label}: {line.qty} × {formatMoney(line.rateTiyn)} = <strong>{formatMoney(line.amountTiyn)}</strong>
+                    </span>
+                  ))}
                 </div>
               )}
 
