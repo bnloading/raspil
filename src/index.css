@@ -8163,6 +8163,37 @@ body {
 .cashbox-excluded li { align-items: center; flex-wrap: wrap; }
 .cashbox-excluded li .btn,
 .cashbox-excluded li .jt-icon-btn { flex: 0 0 auto; }
+/* "Шығындар тарихы" — a week to a line (range · count · total), its entries opened by a tap. */
+.expense-weeks { display: flex; flex-direction: column; }
+.expense-week { border-top: 1px solid var(--border); }
+.expense-week:first-child { border-top: 0; }
+.expense-week summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 10px 2px;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+.expense-week-range { flex: 1 1 auto; font-weight: 600; }
+.expense-week-range em { font-style: normal; font-weight: 500; color: var(--primary); }
+.expense-week summary strong { font-variant-numeric: tabular-nums; }
+.expense-week[open] summary { color: var(--primary); }
+.expense-week ul { list-style: none; margin: 0 0 10px; padding: 0 0 0 14px; }
+.expense-week li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 0.82rem;
+}
+.expense-week-day { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.expense-week-name { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.expense-week-name small { color: var(--text-secondary); }
+.expense-week li strong { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 /* The second tap of a two-tap action ("Растау?", "Өшіру?") — armed, and it looks it. */
 .btn.is-armed { border-color: #b91c1c; color: #b91c1c; }
 /* Four figures — бастапқы, түсті, шықты, түзету — do not fit one row on a phone: two by two. */

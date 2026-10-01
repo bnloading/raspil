@@ -14,7 +14,7 @@ import { useExpenses } from "../../hooks/useExpenses";
 import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
-import { addExpense, deleteExpense, expenseDefaultDate } from "../../lib/expenses";
+import { addExpense, deleteExpense, expenseDefaultDate, expensesByWeek, type ExpenseWeek } from "../../lib/expenses";
 import {
   accountForExpense,
   computeCashbox,
@@ -151,6 +151,9 @@ export default function ManagerCashbox() {
     [expenses, effectivePeriod, cashStartDate],
   );
   const groups = useMemo(() => groupExpensesByName(rows), [rows]);
+  // Every expense this line ever logged, week by week — the restart takes the old ones out of the
+  // figures above, never out of the record (see ExpenseHistory).
+  const expenseWeeks = useMemo(() => expensesByWeek(expenses), [expenses]);
 
   // `cashStartDate`/`cashOpeningBalanceTiyn` (from settings) and each payment's department (from
   // orders) both feed computeCashbox below directly — settings defaults to no restart date at all
@@ -344,6 +347,8 @@ export default function ManagerCashbox() {
               </ul>
             </section>
           )}
+
+          <ExpenseHistory weeks={expenseWeeks} startDate={cashStartDate} />
 
           {isAdmin && (
             <MethodAccounts methods={methods} setMethods={setMethods} department={myDepartment} onError={showToast} />
@@ -856,6 +861,58 @@ export function CashboxAccounts({
         </details>
       )}
     </>
+  );
+}
+
+/**
+ * "Шығындар тарихы" — every expense ever written, a week to a line, opened with a tap.
+ *
+ * The restart takes everything spent before it out of the figures and the Шығындар list above,
+ * which after 30.09 read as September's expenses having vanished. None was deleted; this is where
+ * they are kept to be read — the whole week's total on the line, its entries underneath, and the
+ * ones Касса no longer counts said so.
+ */
+function ExpenseHistory({ weeks, startDate }: { weeks: ExpenseWeek[]; startDate: string | null }) {
+  if (weeks.length === 0) return null;
+  const today = dayKey(new Date());
+  return (
+    <section className="panel-card">
+      <div className="panel-head">
+        <h3>Шығындар тарихы — апта бойынша</h3>
+        <span className="wh-sub">{weeks.length} апта</span>
+      </div>
+      <div className="expense-weeks">
+        {weeks.map((w) => {
+          const settled = !!startDate && w.end < startDate;
+          return (
+            <details key={w.start} className="expense-week">
+              <summary>
+                <span className="expense-week-range">
+                  {w.start.slice(8, 10)}.{w.start.slice(5, 7)} – {dmy(w.end)}
+                  {w.start <= today && today <= w.end && <em> · осы апта</em>}
+                </span>
+                <span className="wh-sub">{w.expenses.length} жазба{settled ? " · есептен бұрын" : ""}</span>
+                <strong>{formatMoney(w.totalTiyn)}</strong>
+              </summary>
+              <ul>
+                {w.expenses.map((e) => (
+                  <li key={e.id}>
+                    <span className="wh-sub expense-week-day">{dmy(e.date)}</span>
+                    <span className="expense-week-name">
+                      {e.name}
+                      {e.comment && <small> · {e.comment}</small>}
+                      {!settled && startDate && e.date < startDate && <small> · Кассаға кірмейді</small>}
+                    </span>
+                    <span className={`cashbox-tag is-${accountForExpense(e)}`}>{CASH_ACCOUNT_LABELS[accountForExpense(e)]}</span>
+                    <strong>{formatMoney(e.amountTiyn)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

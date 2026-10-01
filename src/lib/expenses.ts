@@ -72,6 +72,54 @@ export async function deleteExpense(db: Firestore, actor: Actor, expense: Expens
   });
 }
 
+/** One week of the expense log — Monday to Sunday, as the shop counts a week. */
+export interface ExpenseWeek {
+  /** Monday, "YYYY-MM-DD". */
+  start: string;
+  /** Sunday, "YYYY-MM-DD". */
+  end: string;
+  totalTiyn: number;
+  /** Newest first, ties by id — the order the Шығындар list reads in. */
+  expenses: Expense[];
+}
+
+const shiftDay = (day: string, days: number): string => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+/** The Monday of the week a "YYYY-MM-DD" day falls in. Pure date arithmetic, no time zone. */
+export function weekStartOf(day: string): string {
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return shiftDay(day, -((weekday + 6) % 7));
+}
+
+/**
+ * Every expense ever logged, week by week, newest week first — "Шығындар тарихы" on Касса.
+ *
+ * The accounting restart leaves anything spent before it out of every Касса figure, and the
+ * Шығындар list with it — so after 30.09 the September expenses looked gone, though not one was
+ * deleted. This is where they are kept to be read, a week to a line.
+ */
+export function expensesByWeek(expenses: readonly Expense[]): ExpenseWeek[] {
+  const weeks = new Map<string, Expense[]>();
+  for (const expense of expenses) {
+    const start = weekStartOf(expense.date);
+    const list = weeks.get(start);
+    if (list) list.push(expense);
+    else weeks.set(start, [expense]);
+  }
+  return [...weeks]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([start, list]) => ({
+      start,
+      end: shiftDay(start, 6),
+      totalTiyn: list.reduce((s, e) => s + e.amountTiyn, 0),
+      expenses: list.sort((a, b) => (a.date === b.date ? a.id.localeCompare(b.id) : b.date.localeCompare(a.date))),
+    }));
+}
+
 /** Sum of logged expenses in one month (YYYY-MM), or every expense ever logged when period is null. */
 export function monthlyExpensesTotal(
   expenses: Expense[],

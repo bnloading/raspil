@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { expenseDefaultDate, monthlyExpensesTotal } from "./expenses";
+import { expenseDefaultDate, expensesByWeek, monthlyExpensesTotal, weekStartOf } from "./expenses";
 import type { Expense } from "../types/domain";
 
 const T = (n: number) => n * 100; // ₸ → tiyn
@@ -12,6 +12,32 @@ const expense = (over: Partial<Expense> = {}): Expense => ({
   createdByUid: "admin-1",
   createdByName: "Admin",
   ...over,
+});
+
+describe("expensesByWeek — the expense log a week to a line, old weeks kept", () => {
+  it("starts a week on Monday", () => {
+    expect(weekStartOf("2026-10-01")).toBe("2026-09-28"); // Thursday
+    expect(weekStartOf("2026-09-28")).toBe("2026-09-28"); // Monday itself
+    expect(weekStartOf("2026-09-27")).toBe("2026-09-21"); // Sunday closes the week before
+  });
+
+  it("groups by week, newest week first, each week's entries newest first", () => {
+    const weeks = expensesByWeek([
+      expense({ id: "a", date: "2026-09-22", amountTiyn: T(1000) }),
+      expense({ id: "b", date: "2026-09-29", amountTiyn: T(300000) }),
+      expense({ id: "c", date: "2026-09-27", amountTiyn: T(2000) }),
+      expense({ id: "d", date: "2026-10-01", amountTiyn: T(5000) }),
+    ]);
+    expect(weeks.map((w) => [w.start, w.end, w.totalTiyn])).toEqual([
+      ["2026-09-28", "2026-10-04", T(305000)],
+      ["2026-09-21", "2026-09-27", T(3000)],
+    ]);
+    expect(weeks[0].expenses.map((e) => e.id)).toEqual(["d", "b"]);
+  });
+
+  it("has nothing to show for an empty log", () => {
+    expect(expensesByWeek([])).toEqual([]);
+  });
 });
 
 describe("monthlyExpensesTotal", () => {
