@@ -1030,13 +1030,13 @@ export default function ManagerJournal() {
     await strikeOff(order, false);
   };
 
-  const strikeOff = async (order: Order, returnCutSheets: boolean) => {
+  /** `wasCut`: struck off from the cut-row dialog — its reason then says the boards were cut. */
+  const strikeOff = async (order: Order, returnCutSheets: boolean, wasCut = false) => {
+    const reason = returnCutSheets
+      ? "Журналдан өшірілді — кесілген лист қоймаға қайтарылды"
+      : wasCut ? "Журналдан өшірілді — лист кесілген, қоймаға қайтпады" : "Журналдан өшірілді — клиент кестірмеді";
     try {
-      await cancelOrder(
-        db, actor, order,
-        returnCutSheets ? "Журналдан өшірілді — кесілген лист қоймаға қайтарылды" : "Журналдан өшірілді — клиент кестірмеді",
-        { returnCutSheets },
-      );
+      await cancelOrder(db, actor, order, reason, { returnCutSheets });
       showToast(`🗑 ${order.orderNumber} өшірілді${returnCutSheets ? " — лист қоймаға қайтарылды" : ""}`);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
@@ -1751,7 +1751,7 @@ export default function ManagerJournal() {
           kept={sheetsKeptOnCancel(strikeFor)}
           onClose={() => setStrikeFor(null)}
           onStrike={async (returnCutSheets) => {
-            await strikeOff(strikeFor, returnCutSheets);
+            await strikeOff(strikeFor, returnCutSheets, true);
             setStrikeFor(null);
           }}
         />

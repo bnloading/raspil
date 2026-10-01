@@ -10,7 +10,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
-import { availablePeriods, buildSalaryEntry } from "../../lib/salary";
+import { availablePeriods, buildSalaryEntry, sheetsAndCountertops } from "../../lib/salary";
 import {
   currentPeriodKey,
   periodLabel,
@@ -407,7 +407,15 @@ export default function AdminSalary() {
 
               {entry && (
                 <div className="salary-work-row">
-                  <span>Лист: {entry.sheetsCut}{entry.hdfSheets || entry.countertopSheets ? ` (ЛДСП ${entry.ldspSheets ?? 0} · ХДФ ${entry.hdfSheets ?? 0} · Столешница ${entry.countertopSheets ?? 0})` : ""}</span>
+                  {/* Countertops apart from sheets — "Лист" used to be sheetsCut, every столешница
+                      included, which is how Олжас's week read high (01.10). */}
+                  <span>
+                    Лист: {sheetsAndCountertops(entry).sheets}
+                    {entry.hdfSheets || entry.mdfSheets
+                      ? ` (ЛДСП ${entry.ldspSheets ?? 0} · ХДФ ${entry.hdfSheets ?? 0} · МДФ ${entry.mdfSheets ?? 0})`
+                      : ""}
+                  </span>
+                  <span>Столешница: {sheetsAndCountertops(entry).countertops}</span>
                   <span>ПВХ: {entry.pvcMeters.toFixed(1)} м</span>
                   <span>Заказ: {entry.ordersCompleted}</span>
                   <span>Күн: {entry.presentDays}</span>

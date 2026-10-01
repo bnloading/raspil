@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { MaterialCategory, Order } from "../types/domain";
-import { jobsOf } from "./orderLines";
+import { creditsFloorWork, jobsOf } from "./orderLines";
 import { lineCategory } from "./lineCategory";
 
 /** One order this cutter actually cut sheets on — dated by when they finished their part of it. */
@@ -41,6 +41,8 @@ export function buildCutterHistory(
   const entries: CutHistoryEntry[] = [];
 
   for (const order of orders) {
+    // Struck off to be typed again: the cut is on the re-typed order, not this one as well.
+    if (!creditsFloorWork(order)) continue;
     const mine = jobsOf(order).filter((j) => j.cuttingByUid === uid && j.cuttingCompletedAt);
     if (mine.length === 0) continue;
 

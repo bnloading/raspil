@@ -509,6 +509,13 @@ export interface Order {
    * delete financial records — but it is no longer separate business, so the ledger hides it.
    */
   mergedIntoOrderId?: string;
+  /**
+   * Set when the order was struck off the journal with its cut sheets given back — typed again as
+   * a new order, or never really cut. The work recorded on it then credits no worker: the job is
+   * on the re-typed order, and crediting both paid Олжас twice for ORD-2026-000282 → 284 (30.09).
+   * See lib/orderLines.ts creditsFloorWork.
+   */
+  cutWorkVoided?: boolean;
 
 
   materialCostTiyn: number;

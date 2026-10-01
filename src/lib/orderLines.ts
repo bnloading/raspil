@@ -83,6 +83,16 @@ export function jobsOf(order: Order): OrderLineJob[] {
  * ORD-2026-000284, and the new order took the same sheets a second time. So the journal asks
  * before leaving these out, instead of deciding silently.
  */
+/**
+ * Whether the floor work recorded on an order counts for the workers who did it — the salary
+ * engine, the cutter's history and dashboard all ask this. Not for an order struck off to be typed
+ * again (`cutWorkVoided`): the job is on the re-typed order, and crediting both counted one cut
+ * twice. An order cut and then struck off with its sheets kept is still real work, and still counts.
+ */
+export function creditsFloorWork(order: Pick<Order, "cutWorkVoided">): boolean {
+  return !order.cutWorkVoided;
+}
+
 export function sheetsKeptOnCancel(order: Order): OrderLineJob[] {
   const beforeSaw = order.productionStatus === "cutting_queue" || order.productionStatus === "cutting_started";
   return jobsOf(order).filter((j) => (j.consumedQty ?? 0) > 0 && (!beforeSaw || !!j.cuttingCompletedAt));

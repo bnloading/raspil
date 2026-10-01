@@ -33,6 +33,15 @@ describe("buildCutterHistory", () => {
     expect(buildCutterHistory([order({ lineJobs: [job()] })], CUTTER)).toHaveLength(0);
   });
 
+  it("skips an order struck off to be typed again — the re-typed one carries the cut", () => {
+    const done = job({ confirmedSheets: 1, cuttingByUid: CUTTER, cuttingCompletedAt: at("2026-09-30") });
+    const entries = buildCutterHistory([
+      order({ id: "o282", orderNumber: "ORD-2026-000282", productionStatus: "cancelled", cutWorkVoided: true, lineJobs: [done] }),
+      order({ id: "o284", orderNumber: "ORD-2026-000284", lineJobs: [done] }),
+    ], CUTTER);
+    expect(entries.map((e) => e.orderNumber)).toEqual(["ORD-2026-000284"]);
+  });
+
   it("counts only this cutter's own lines on a merged order, not the other cutter's", () => {
     const merged = order({
       lineJobs: [

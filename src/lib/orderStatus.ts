@@ -549,7 +549,14 @@ export async function cancelOrder(
   opts: { returnCutSheets?: boolean } = {},
 ): Promise<void> {
   const orderRef = doc(db, "orders", order.id);
-  await updateDoc(orderRef, { productionStatus: "cancelled", cancelledAt: serverTimestamp(), cancelReason: reason });
+  await updateDoc(orderRef, {
+    productionStatus: "cancelled",
+    cancelledAt: serverTimestamp(),
+    cancelReason: reason,
+    // Sheets given back means the cut is not this order's to keep — it is re-typed, or never
+    // happened — so nobody is paid for it here either (lib/orderLines.ts creditsFloorWork).
+    ...(opts.returnCutSheets ? { cutWorkVoided: true } : {}),
+  });
   await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "cancelled", reason);
 
   const activeRes = await getDocs(

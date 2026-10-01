@@ -7,7 +7,7 @@ import { useCutterOrders, usePvcOrders, useMdfOrders } from "../hooks/useOrders"
 import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
 import { summariseAdvances } from "../lib/advances";
-import { measureWork, computeSalaryBase } from "../lib/salary";
+import { measureWork, computeSalaryBase, sheetsAndCountertops } from "../lib/salary";
 import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -78,6 +78,9 @@ export default function MySalary() {
     [orders, attendance, user?.uid, period, categoryByMaterialId],
   );
   const live = computeSalaryBase(rule, work, periodKind);
+  // The confirmed entry's figures when there is one, the live count otherwise — sheets and
+  // countertops apart (lib/salary.ts sheetsAndCountertops).
+  const cut = sheetsAndCountertops(entry ?? work);
   const liveFinalTiyn = Math.max(0, live.baseTiyn - live.deductionTiyn);
   const finalTiyn = entry?.finalTiyn ?? liveFinalTiyn;
   const isEstimate = !entry;
@@ -164,7 +167,12 @@ export default function MySalary() {
 
           <div className="rdash-tiles salary-work-tiles">
             <div className="rdash-tile"><b>{entry?.presentDays ?? work.presentDays}</b><span>Жұмыс күні</span></div>
-            <div className="rdash-tile is-blue"><b>{entry?.sheetsCut ?? work.sheetsCut}</b><span>Кесілген лист</span></div>
+            {/* Sheets and countertops apart: one "Кесілген лист" figure counted every столешница as
+                a sheet, which read as Олжас cutting more than he did (01.10). */}
+            <div className="rdash-tile is-blue"><b>{cut.sheets}</b><span>Кесілген лист</span></div>
+            {(role === "raspil" || cut.countertops > 0) && (
+              <div className="rdash-tile is-blue"><b>{cut.countertops}</b><span>Столешница</span></div>
+            )}
             <div className="rdash-tile is-green"><b>{entry?.ordersCompleted ?? work.ordersCompleted}</b><span>Заказдар</span></div>
           </div>
 

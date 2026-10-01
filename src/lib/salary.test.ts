@@ -7,7 +7,18 @@ import {
   buildSalaryEntry,
   availablePeriods,
   EMPTY_WORK_TOTALS,
+  sheetsAndCountertops,
 } from "./salary";
+
+describe("sheetsAndCountertops — «406 лист · 11 столеш», not 417 «лист»", () => {
+  it("takes the countertops out of the sheet count", () => {
+    expect(sheetsAndCountertops({ sheetsCut: 417, countertopSheets: 11 })).toEqual({ sheets: 406, countertops: 11 });
+  });
+
+  it("reads a total from before categories existed as all sheets", () => {
+    expect(sheetsAndCountertops({ sheetsCut: 30 })).toEqual({ sheets: 30, countertops: 0 });
+  });
+});
 import { hoursBetween } from "./salaryWrite";
 import type { AttendanceRecord, Order, SalaryRule } from "../types/domain";
 
@@ -87,6 +98,20 @@ describe("measureWork", () => {
     expect(measureWork(orders, [], CUTTER, "2026-09-21").sheetsCut).toBe(12);
     // The month still sees both — weekly pay splits the same work, it never loses any of it.
     expect(measureWork(orders, [], CUTTER, "2026-09").sheetsCut).toBe(42);
+  });
+
+  it("does not pay twice for an order struck off and typed again — only the re-typed one counts", () => {
+    // ORD-2026-000282 cut at 12:15, struck off at 12:20 with its sheets given back, re-typed as 284.
+    const cut = Timestamp.fromDate(new Date("2026-09-30T12:15:00+05:00"));
+    const orders = [
+      order({ id: "o282", productionStatus: "cancelled", cutWorkVoided: true, assignedCutterId: CUTTER, confirmedSheets: 2, cuttingCompletedAt: cut }),
+      order({ id: "o284", assignedCutterId: CUTTER, confirmedSheets: 2, cuttingCompletedAt: cut }),
+      // Cut and then struck off with the sheets kept — real work, still paid.
+      order({ id: "o063", productionStatus: "cancelled", assignedCutterId: CUTTER, confirmedSheets: 5, cuttingCompletedAt: cut }),
+    ];
+    const work = measureWork(orders, [], CUTTER, "2026-09-28");
+    expect(work.sheetsCut).toBe(2 + 5);
+    expect(work.ordersCompleted).toBe(2);
   });
 
   it("keeps a week whole across a month boundary", () => {

@@ -9,7 +9,7 @@ import type {
 import { MDF_STAGES } from "../types/domain";
 import { monthKey, weekKey, dayKey } from "./dates";
 import { periodContains, periodContainsDay, periodKindOf, type SalaryPeriodKind } from "./salaryPeriod";
-import { jobsOf } from "./orderLines";
+import { creditsFloorWork, jobsOf } from "./orderLines";
 import { lineCategory } from "./lineCategory";
 
 /**
@@ -88,6 +88,8 @@ export function measureWork(
   let ordersCompleted = 0;
 
   for (const order of orders) {
+    // Struck off to be typed again: the job is paid on the re-typed order (creditsFloorWork).
+    if (!creditsFloorWork(order)) continue;
     // Per material line, not per order: a merged order ("10 лист ЛДСП + 3 лист ХДФ") pays the
     // ЛДСП rate on 10 sheets and the ХДФ rate on 3, and each line credits whichever worker's uid
     // is actually on it — two cutters splitting one merged order each get only their own sheets.
@@ -152,6 +154,16 @@ export function measureWork(
     sheetsCut, ldspSheets, hdfSheets, countertopSheets, mdfSheets,
     pvcMeters, mdfM2Processed, packagingOrdersCount, ordersCompleted, presentDays, absentDays, workedHours,
   };
+}
+
+/**
+ * Board sheets and countertops apart — "406 лист · 11 столеш". `sheetsCut` counts every cut line,
+ * столешница included, so shown as "лист" it ran high by every countertop (Олжас's week, 01.10).
+ * A total measured before categories existed carries no countertop count, and is all sheets.
+ */
+export function sheetsAndCountertops(work: { sheetsCut: number; countertopSheets?: number }): { sheets: number; countertops: number } {
+  const countertops = work.countertopSheets ?? 0;
+  return { sheets: work.sheetsCut - countertops, countertops };
 }
 
 export interface SalaryComputation {

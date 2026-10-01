@@ -7,7 +7,7 @@ import { CuttingLineActions } from "../components/CuttingActionsPanel";
 import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { IconUsers } from "../components/layout/icons";
 import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
-import { jobsOf } from "../lib/orderLines";
+import { creditsFloorWork, jobsOf } from "../lib/orderLines";
 import { WorkerMaterialSummary, WorkerHistorySummary } from "../components/WorkerMaterialSummary";
 import { useMaterials } from "../hooks/useMaterials";
 import type { Material } from "../types/domain";
@@ -45,7 +45,7 @@ export default function CutterDashboard() {
   const inProgress = useMemo(() => orders.filter((o) => o.productionStatus === "cutting_started"), [orders]);
   const doneToday = useMemo(() => {
     const today = dayKey(new Date());
-    return orders.filter(o => jobsOf(o).some(j => j.cuttingByUid === user?.uid && j.cuttingCompletedAt && dayKey(j.cuttingCompletedAt.toDate()) === today));
+    return orders.filter(o => creditsFloorWork(o) && jobsOf(o).some(j => j.cuttingByUid === user?.uid && j.cuttingCompletedAt && dayKey(j.cuttingCompletedAt.toDate()) === today));
   }, [orders, user?.uid]);
 
   // Whatever is already started surfaces first — that is the actual work in hand — then the
@@ -54,7 +54,7 @@ export default function CutterDashboard() {
 
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
-  const byView = view === "mine" ? active.filter((o) => jobsOf(o).some((j) => j.cuttingByUid === user.uid && !j.cuttingCompletedAt)) : view === "history" ? orders.filter((o) => jobsOf(o).some((j) => j.cuttingByUid === user.uid && j.cuttingCompletedAt)) : active;
+  const byView = view === "mine" ? active.filter((o) => jobsOf(o).some((j) => j.cuttingByUid === user.uid && !j.cuttingCompletedAt)) : view === "history" ? orders.filter((o) => creditsFloorWork(o) && jobsOf(o).some((j) => j.cuttingByUid === user.uid && j.cuttingCompletedAt)) : active;
   const q = search.trim().toLocaleLowerCase();
   const shown = q
     ? byView.filter((o) => o.customerName.toLocaleLowerCase().includes(q) || o.orderNumber.toLocaleLowerCase().includes(q))

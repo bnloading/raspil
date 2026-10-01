@@ -1,9 +1,11 @@
 import type { Material, Order, OrderLineJob } from "../types/domain";
-import { jobsOf } from "./orderLines";
+import { creditsFloorWork, jobsOf } from "./orderLines";
 import { lineCategory } from "./lineCategory";
 
 export type FloorStage = "cutting" | "pvc";
 export function workerJobs(order: Order, stage: FloorStage, uid: string, completed: boolean) {
+  // Struck off to be typed again: its work belongs to the re-typed order (creditsFloorWork).
+  if (!creditsFloorWork(order)) return [];
   return jobsOf(order).filter(j => stage === "cutting"
     ? j.cuttingByUid === uid && (completed ? !!j.cuttingCompletedAt : !!j.cuttingStartedAt && !j.cuttingCompletedAt)
     : j.pvcByUid === uid && (completed ? !!j.pvcCompletedAt : !!j.pvcStartedAt && !j.pvcCompletedAt));
