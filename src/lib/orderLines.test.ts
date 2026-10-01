@@ -4,6 +4,7 @@ import {
   allCuttingDone,
   allPvcDone,
   buildLineJobs,
+  isEmptyJob,
   jobSummary,
   jobsOf,
   orderNeedsPvc,
@@ -36,6 +37,24 @@ const job = (over: Partial<OrderLineJob> = {}): OrderLineJob => ({
   sheetQty: 10,
   pvcMeters: 176,
   ...over,
+});
+
+describe("a blank line on the shop floor (ORD-2026-000295)", () => {
+  // The countertop was cut and confirmed; beside it sat a line with no material, no sheets, no ПВХ.
+  const countertop = job({ index: 0, materialId: "top-ak", materialName: "Столешница Ақ матовый", sheetQty: 1, pvcMeters: 0, cuttingCompletedAt: ts() });
+  const blank = job({ index: 1, materialId: "", materialName: "", sheetQty: 0, pvcMeters: 0 });
+
+  it("is nobody's work", () => {
+    expect(isEmptyJob(blank)).toBe(true);
+    expect(isEmptyJob(countertop)).toBe(false);
+    // A customer's own boards with ПВХ only is work, even with no sheet count.
+    expect(isEmptyJob(job({ materialId: "", sheetQty: 0, pvcMeters: 12 }))).toBe(false);
+  });
+
+  it("does not hold the order on the saw once the real lines are cut", () => {
+    expect(allCuttingDone([countertop, blank])).toBe(true);
+    expect(allCuttingDone([blank])).toBe(false);
+  });
 });
 
 describe("sheetsKeptOnCancel — what a plain delete leaves off the rack", () => {

@@ -170,9 +170,20 @@ export function isPvcStarted(job: OrderLineJob): boolean {
   return !!job.pvcStartedAt && !job.pvcCompletedAt;
 }
 
-/** The order leaves the saw only when every material has been cut. */
+/**
+ * A job with nothing on it — no material, no sheets, no ПВХ: a blank line that reached the shop
+ * floor's copy. ORD-2026-000295 kept one beside its countertop (01.10), and with nothing on it to
+ * confirm the order could never reach "Дайын". It is nobody's work: it neither holds an order up
+ * nor shows on a station.
+ */
+export function isEmptyJob(job: Pick<OrderLineJob, "materialId" | "sheetQty" | "pvcMeters">): boolean {
+  return !job.materialId && !(job.sheetQty > 0) && !(job.pvcMeters > 0);
+}
+
+/** The order leaves the saw only when every material has been cut — blank lines aside. */
 export function allCuttingDone(jobs: OrderLineJob[]): boolean {
-  return jobs.length > 0 && jobs.every(isCuttingDone);
+  const work = jobs.filter((job) => !isEmptyJob(job));
+  return work.length > 0 && work.every(isCuttingDone);
 }
 
 /** Likewise for edge banding — lines with no ПВХ never hold the order up. */

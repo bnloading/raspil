@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { User } from "firebase/auth";
 import { db } from "../firebase";
 import { completeCuttingLine, startCuttingLine, updateCuttingEstimateLine } from "../lib/orderStatus";
-import { jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
+import { isEmptyJob, jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
 import { formatDateTimeDMY } from "../lib/dates";
 import { formatClock, readCuttingTimer } from "../lib/cuttingTimer";
 import { useServerClockOffset } from "../hooks/useServerClock";
@@ -32,7 +32,8 @@ export function CuttingActionsPanel({
 
   return (
     <div className="cutting-actions-panel">
-      {jobsOf(order).map((job) => (
+      {/* A blank line (isEmptyJob) has nothing to cut or confirm — offering it only stalls the order. */}
+      {jobsOf(order).filter((job) => !isEmptyJob(job)).map((job) => (
         <CuttingLineActions key={job.index} order={order} job={job} actor={actor} onToast={onToast} showLabel />
       ))}
     </div>
