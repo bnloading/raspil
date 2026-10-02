@@ -15,6 +15,7 @@ import {
   IconPvc,
   IconPlus,
   IconProfit,
+  IconKey,
 } from "./icons";
 
 export interface NavItem {
@@ -84,7 +85,7 @@ function adminNav(department: Department): NavItem[] {
       { key: "admin-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main", mobile: true },
       { key: "admin-salary", label: "Айлық", path: "/admin/salary", icon: IconReports, group: "main" },
       { key: "admin-cashbox", label: "Касса / Шығын", path: "/manager/cashbox", icon: IconReports, group: "main" },
-      { key: "admin-rent", label: "Аренда", path: "/admin/rent", icon: IconReports, group: "main" },
+      { key: "admin-rent", label: "Аренда", path: "/admin/rent", icon: IconKey, group: "main" },
       { key: "admin-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
       { key: "admin-settings", label: "Баптаулар", path: "/admin/csv-settings", icon: IconAudit, group: "main" },
       { key: "admin-camera", label: "Камера", short: "Камера", path: "/camera", icon: IconCamera, group: "main", mobile: true },
@@ -101,7 +102,9 @@ function managerNav(department: Department): NavItem[] {
     [
       { key: "manager-home", label: "Басты бет", short: "Басты", path: "/manager", icon: IconHome, group: "main", mobile: true },
       { key: "manager-journal", label: "Тапсырыс журналы", short: "Журнал", path: "/manager/journal", icon: IconOrders, group: "main", mobile: true },
-      { key: "manager-payments", label: "Төлемдер", short: "Төлем", path: "/manager/payments", icon: IconReports, group: "main", mobile: true },
+      // Off the ЛДСП phone bar since 02.10: the owner gave its place to Аренда, the bar being full.
+      // The МДФ line's bar has room for both, so it keeps it.
+      { key: "manager-payments", label: "Төлемдер", short: "Төлем", path: "/manager/payments", icon: IconReports, group: "main", mobile: department === "mdf" },
       { key: "manager-debt", label: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main" },
       // Not in the mobile bottom bar (already at its cap) — see the admin-mdf comment above.
       { key: "manager-mdf-journal", label: "МДФ журналы", path: "/manager/mdf-journal", icon: IconLayers, group: "main" },
@@ -112,8 +115,9 @@ function managerNav(department: Department): NavItem[] {
       { key: "manager-new", label: "Жаңа заказдар", path: "/manager/new", icon: IconPlus, group: "secondary" },
       { key: "manager-orders", label: "Заказдар (карта)", path: "/manager/orders", icon: IconOrders, group: "secondary" },
       { key: "manager-cashbox", label: "Касса / Шығын", short: "Касса", path: "/manager/cashbox", icon: IconReports, group: "main", mobile: true },
-      // Read-only for a Manager: the rent the owner records, which their Касса now counts too.
-      { key: "manager-rent", label: "Аренда", path: "/admin/rent", icon: IconReports, group: "main" },
+      // Read-only for a Manager: the rent the owner records, which their Касса counts too. On the
+      // phone bar, in Төлем's place, at the owner's request — a phone has no side menu to find it in.
+      { key: "manager-rent", label: "Аренда", path: "/admin/rent", icon: IconKey, group: "main", mobile: true },
       { key: "manager-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
       { key: "manager-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main" },
       { key: "manager-customers", label: "Клиенттер", path: "/setup", icon: IconUsers, group: "secondary" },

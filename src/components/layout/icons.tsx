@@ -216,3 +216,14 @@ export function IconProfit({ className }: IconProps) {
     </svg>
   );
 }
+
+/** "Аренда" — a key, for what the owner lets out. */
+export function IconKey({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="m21 2-9.6 9.6" />
+      <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" />
+    </svg>
+  );
+}
