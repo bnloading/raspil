@@ -115,7 +115,7 @@ function managerNav(department: Department): NavItem[] {
       { key: "manager-new", label: "Жаңа заказдар", path: "/manager/new", icon: IconPlus, group: "secondary" },
       { key: "manager-orders", label: "Заказдар (карта)", path: "/manager/orders", icon: IconOrders, group: "secondary" },
       { key: "manager-cashbox", label: "Касса / Шығын", short: "Касса", path: "/manager/cashbox", icon: IconReports, group: "main", mobile: true },
-      // Read-only for a Manager: the rent the owner records, which their Касса counts too. On the
+      // The rent the Manager records alongside the owner, which their Касса counts too. On the
       // phone bar, in Төлем's place, at the owner's request — a phone has no side menu to find it in.
       { key: "manager-rent", label: "Аренда", path: "/admin/rent", icon: IconKey, group: "main", mobile: true },
       { key: "manager-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },

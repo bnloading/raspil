@@ -187,11 +187,13 @@ service cloud.firestore {
 
     match /rentPayments/{id} {
       // "Аренда" — rent the owner takes on the side (src/pages/admin/AdminRent.tsx), counted on
-      // Касса. The Manager sees it, so their Касса shows the same balance the owner's does; writing
-      // and correcting it stays the owner's.
+      // Касса. The Manager sees it, so their Касса shows the same balance the owner's does, and
+      // records it too (the owner, 02.10). As with an expense, a Manager may delete only their own
+      // entry (their own typo); correcting one, or deleting anyone else's, stays the owner's.
       allow read: if isAdminOrManager();
-      allow update, delete: if isAdmin();
-      allow create: if isAdmin() && request.resource.data.createdByUid == uid();
+      allow create: if isAdminOrManager() && request.resource.data.createdByUid == uid();
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isManager() && resource.data.createdByUid == uid());
     }
 
     match /birthdays/{userId} {
