@@ -156,14 +156,53 @@ export function measureWork(
   };
 }
 
+type SheetTotals = { sheetsCut: number; ldspSheets?: number; hdfSheets?: number; mdfSheets?: number; countertopSheets?: number };
+
 /**
- * Board sheets and countertops apart — "406 лист · 11 столеш". `sheetsCut` counts every cut line,
- * столешница included, so shown as "лист" it ran high by every countertop (Олжас's week, 01.10).
- * A total measured before categories existed carries no countertop count, and is all sheets.
+ * The four kinds a cut sheet is measured as. A total measured before categories existed carries
+ * only sheetsCut; paying 0 for it would silently underpay, so it is read as ЛДСП — the same
+ * fallback measureWork() applies to a material with no category set.
  */
-export function sheetsAndCountertops(work: { sheetsCut: number; countertopSheets?: number }): { sheets: number; countertops: number } {
-  const countertops = work.countertopSheets ?? 0;
-  return { sheets: work.sheetsCut - countertops, countertops };
+function sheetKinds(work: SheetTotals): { ldsp: number; hdf: number; mdf: number; countertop: number } {
+  const categorised = (work.ldspSheets ?? 0) + (work.hdfSheets ?? 0) + (work.mdfSheets ?? 0) + (work.countertopSheets ?? 0);
+  if (categorised === 0) return { ldsp: work.sheetsCut, hdf: 0, mdf: 0, countertop: 0 };
+  return {
+    ldsp: work.ldspSheets ?? 0,
+    hdf: work.hdfSheets ?? 0,
+    mdf: work.mdfSheets ?? 0,
+    countertop: work.countertopSheets ?? 0,
+  };
+}
+
+/**
+ * Cut sheets the way the shop counts them (the owner, 02.10): "лист" is every board cut for the
+ * sheet rate — ЛДСП, черновой, МДФ, a customer's own sheets, Эггер — and ХДФ and столешница, cut
+ * for half of it, stand apart.
+ */
+export interface CutCounts {
+  sheets: number;
+  hdf: number;
+  countertop: number;
+}
+
+/**
+ * "394 лист · 94 ХДФ · 15 столеш" — Олжас's week of 28.09, which read "488 лист · 15 столеш" with
+ * every ХДФ inside the лист. The quantities pieceRateLines pays, so a count shown is a count paid.
+ */
+export function cutCounts(work: SheetTotals): CutCounts {
+  const kinds = sheetKinds(work);
+  return { sheets: kinds.ldsp + kinds.mdf, hdf: kinds.hdf, countertop: kinds.countertop };
+}
+
+/**
+ * "394 лист · 94 ХДФ · 15 столеш" — each there is some of; nothing cut reads "0 лист". The only
+ * ordinary spaces are the ones after a "·", so a label that wraps breaks there — "22 лист · 5 ХДФ ·"
+ * over "1 столеш" — never between "1" and "столеш", nor with a line starting on a "·".
+ */
+export function cutCountsLabel(cut: CutCounts): string {
+  const part = (value: number, unit: string) => (value > 0 ? `${value.toLocaleString("kk-KZ")}\u00a0${unit}` : "");
+  const parts = [part(cut.sheets, "лист"), part(cut.hdf, "ХДФ"), part(cut.countertop, "столеш")].filter(Boolean);
+  return parts.length > 0 ? parts.join("\u00a0· ") : "0\u00a0лист";
 }
 
 export interface SalaryComputation {
@@ -182,32 +221,35 @@ function pieceRateTotal(rule: SalaryRule | undefined, work: SalaryWorkTotals): n
   return pieceRateLines(rule, work).reduce((sum, line) => sum + line.amountTiyn, 0);
 }
 
-/** One category of cut sheets at its own rate — "ХДФ 82 × 300 ₸ = 24 600 ₸". */
+/** One group of cut sheets at its own rate — "ХДФ 94 × 300 ₸ = 28 200 ₸". */
 export interface PieceRateLine {
-  label: "ЛДСП" | "ХДФ" | "МДФ" | "Столешница";
+  label: "Лист" | "ЛДСП" | "МДФ" | "ХДФ" | "Столешница";
   qty: number;
   rateTiyn: number;
   amountTiyn: number;
 }
 
 /**
- * What each kind of sheet is cut for, and what it came to — ЛДСП, ХДФ, МДФ, столешница — the lines
- * pieceRateTotal adds up, so the breakdown a cutter is shown is the sum they are paid. A category
- * with no rate of its own is cut for the ЛДСП rate. A total measured before categories existed
- * carries only sheetsCut; paying 0 for it would silently underpay, so it is read as ЛДСП — the
- * same fallback measureWork() applies to a material with no category set.
+ * What each group of sheets is cut for, and what it came to — "Лист 394 × 600 ₸ · ХДФ 94 × 300 ₸ ·
+ * Столешница 15 × 300 ₸" — the lines pieceRateTotal adds up, so the breakdown a cutter is shown is
+ * the sum they are paid. A kind with no rate of its own is cut for the sheet rate. МДФ is part of
+ * the "Лист" line while it is cut for the sheet rate, as the shop counts it (cutCounts); given a
+ * rate of its own it gets its own line, and the rest of the boards read "ЛДСП".
  */
 export function pieceRateLines(
   rule: Pick<SalaryRule, "perSheetTiyn" | "perHdfSheetTiyn" | "perMdfSheetTiyn" | "perCountertopTiyn"> | undefined,
-  work: { sheetsCut: number; ldspSheets?: number; hdfSheets?: number; mdfSheets?: number; countertopSheets?: number },
+  work: SheetTotals,
 ): PieceRateLine[] {
   const base = rule?.perSheetTiyn ?? 0;
-  const categorised = (work.ldspSheets ?? 0) + (work.hdfSheets ?? 0) + (work.mdfSheets ?? 0) + (work.countertopSheets ?? 0);
+  const mdfRate = rule?.perMdfSheetTiyn ?? base;
+  const kinds = sheetKinds(work);
+  const boards: Omit<PieceRateLine, "amountTiyn">[] = mdfRate === base
+    ? [{ label: "Лист", qty: kinds.ldsp + kinds.mdf, rateTiyn: base }]
+    : [{ label: "ЛДСП", qty: kinds.ldsp, rateTiyn: base }, { label: "МДФ", qty: kinds.mdf, rateTiyn: mdfRate }];
   const lines: Omit<PieceRateLine, "amountTiyn">[] = [
-    { label: "ЛДСП", qty: categorised === 0 ? work.sheetsCut : work.ldspSheets ?? 0, rateTiyn: base },
-    { label: "ХДФ", qty: work.hdfSheets ?? 0, rateTiyn: rule?.perHdfSheetTiyn ?? base },
-    { label: "МДФ", qty: work.mdfSheets ?? 0, rateTiyn: rule?.perMdfSheetTiyn ?? base },
-    { label: "Столешница", qty: work.countertopSheets ?? 0, rateTiyn: rule?.perCountertopTiyn ?? base },
+    ...boards,
+    { label: "ХДФ", qty: kinds.hdf, rateTiyn: rule?.perHdfSheetTiyn ?? base },
+    { label: "Столешница", qty: kinds.countertop, rateTiyn: rule?.perCountertopTiyn ?? base },
   ];
   return lines.map((line) => ({ ...line, amountTiyn: line.qty * line.rateTiyn }));
 }

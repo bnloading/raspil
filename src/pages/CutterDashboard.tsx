@@ -14,6 +14,8 @@ import type { Material } from "../types/domain";
 import { useCutterOrders } from "../hooks/useOrders";
 import { useToast } from "../hooks";
 import { dayKey } from "../lib/dates";
+import { cutCounts, measureWork } from "../lib/salary";
+import { currentPeriodKey, periodLabel } from "../lib/salaryPeriod";
 import type { Order } from "../types/domain";
 
 /**
@@ -52,6 +54,19 @@ export default function CutterDashboard() {
   // queue in its own priority order.
   const active = useMemo(() => [...inProgress, ...queued], [inProgress, queued]);
 
+  // This week's sheets by kind, at the owner's request (02.10): the count the week's pay is made
+  // of (lib/salary.ts measureWork), so it reads line for line against Айлығым — but no money, so
+  // it needs no reveal.
+  const week = currentPeriodKey("week");
+  const categoryByMaterialId = useMemo(
+    () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
+    [materials],
+  );
+  const weekCut = useMemo(
+    () => cutCounts(measureWork(orders, [], user?.uid ?? "", week, categoryByMaterialId)),
+    [orders, user?.uid, week, categoryByMaterialId],
+  );
+
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
   const byView = view === "mine" ? active.filter((o) => jobsOf(o).some((j) => j.cuttingByUid === user.uid && !j.cuttingCompletedAt)) : view === "history" ? orders.filter((o) => creditsFloorWork(o) && jobsOf(o).some((j) => j.cuttingByUid === user.uid && j.cuttingCompletedAt)) : active;
@@ -67,7 +82,15 @@ export default function CutterDashboard() {
       contentWidth="narrow"
       variant="station"
     >
-      <WorkerDashboardHeader historyInNav queued={queued.length} active={inProgress.length} done={doneToday.length} view={view} onView={(next) => setParams(next === "queue" ? {} : {view: next})} />
+      <WorkerDashboardHeader historyInNav queued={queued.length} active={inProgress.length} done={doneToday.length} view={view} onView={(next) => setParams(next === "queue" ? {} : {view: next})}>
+        {/* As the owner put it: лист (ЛДСП, черновой, МДФ — 600 ₸), ХДФ and столешница (300 ₸). */}
+        <section className="station-stats station-week" aria-label="Осы апта кесілгені">
+          <p className="station-week-head">Осы апта · {periodLabel(week)}</p>
+          <div><span>Лист</span><strong>{weekCut.sheets}</strong></div>
+          <div><span>ХДФ</span><strong>{weekCut.hdf}</strong></div>
+          <div><span>Столешница</span><strong>{weekCut.countertop}</strong></div>
+        </section>
+      </WorkerDashboardHeader>
 
     {view !== "history" && (
       <input

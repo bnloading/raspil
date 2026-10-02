@@ -10,7 +10,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllSalaryRules, useAttendance, useSalaryAdjustments, useSalaryEntries } from "../../hooks/useSalary";
 import { addSalaryAdjustment, recalculateSalary, saveSalaryRule, setSalaryStatus } from "../../lib/salaryWrite";
-import { availablePeriods, buildSalaryEntry, pieceRateLines, sheetsAndCountertops } from "../../lib/salary";
+import { availablePeriods, buildSalaryEntry, cutCounts, pieceRateLines } from "../../lib/salary";
 import {
   currentPeriodKey,
   periodLabel,
@@ -407,15 +407,11 @@ export default function AdminSalary() {
 
               {entry && (
                 <div className="salary-work-row">
-                  {/* Countertops apart from sheets — "Лист" used to be sheetsCut, every столешница
-                      included, which is how Олжас's week read high (01.10). */}
-                  <span>
-                    Лист: {sheetsAndCountertops(entry).sheets}
-                    {entry.hdfSheets || entry.mdfSheets
-                      ? ` (ЛДСП ${entry.ldspSheets ?? 0} · ХДФ ${entry.hdfSheets ?? 0} · МДФ ${entry.mdfSheets ?? 0})`
-                      : ""}
-                  </span>
-                  <span>Столешница: {sheetsAndCountertops(entry).countertops}</span>
+                  {/* As the shop counts (lib/salary.ts cutCounts): "Лист" is ЛДСП, черновой and МДФ —
+                      it used to be sheetsCut, every ХДФ and столешница included (01.10, 02.10). */}
+                  <span>Лист: {cutCounts(entry).sheets}</span>
+                  <span>ХДФ: {cutCounts(entry).hdf}</span>
+                  <span>Столешница: {cutCounts(entry).countertop}</span>
                   <span>ПВХ: {entry.pvcMeters.toFixed(1)} м</span>
                   <span>Заказ: {entry.ordersCompleted}</span>
                   <span>Күн: {entry.presentDays}</span>
@@ -423,7 +419,7 @@ export default function AdminSalary() {
                 </div>
               )}
 
-              {/* What each kind of sheet is cut for and what it came to (lib/salary.ts
+              {/* What each group of sheets is cut for and what it came to (lib/salary.ts
                   pieceRateLines) — the lines the piece-rate pay adds up. */}
               {entry && (rule?.mode === "PER_SHEET" || rule?.mode === "MIXED") && (
                 <div className="salary-work-row">

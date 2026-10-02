@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext";
 import { useSalaryEntries, useSalaryRule, useAttendance } from "../hooks/useSalary";
 import { useMaterials } from "../hooks/useMaterials";
 import { formatMoney } from "../lib/money";
-import { computeSalaryBase, measureWork, sheetsAndCountertops } from "../lib/salary";
+import { computeSalaryBase, cutCounts, cutCountsLabel, measureWork } from "../lib/salary";
 import { currentPeriodKey, salaryPeriodKind } from "../lib/salaryPeriod";
 import type { Order } from "../types/domain";
 
@@ -57,15 +57,14 @@ export function WorkerSalaryTeaser({
   const isEstimate = !entry;
   if (!entry && (!rule || rule.mode === "MANUAL")) return null;
 
-  // Sheets and countertops apart — counted as one, every столешница read as a sheet.
-  const cut = sheetsAndCountertops(work);
   const detail =
     rule?.mode === "FIXED_MONTHLY"
       ? "Тұрақты айлық"
       : work.mdfM2Processed > 0
         ? `${work.mdfM2Processed} м² МДФ өңделді`
         : work.sheetsCut > 0
-          ? `${cut.sheets} лист${cut.countertops > 0 ? ` · ${cut.countertops} столеш` : ""} кесілді`
+          // Лист, ХДФ and столешница apart, as the shop counts them (lib/salary.ts cutCounts).
+          ? `${cutCountsLabel(cutCounts(work))} кесілді`
           : "Әзірге жұмыс жоқ";
 
   return (

@@ -1,6 +1,7 @@
 import type { Material, Order, OrderLineJob } from "../types/domain";
 import { creditsFloorWork, jobsOf } from "./orderLines";
 import { lineCategory } from "./lineCategory";
+import type { CutCounts } from "./salary";
 
 export type FloorStage = "cutting" | "pvc";
 export function workerJobs(order: Order, stage: FloorStage, uid: string, completed: boolean) {
@@ -12,14 +13,23 @@ export function workerJobs(order: Order, stage: FloorStage, uid: string, complet
 }
 
 /**
- * True for a line cut from a столешница rather than a board — the material's own catalogue entry
- * carries this (materialSnapshot never does), so it's looked up live; only a material since deleted
- * from the catalogue falls back to the name the line was typed under (lib/lineCategory.ts).
+ * Sheets on these lines as the shop counts them — "10 лист · 3 ХДФ" (lib/salary.ts cutCounts): ХДФ
+ * and столешница apart, every other board — ЛДСП, черновой, МДФ — a лист. The category is the
+ * material's own catalogue entry (materialSnapshot never carries it), so it's looked up live; only
+ * a material since deleted from the catalogue falls back to the name the line was typed under
+ * (lib/lineCategory.ts).
  */
-export function isCountertopJob(job: Pick<OrderLineJob, "materialId" | "materialName">, materials: readonly Material[]): boolean {
-  const material = materials.find(m => m.id === job.materialId);
-  const known = new Map(material ? [[material.id, material.category ?? "ldsp"] as const] : []);
-  return lineCategory(job, known) === "countertop";
+export function cutCountsOfJobs(jobs: readonly OrderLineJob[], materials: readonly Material[]): CutCounts {
+  const categories = new Map(materials.map(m => [m.id, m.category ?? "ldsp"] as const));
+  const cut: CutCounts = { sheets: 0, hdf: 0, countertop: 0 };
+  for (const job of jobs) {
+    const sheets = job.confirmedSheets ?? job.sheetQty ?? 0;
+    const category = lineCategory(job, categories);
+    if (category === "hdf") cut.hdf += sheets;
+    else if (category === "countertop") cut.countertop += sheets;
+    else cut.sheets += sheets;
+  }
+  return cut;
 }
 
 /** Sheet area, not the area of finished parts. Never assume one size for a merged order. */

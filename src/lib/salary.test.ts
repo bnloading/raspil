@@ -7,42 +7,72 @@ import {
   buildSalaryEntry,
   availablePeriods,
   EMPTY_WORK_TOTALS,
-  sheetsAndCountertops,
   pieceRateLines,
+  cutCounts,
+  cutCountsLabel,
 } from "./salary";
 
-describe("pieceRateLines — what each kind of sheet is cut for", () => {
+describe("pieceRateLines — what each group of sheets is cut for", () => {
   // Declared here: this block sits above the file's own T helper, and describe runs at once.
   const T = (n: number) => n * 100;
   // Олжас's rule and week (01.10): ЛДСП and МДФ 600 ₸, ХДФ and столешница 300 ₸.
   const rule = { perSheetTiyn: T(600), perHdfSheetTiyn: T(300), perMdfSheetTiyn: T(600), perCountertopTiyn: T(300) };
   const week = { sheetsCut: 417, ldspSheets: 304, hdfSheets: 82, mdfSheets: 20, countertopSheets: 11 };
 
-  it("lists the four categories at their own rates, adding up to the pay", () => {
+  it("pays лист (ЛДСП and МДФ alike), ХДФ and столешница each at its own rate, adding up to the pay", () => {
     const lines = pieceRateLines(rule, week);
     expect(lines.map((l) => [l.label, l.qty, l.amountTiyn])).toEqual([
-      ["ЛДСП", 304, T(182400)],
+      ["Лист", 324, T(194400)],
       ["ХДФ", 82, T(24600)],
-      ["МДФ", 20, T(12000)],
       ["Столешница", 11, T(3300)],
     ]);
     expect(lines.reduce((s, l) => s + l.amountTiyn, 0)).toBe(T(222300));
   });
 
-  it("cuts a category with no rate of its own for the ЛДСП rate, and reads an uncategorised total as ЛДСП", () => {
+  it("gives МДФ a line of its own once it has a rate of its own, and the pay still adds up", () => {
+    const lines = pieceRateLines({ ...rule, perMdfSheetTiyn: T(700) }, week);
+    expect(lines.map((l) => [l.label, l.qty, l.amountTiyn])).toEqual([
+      ["ЛДСП", 304, T(182400)],
+      ["МДФ", 20, T(14000)],
+      ["ХДФ", 82, T(24600)],
+      ["Столешница", 11, T(3300)],
+    ]);
+  });
+
+  it("cuts a kind with no rate of its own for the sheet rate, and reads an uncategorised total as лист", () => {
     const flat = pieceRateLines({ perSheetTiyn: T(600) }, week);
     expect(flat.find((l) => l.label === "ХДФ")!.rateTiyn).toBe(T(600));
-    expect(pieceRateLines(rule, { sheetsCut: 30 })[0]).toMatchObject({ label: "ЛДСП", qty: 30, amountTiyn: T(18000) });
+    expect(pieceRateLines(rule, { sheetsCut: 30 })[0]).toMatchObject({ label: "Лист", qty: 30, amountTiyn: T(18000) });
   });
 });
 
-describe("sheetsAndCountertops — «406 лист · 11 столеш», not 417 «лист»", () => {
-  it("takes the countertops out of the sheet count", () => {
-    expect(sheetsAndCountertops({ sheetsCut: 417, countertopSheets: 11 })).toEqual({ sheets: 406, countertops: 11 });
+describe("cutCounts — «394 лист · 94 ХДФ · 15 столеш», not 488 «лист»", () => {
+  // Олжас's week of 28.09, as it stood on 02.10.
+  const week = { sheetsCut: 503, ldspSheets: 374, hdfSheets: 94, mdfSheets: 20, countertopSheets: 15 };
+  // The label ties each number to its unit with a no-break space; read here as a plain one.
+  const plain = (label: string) => label.replace(/\u00a0/g, " ");
+
+  it("counts ЛДСП and МДФ as лист, ХДФ and столешница apart — as the owner counts (02.10)", () => {
+    expect(cutCounts(week)).toEqual({ sheets: 394, hdf: 94, countertop: 15 });
+    expect(plain(cutCountsLabel(cutCounts(week)))).toBe("394 лист · 94 ХДФ · 15 столеш");
   });
 
-  it("reads a total from before categories existed as all sheets", () => {
-    expect(sheetsAndCountertops({ sheetsCut: 30 })).toEqual({ sheets: 30, countertops: 0 });
+  it("counts exactly what the pay lines are paid on", () => {
+    expect(pieceRateLines(undefined, week).map((l) => l.qty)).toEqual([394, 94, 15]);
+  });
+
+  it("reads a total from before categories existed as all лист", () => {
+    expect(cutCounts({ sheetsCut: 30 })).toEqual({ sheets: 30, hdf: 0, countertop: 0 });
+  });
+
+  it("names only what there is, and nothing cut as «0 лист»", () => {
+    expect(plain(cutCountsLabel({ sheets: 10, hdf: 3, countertop: 0 }))).toBe("10 лист · 3 ХДФ");
+    expect(plain(cutCountsLabel({ sheets: 0, hdf: 0, countertop: 2 }))).toBe("2 столеш");
+    expect(plain(cutCountsLabel({ sheets: 0, hdf: 0, countertop: 0 }))).toBe("0 лист");
+  });
+
+  it("lets a wrapped label break only after a «·»", () => {
+    expect(cutCountsLabel({ sheets: 22, hdf: 5, countertop: 1 })).toBe("22\u00a0лист\u00a0· 5\u00a0ХДФ\u00a0· 1\u00a0столеш");
   });
 });
 import { hoursBetween } from "./salaryWrite";
