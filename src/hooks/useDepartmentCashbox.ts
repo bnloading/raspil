@@ -60,7 +60,7 @@ export function useDepartmentCashbox({ orders, department }: { orders: Order[]; 
     () => settings.cashAdjustments?.[department] ?? [],
     [settings.cashAdjustments, department],
   );
-  // Admin only — the hook hands anyone else nothing (see useRentPayments).
+  // Admin and Manager — the hook hands anyone else nothing (see useRentPayments).
   const { rentPayments, loading: rentLoading } = useRentPayments();
   const rent = useMemo(
     () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),

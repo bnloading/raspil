@@ -24,10 +24,12 @@ const dmy = (day: string) => formatDateDMY(new Date(`${day}T12:00:00+05:00`));
  * Нұр balance on Касса never matched the bank. Each entry goes into the pot its method lands in, as
  * its own "+ Аренда" line beside the orders' "+ Түсті" (lib/cashbox.ts computeCashbox), dated by
  * its own day like an expense, so the accounting restart leaves out what came before it.
- * Admin-only, the page and the data both (App.tsx, firestore.rules).
+ * The Manager sees the page too, read-only: no form, no delete — writing it stays the owner's
+ * (App.tsx, firestore.rules).
  */
 export default function AdminRent() {
   const { user, userData } = useAuth();
+  const isAdmin = userData?.role === "admin";
   const department = userData ? departmentOf(userData) : "ldsp";
   const { rentPayments, loading, error } = useRentPayments();
   const { settings, loading: settingsLoading } = useAppSettings();
@@ -109,13 +111,15 @@ export default function AdminRent() {
             </div>
           </div>
 
-          <RentForm
-            methods={methods.filter((m) => m.active !== false && !m.isMixed && methodVisibleTo(m, department))}
-            department={department}
-            startDate={startDate}
-            onSaved={(name, amountTiyn) => showToast(`✅ ${name} — ${formatMoney(amountTiyn)} жазылды`)}
-            onError={showToast}
-          />
+          {isAdmin && (
+            <RentForm
+              methods={methods.filter((m) => m.active !== false && !m.isMixed && methodVisibleTo(m, department))}
+              department={department}
+              startDate={startDate}
+              onSaved={(name, amountTiyn) => showToast(`✅ ${name} — ${formatMoney(amountTiyn)} жазылды`)}
+              onError={showToast}
+            />
+          )}
 
           <section className="panel-card">
             <div className="panel-head">
@@ -126,7 +130,7 @@ export default function AdminRent() {
               <div className="empty-state">
                 <div className="icon">🏠</div>
                 <p>Әзірге аренда жазылмаған</p>
-                <span>Жоғарыдағы жолға кімнен, қанша, қай шотқа түскенін жазыңыз.</span>
+                {isAdmin && <span>Жоғарыдағы жолға кімнен, қанша, қай шотқа түскенін жазыңыз.</span>}
               </div>
             ) : (
               <div className="data-table-wrap">
@@ -138,7 +142,7 @@ export default function AdminRent() {
                       <th>Төлем түрі</th>
                       <th className="num">Сомасы</th>
                       <th>Кім жазды</th>
-                      <th />
+                      {isAdmin && <th />}
                     </tr>
                   </thead>
                   <tbody>
@@ -155,13 +159,15 @@ export default function AdminRent() {
                         </td>
                         <td className="num" data-label="Сомасы"><strong>{formatMoney(r.amountTiyn)}</strong></td>
                         <td data-label="Кім жазды" className="wh-sub">{r.createdByName}</td>
-                        <td className="num">
-                          <button type="button" className={armed === r.id ? "btn btn-outline btn-sm is-armed" : "jt-icon-btn"}
-                            title="Өшіру" aria-label={`${r.payerName} — ${formatMoney(r.amountTiyn)} жазбасын өшіру`}
-                            onClick={() => handleDelete(r)}>
-                            {armed === r.id ? "Өшіру?" : "✕"}
-                          </button>
-                        </td>
+                        {isAdmin && (
+                          <td className="num">
+                            <button type="button" className={armed === r.id ? "btn btn-outline btn-sm is-armed" : "jt-icon-btn"}
+                              title="Өшіру" aria-label={`${r.payerName} — ${formatMoney(r.amountTiyn)} жазбасын өшіру`}
+                              onClick={() => handleDelete(r)}>
+                              {armed === r.id ? "Өшіру?" : "✕"}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

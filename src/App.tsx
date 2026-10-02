@@ -204,9 +204,9 @@ export default function App() {
             <Route
               path="/admin/rent"
               element={
-                // Rent the owner takes on the side: the owner's alone, as rentPayments is in
-                // firestore.rules.
-                <RouteGuard roles={["admin"]}>
+                // Rent the owner takes on the side. The Manager sees it (read-only — the page
+                // hides the form and delete), as rentPayments is in firestore.rules.
+                <RouteGuard roles={["admin", "manager"]}>
                   <AdminRent />
                 </RouteGuard>
               }

@@ -5,16 +5,17 @@ import { useAuth } from "../AuthContext";
 import type { RentPayment } from "../types/domain";
 
 /**
- * Every rent entry ("Аренда"), newest first — for the Admin only, as firestore.rules has it.
+ * Every rent entry ("Аренда"), newest first — for the Admin and the Manager, as firestore.rules has
+ * it, so both see the same Касса.
  *
- * Anyone else gets an empty list and no listener: a Manager's Касса counts the shop's money alone,
- * and a listener the rules refuse would only hold that page's figures up. `error` is set when the
- * Admin's own read is refused — the rules for this collection not yet deployed, say — so the
- * Аренда page can say so instead of showing an empty list as if nothing had been paid.
+ * Anyone else gets an empty list and no listener: a listener the rules refuse would only hold the
+ * page's figures up. `error` is set when the read is refused — the rules for this collection not
+ * yet deployed, say — so the Аренда page can say so instead of showing an empty list as if nothing
+ * had been paid.
  */
 export function useRentPayments() {
   const { userData } = useAuth();
-  const isAdmin = userData?.role === "admin";
+  const canRead = userData?.role === "admin" || userData?.role === "manager";
   const [rentPayments, setRentPayments] = useState<RentPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export function useRentPayments() {
   useEffect(() => {
     setRentPayments([]);
     setError(null);
-    if (!isAdmin) {
+    if (!canRead) {
       setLoading(false);
       return;
     }
@@ -41,7 +42,7 @@ export function useRentPayments() {
         setLoading(false);
       },
     );
-  }, [isAdmin]);
+  }, [canRead]);
 
   return { rentPayments, loading, error };
 }

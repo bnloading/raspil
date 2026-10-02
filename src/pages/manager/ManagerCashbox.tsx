@@ -99,8 +99,8 @@ export default function ManagerCashbox() {
     () => settings.cashAdjustments?.[myDepartment] ?? [],
     [settings.cashAdjustments, myDepartment],
   );
-  // Rent the owner takes on the side ("Аренда") — only the Admin's Касса counts it; for a Manager
-  // the hook hands back nothing (firestore.rules keeps it Admin-only).
+  // Rent the owner takes on the side ("Аренда") — counted on the Admin's and the Manager's Касса
+  // alike, so the two show the same balance.
   const { rentPayments, loading: rentLoading } = useRentPayments();
   const rent = useMemo(
     () => rentPayments.filter((r) => (r.department ?? "ldsp") === myDepartment),
@@ -847,7 +847,7 @@ export function CashboxAccounts({
                 <dt>+ Түсті</dt>
                 <dd className="is-in">{formatMoney(acc.inTiyn)}</dd>
               </div>
-              {/* Admin only: the rent that landed in this account (Аренда page). */}
+              {/* The rent that landed in this account (Аренда page). */}
               {(acc.rentTiyn ?? 0) > 0 && (
                 <div>
                   <dt>+ Аренда</dt>

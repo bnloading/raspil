@@ -186,9 +186,11 @@ service cloud.firestore {
     }
 
     match /rentPayments/{id} {
-      // "Аренда" — rent the owner takes on the side (src/pages/admin/AdminRent.tsx), counted on the
-      // Admin's Касса. The owner's alone: a Manager neither reads nor writes it.
-      allow read, update, delete: if isAdmin();
+      // "Аренда" — rent the owner takes on the side (src/pages/admin/AdminRent.tsx), counted on
+      // Касса. The Manager sees it, so their Касса shows the same balance the owner's does; writing
+      // and correcting it stays the owner's.
+      allow read: if isAdminOrManager();
+      allow update, delete: if isAdmin();
       allow create: if isAdmin() && request.resource.data.createdByUid == uid();
     }
 

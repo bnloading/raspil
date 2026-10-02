@@ -768,10 +768,10 @@ describe("paying a worker from the Касса writes the expense and the advance
 });
 
 /**
- * "Аренда" — rent the owner takes on the side, counted on the Admin's Касса. The owner's alone:
- * unlike the expense log, a Manager neither sees nor writes it.
+ * "Аренда" — rent the owner takes on the side, counted on Касса. The Manager sees it, so their Касса
+ * matches the owner's; unlike the expense log, only the owner writes it.
  */
-describe("rent entries (Аренда) are the Admin's alone", () => {
+describe("rent entries (Аренда) are written by the Admin, read by the Manager too", () => {
   const rent = (uid: string) => ({
     payerName: "Жалға алушы", amountTiyn: 15000000, methodId: "nur", methodName: "Нұр", date: "2026-10-01",
     comment: "", department: "ldsp", createdByUid: uid, createdByName: uid === ADMIN_UID ? "Admin" : "Manager",
@@ -790,14 +790,24 @@ describe("rent entries (Аренда) are the Admin's alone", () => {
     await assertFails(setDoc(doc(db, "rentPayments", "rent-2"), rent(MANAGER_UID)));
   });
 
-  it("a manager can neither read nor write it", async () => {
+  it("a manager can read it but not write, correct or delete it", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "rentPayments", "rent-1"), rent(ADMIN_UID));
     });
     const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
-    await assertFails(getDoc(doc(db, "rentPayments", "rent-1")));
+    await assertSucceeds(getDoc(doc(db, "rentPayments", "rent-1")));
+    await assertSucceeds(getDocs(collection(db, "rentPayments")));
     await assertFails(setDoc(doc(db, "rentPayments", "rent-3"), rent(MANAGER_UID)));
+    await assertFails(updateDoc(doc(db, "rentPayments", "rent-1"), { amountTiyn: 1 }));
     await assertFails(deleteDoc(doc(db, "rentPayments", "rent-1")));
+  });
+
+  it("a worker cannot read it", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "rentPayments", "rent-1"), rent(ADMIN_UID));
+    });
+    const db = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(getDoc(doc(db, "rentPayments", "rent-1")));
   });
 });
 

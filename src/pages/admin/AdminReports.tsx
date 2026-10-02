@@ -605,7 +605,7 @@ function FinanceTab({
     () => settings.cashOpeningBalanceTiyn?.[department] ?? {},
     [settings.cashOpeningBalanceTiyn, department],
   );
-  // Rent (Аренда) is in these same accounts; the hook gives it to the Admin only.
+  // Rent (Аренда) is in these same accounts; the hook gives it to the Admin and the Manager.
   const { rentPayments } = useRentPayments();
   const rent = useMemo(
     () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),
