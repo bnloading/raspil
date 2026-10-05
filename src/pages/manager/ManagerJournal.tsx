@@ -88,7 +88,7 @@ import {
 } from "../../lib/customerSuggest";
 import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
-import { correctPaymentAmount, paymentNote, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
+import { correctPaymentAmount, paymentNote, paymentNotes, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
 import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
 import { sheetsKeptOnCancel } from "../../lib/orderLines";
 import {
@@ -341,6 +341,8 @@ export default function ManagerJournal() {
 
   /** Order whose payment dialog is open. */
   const [payFor, setPayFor] = useState<Order | null>(null);
+  /** «Жартылай» on a settled row: the note of the money it reversed, for the payment dialog to open on. */
+  const [carriedNote, setCarriedNote] = useState<{ orderId: string; note: string } | null>(null);
   /** A cut row being struck off — asks whether its sheets go back (see handleDeleteOrder). */
   const [strikeFor, setStrikeFor] = useState<Order | null>(null);
 
@@ -804,7 +806,10 @@ export default function ManagerJournal() {
       // first and the manager types the real figure into the dialog.
       if (paid > 0 && remaining <= 0) {
         if (!confirm("Тіркелген төлемдер қайтарылып, жаңа сома жазылады. Жалғастырасыз ба?")) return;
+        // The dialog opens on what was written on the money it replaces, rather than losing it.
+        const notes = paymentNotes(livePaymentsFor(order.id)).join(" · ");
         await reverseLivePayments(order, "Жартылай төлемге өзгертілді");
+        setCarriedNote({ orderId: order.id, note: notes });
       }
       setPayFor(order);
     } catch (err: unknown) {
@@ -843,6 +848,9 @@ export default function ManagerJournal() {
       if (!confirm(
         `Тіркелген ${formatMoney(paid)} қайтарылып, орнына ${formatMoney(targetTiyn)} жазылады. Жалғастырасыз ба?`,
       )) return;
+      // What was written on the money goes with it. Re-recorded under the app's own tag alone, the
+      // note — "30000" on the cash — dropped off the row the owner reads it on.
+      const notes = paymentNotes(live).join(" · ");
       await reverseLivePayments(order, "Журналда төленген сома түзетілді");
       if (targetTiyn > 0) {
         await recordPayment(db, actor, {
@@ -850,7 +858,7 @@ export default function ManagerJournal() {
           amountTiyn: targetTiyn,
           methodId: method.id,
           methodName: method.name,
-          comment: "Журналда түзетілді",
+          comment: notes || "Журналда түзетілді",
         });
       }
       showToast("✅ Төленген сома түзетілді");
@@ -1111,6 +1119,7 @@ export default function ManagerJournal() {
       const label = resolved.length > 1 ? "Аралас" : lastMethod.name;
       showToast(`✅ Төлем тіркелді — ${label}. Өндіріске беру үшін «Распилға жіберу» басыңыз`);
       setPayFor(null);
+      setCarriedNote(null);
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
     }
@@ -1424,8 +1433,7 @@ export default function ManagerJournal() {
                   (paymentsByOrder.get(order.id) ?? []).find((p) => !p.reversed)?.methodName,
                 );
                 // A phone has no hover, so what was written on the cash is shown on the card itself.
-                const cardNotes = (paymentsByOrder.get(order.id) ?? [])
-                  .filter((p) => !p.reversed).map(paymentNote).filter((n): n is string => !!n);
+                const cardNotes = paymentNotes(paymentsByOrder.get(order.id) ?? []);
                 const lines = linesOf(order);
                 const cardAbsorbed = absorbedByParent.get(order.id) ?? EMPTY_ORDERS;
                 const cardSheets = sheetSummary(lines);
@@ -1740,7 +1748,11 @@ export default function ManagerJournal() {
           onChangeAmount={handleChangeAmount}
           order={payFor}
           methods={methods}
-          onClose={() => setPayFor(null)}
+          initialNote={carriedNote?.orderId === payFor.id ? carriedNote.note : ""}
+          onClose={() => {
+            setPayFor(null);
+            setCarriedNote(null);
+          }}
           onSubmit={(legs, note) => handleAddPayment(payFor, legs, note)}
         />
       )}
@@ -1831,6 +1843,7 @@ function PaymentDialog({
   methods,
   payments,
   remainingTiyn,
+  initialNote = "",
   onChangeMethod,
   onChangeAmount,
   onClose,
@@ -1838,6 +1851,8 @@ function PaymentDialog({
 }: {
   order: Order;
   methods: PaymentMethodDef[];
+  /** What the cash note opens on — the note of the money «Жартылай» just reversed, to keep or retype. */
+  initialNote?: string;
   /** Live (non-reversed) payments on this order — each one's method and amount stay editable. */
   payments: Payment[];
   /**
@@ -1894,7 +1909,7 @@ function PaymentDialog({
    * the bank; cash taken at the counter has nothing but what is written here, so the box appears
    * the moment the cash method is picked (or a cash leg of an Аралас split), and stays optional.
    */
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialNote);
   const isCash = (id: string) => {
     const method = methods.find((m) => m.id === id);
     return !!method && accountForMethod(method) === "cash";
@@ -2314,8 +2329,13 @@ function JournalRow({
       return `${name}: ${formatMoney(amount)}`;
     })
     .join(" · ");
-  // What was written on the cash ("Ерболға берілді") — the pill carries a 💬 and says it on hover.
-  const notes = payments.filter((p) => !p.reversed).map(paymentNote).filter((n): n is string => !!n);
+  // What people wrote on the money — mostly the cash note, "Ерболға берілді", "30000" — written out
+  // under the method it came in by. It used to be a 💬 on the pill with the words on hover, and the
+  // owner asked to see it on the page (05.10): the ledger is read down the rows, not one hover at a time.
+  const notes = paymentNotes(payments);
+  const noteLine = notes.length > 0 && (
+    <div className="jt-method-note" title={notes.join("\n")}>💬 {notes.join(" · ")}</div>
+  );
 
   const shortNum = shortOrderNumber(order.orderNumber);
   /**
@@ -2469,6 +2489,8 @@ function JournalRow({
         {preview.debtTiyn < 0 && (
           <div className="jt-pay-owing is-over">Артық: {formatMoneyBare(-preview.debtTiyn)} ₸</div>
         )}
+        {/* "Төлем түрі" switched off: what was written on the cash stays on the row, under Төлем. */}
+        {!show("method") && noteLine}
       </td>
 
       {/* Which pot the money landed in, in the colour the counter already calls it by. Clicking
@@ -2476,9 +2498,10 @@ function JournalRow({
       {show("method") && (
         <td className="jt-w-method">
           <button className={`jt-method-pill is-${methodTone(methodId)}`} onClick={onAddPayment}
-            title={[methodBreakdown || "Төлем тіркеу", ...notes.map((n) => `💬 ${n}`)].join("\n")}>
-            {methodLabel}{notes.length > 0 && " 💬"}
+            title={methodBreakdown || "Төлем тіркеу"}>
+            {methodLabel}
           </button>
+          {noteLine}
         </td>
       )}
 

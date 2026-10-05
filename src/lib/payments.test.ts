@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Timestamp } from "firebase/firestore";
-import { paymentNote, planOverpaymentTrim } from "./payments";
+import { paymentNote, paymentNotes, planOverpaymentTrim } from "./payments";
 
 describe("paymentNote — what a person wrote on the cash, not the app's own tag", () => {
   it("returns what was typed", () => {
@@ -12,6 +12,26 @@ describe("paymentNote — what a person wrote on the cash, not the app's own tag
     expect(paymentNote({ comment: "Журналда түзетілді" })).toBeNull();
     expect(paymentNote({ comment: "" })).toBeNull();
     expect(paymentNote({})).toBeNull();
+  });
+});
+
+describe("paymentNotes — what the journal row prints under its method", () => {
+  it("keeps what people wrote on live payments, in order, each once", () => {
+    // An Аралас split with two cash legs writes its one note on both; then a second payment.
+    expect(paymentNotes([
+      { comment: "10000 Казак", reversed: false },
+      { comment: "10000 Казак", reversed: false },
+      { comment: "Журнал арқылы", reversed: false },
+      { comment: "Ерболға берілді", reversed: false },
+    ])).toEqual(["10000 Казак", "Ерболға берілді"]);
+  });
+
+  it("drops reversed money and the app's own tags", () => {
+    expect(paymentNotes([
+      { comment: "30000", reversed: true },
+      { comment: "Журналда түзетілді", reversed: false },
+      { reversed: false },
+    ])).toEqual([]);
   });
 });
 

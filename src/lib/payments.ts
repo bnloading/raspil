@@ -39,6 +39,16 @@ export function paymentNote(payment: Pick<Payment, "comment">): string | null {
 }
 
 /**
+ * Everything people wrote on an order's live payments, each once, in the order given — what the
+ * journal row prints under its method ("💬 30000"). Once each: an Аралас split writes the one cash
+ * note on every cash leg, and "30000 · 30000" says nothing the first one did not.
+ */
+export function paymentNotes(payments: readonly Pick<Payment, "comment" | "reversed">[]): string[] {
+  const notes = payments.filter((p) => !p.reversed).map(paymentNote).filter((n): n is string => !!n);
+  return [...new Set(notes)];
+}
+
+/**
  * Records one payment (or one leg of a mixed payment — call once per method/amount pair) and
  * atomically recalculates the order's paidTiyn/debtTiyn/paymentStatus from the new total. Runs in
  * a transaction so concurrent payments never race each other's totals.
