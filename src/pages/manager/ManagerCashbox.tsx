@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { arrayRemove, arrayUnion, collection, deleteField, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { arrayRemove, arrayUnion, collection, deleteField, doc, getDocs, runTransaction, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
@@ -36,7 +36,18 @@ import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import { shortOrderNumber } from "../../lib/orderCode";
-import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef, UserRole } from "../../types/domain";
+import {
+  currentSettlements,
+  isEmptyPlan,
+  nextSettlementStart,
+  orderNumberLike,
+  planSettlement,
+  settlementFromPlan,
+  settlementOfExpense,
+  settlementsInOrder,
+  type SettlementInput,
+} from "../../lib/settlements";
+import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef, Settlement, UserRole } from "../../types/domain";
 import type { CashboxSummary } from "../../lib/cashbox";
 
 /**
@@ -98,6 +109,11 @@ export default function ManagerCashbox() {
   const adjustments = useMemo(
     () => settings.cashAdjustments?.[myDepartment] ?? [],
     [settings.cashAdjustments, myDepartment],
+  );
+  // This line's «расчет»s, oldest first — what each expense below was settled in (lib/settlements.ts).
+  const settlements = useMemo(
+    () => settlementsInOrder(settings.settlements?.[myDepartment]),
+    [settings.settlements, myDepartment],
   );
   // Rent the owner takes on the side ("Аренда") — counted on the Admin's and the Manager's Касса
   // alike, so the two show the same balance.
@@ -162,6 +178,12 @@ export default function ManagerCashbox() {
     }),
     [payments, expenses, methods, openingBalanceTiyn, cashStartDate, cashStartOrderNumber, orders, adjustments, rent],
   );
+  const settlementInput = useMemo<SettlementInput>(
+    () => ({
+      payments, expenses, methods, orders: deptOrders, settlements, startDate: cashStartDate, startOrderNumber: cashStartOrderNumber,
+    }),
+    [payments, expenses, methods, deptOrders, settlements, cashStartDate, cashStartOrderNumber],
+  );
   const rows = useMemo(
     () => expensesInPeriod(expenses, effectivePeriod, cashStartDate),
     [expenses, effectivePeriod, cashStartDate],
@@ -187,7 +209,12 @@ export default function ManagerCashbox() {
       return;
     }
     const extra = expense.advanceId ? `\n\n${expense.paidToName}-нің айлығындағы аванс та қайтарылады.` : "";
-    if (!confirm(`"${expense.name}" — ${formatMoney(expense.amountTiyn)} жазбасын өшіресіз бе?${extra}`)) return;
+    // Taken by a settlement already: deleting it is still right, and the next one shows it as «түзету».
+    const settledIn = settlementOfExpense(expense, settlements, cashStartDate);
+    const settledNote = settledIn
+      ? `\n\nБұл шығын ${settlementRange(settledIn)} расчетта есептелді — өшірсеңіз, келесі расчетта «түзету» болып шығады.`
+      : "";
+    if (!confirm(`"${expense.name}" — ${formatMoney(expense.amountTiyn)} жазбасын өшіресіз бе?${extra}${settledNote}`)) return;
     try {
       await deleteExpense(db, { user, userData }, expense);
       showToast("✅ Жазба өшірілді");
@@ -289,6 +316,12 @@ export default function ManagerCashbox() {
             onCountPayment={isAdmin ? handleCountPayment : undefined}
             onRemoveAdjustment={isAdmin ? handleRemoveAdjustment : undefined} />
 
+          {/* ЛДСП only for now: МДФ runs from the same global restart order (№281) but has no orders of
+              its own past it yet, and its journal draws no settlement lines. */}
+          {isAdmin && myDepartment === "ldsp" && (
+            <SettlementPanel department={myDepartment} input={settlementInput} onToast={showToast} />
+          )}
+
           <ExpenseForm
             defaultDate={expenseDefaultDate(effectivePeriod)}
             cashStartDate={cashStartDate}
@@ -332,6 +365,7 @@ export default function ManagerCashbox() {
                           {e.paidToName && e.payPeriodKey && (
                             <div className="wh-sub">👤 {e.paidToName} · {periodLabel(e.payPeriodKey)} айлығынан</div>
                           )}
+                          <SettledTag settlement={settlementOfExpense(e, settlements, cashStartDate)} />
                         </td>
                         <td data-label="Қайдан">
                           <span className={`cashbox-tag is-${accountForExpense(e)}`}>
@@ -374,7 +408,7 @@ export default function ManagerCashbox() {
             </section>
           )}
 
-          <ExpenseHistory weeks={expenseWeeks} startDate={cashStartDate} />
+          <ExpenseHistory weeks={expenseWeeks} startDate={cashStartDate} settlements={settlements} />
 
           {isAdmin && (
             <MethodAccounts methods={methods} setMethods={setMethods} department={myDepartment} onError={showToast} />
@@ -953,7 +987,11 @@ export function CashboxAccounts({
  * they are kept to be read — the whole week's total on the line, its entries underneath, and the
  * ones Касса no longer counts said so.
  */
-function ExpenseHistory({ weeks, startDate }: { weeks: ExpenseWeek[]; startDate: string | null }) {
+function ExpenseHistory({ weeks, startDate, settlements }: {
+  weeks: ExpenseWeek[];
+  startDate: string | null;
+  settlements: Settlement[];
+}) {
   if (weeks.length === 0) return null;
   const today = dayKey(new Date());
   return (
@@ -983,6 +1021,7 @@ function ExpenseHistory({ weeks, startDate }: { weeks: ExpenseWeek[]; startDate:
                       {e.name}
                       {e.comment && <small> · {e.comment}</small>}
                       {!settled && startDate && e.date < startDate && <small> · Кассаға кірмейді</small>}
+                      <SettledTag settlement={settlementOfExpense(e, settlements, startDate)} inline />
                     </span>
                     <span className={`cashbox-tag is-${accountForExpense(e)}`}>{CASH_ACCOUNT_LABELS[accountForExpense(e)]}</span>
                     <strong>{formatMoney(e.amountTiyn)}</strong>
@@ -999,6 +1038,299 @@ function ExpenseHistory({ weeks, startDate }: { weeks: ExpenseWeek[]; startDate:
 
 /** "+1 385 385 ₸" / "−22 000 ₸" */
 const signed = (tiyn: number) => (tiyn < 0 ? `−${formatMoney(-tiyn)}` : `+${formatMoney(tiyn)}`);
+
+// Named rather than typed in: invisible in the source, and a line break is the one thing they stop.
+const WORD_JOINER = String.fromCharCode(0x2060);
+const NBSP = String.fromCharCode(0xa0);
+
+/**
+ * "№281–№300", or "№319" for a single order. On screen a word joiner follows the dash, so a line
+ * never breaks inside a range; text that is saved (audit comments) is kept plain, so it can be searched.
+ */
+const settlementRange =(s: Pick<Settlement, "fromOrderNumber" | "toOrderNumber">, saved = false) => {
+  const from = shortOrderNumber(s.fromOrderNumber);
+  const to = shortOrderNumber(s.toOrderNumber);
+  return from === to ? `№${to}` : `№${from}–${saved ? "" : WORD_JOINER}№${to}`;
+};
+
+/** "✓ №281–№300 расчетта есептелді" — the settlement an expense was counted in, once there is one. */
+function SettledTag({ settlement, inline = false }: { settlement: Settlement | null; inline?: boolean }) {
+  if (!settlement) return null;
+  const label = `✓${NBSP}${settlementRange(settlement)} расчетта есептелді`;
+  return inline ? <small className="settled-tag"> · {label}</small> : <div className="wh-sub settled-tag">{label}</div>;
+}
+
+/** A sum that never splits from its ₸ across a line break. */
+const Money = ({ tiyn, sign = false }: { tiyn: number; sign?: boolean }) => (
+  <span className="jt-nowrap">{sign ? signed(tiyn) : formatMoney(tiyn)}</span>
+);
+
+/**
+ * «Расчет» — the owner closes a run of orders: the money that came in on them, less the expenses
+ * since the last settlement (lib/settlements.ts), as they asked on 05.10. Касса carries on as it
+ * is; the journal draws a line under the last order, and the expenses taken read "№281–№300
+ * расчетта есептелді", so the next settlement does not take them again.
+ *
+ * Saved in a transaction that checks the settlement it was planned after is still the last one:
+ * two Admins settling at once, or a stale tab, would otherwise store the same orders twice. Only
+ * the latest can be taken back — its payments and expenses then wait for the next one again.
+ */
+function SettlementPanel({
+  department,
+  input,
+  onToast,
+}: {
+  department: Department;
+  /** This line's records; `input.orders` is also where the last order to settle is picked from. */
+  input: SettlementInput;
+  onToast: (message: string) => void;
+}) {
+  const { user, userData } = useAuth();
+  // Every settlement, for the history and the one undo; the ones under the restart in force, for what comes next.
+  const settled = useMemo(() => settlementsInOrder(input.settlements), [input.settlements]);
+  const current = useMemo(
+    () => currentSettlements(input.settlements, input.startDate, input.startOrderNumber),
+    [input.settlements, input.startDate, input.startOrderNumber],
+  );
+  const last = settled.at(-1) ?? null;
+  const from = nextSettlementStart(current, input.startOrderNumber, input.orders);
+  // This line's live orders, oldest first: what can be settled up to, and what "up to now" means.
+  const liveNumbers = useMemo(
+    () => input.orders
+      .filter((o) => o.productionStatus !== "cancelled" && o.productionStatus !== "draft" && !o.mergedIntoOrderId)
+      .map((o) => o.orderNumber)
+      .sort(),
+    [input.orders],
+  );
+  const latest = liveNumbers.at(-1) ?? null;
+  const [toText, setToText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [armedId, setArmedId] = useState<string | null>(null);
+
+  const typed = toText.trim() === "" ? null : Number(toText.trim());
+  // A typed number is the first live order from here on that carries it — in January, "500" is
+  // still last December's №500 while it waits to be settled — else read in the newest order's year.
+  const to = typed === null ? latest
+    : !Number.isInteger(typed) || typed <= 0 ? null
+    : liveNumbers.find((n) => (!from || n >= from) && Number(shortOrderNumber(n)) === typed)
+      ?? (latest ? orderNumberLike(latest, typed) : null);
+  const allSettled = typed === null && !!from && !!latest && latest < from;
+  const problem =
+    !from ? "Касса қай заказдан басталатыны белгіленбеген"
+    : allSettled ? null
+    : !to ? "Заказ нөмірін жазыңыз"
+    : to < from ? `№${shortOrderNumber(from)}-дан кіші болмауы керек`
+    : !liveNumbers.includes(to) ? `№${shortOrderNumber(to)} деген заказ журналда жоқ`
+    : null;
+  // Which pot a payment lands in is read off its method: settle only once the methods are in. A
+  // record still being saved has no server time yet, so it could not be placed either side of the line.
+  const ready = input.methods.length > 0;
+  const pendingWrite = input.payments.some((p) => p.createdAt === null) || input.expenses.some((e) => e.createdAt === null);
+  const plan = useMemo(
+    () => (problem || allSettled || !to ? null : planSettlement(input, to)),
+    [problem, allSettled, input, to],
+  );
+  // Every order settled: what is already waiting for the next one, so a late payment or a new
+  // expense is never out of sight just because no new order has come in yet.
+  const waiting = useMemo(
+    () => (allSettled && latest ? planSettlement(input, latest) : null),
+    [allSettled, latest, input],
+  );
+  const carried = !!plan && (plan.carriedIncomeTiyn !== 0 || plan.carriedExpenseTiyn !== 0);
+  const potsCarried = !!plan && CASH_ACCOUNTS.some((a) => plan.carriedByAccount[a] !== 0);
+
+  const settingsRef = doc(db, "applicationSettings", "global");
+  /** The line's settlements as stored now, oldest first. */
+  const storedSettlements = (snap: { data(): unknown }) =>
+    settlementsInOrder((snap.data() as { settlements?: Partial<Record<Department, Settlement[]>> } | undefined)?.settlements?.[department]);
+
+  const handleCreate = async () => {
+    if (!user || !userData || !plan) return;
+    const range = settlementRange(plan);
+    const carriedLine = carried
+      ? `\nБұрынғы расчеттардан кейінгі түзету: ${signed(plan.carriedIncomeTiyn - plan.carriedExpenseTiyn)}`
+      : "";
+    if (!confirm(
+      `${range} расчет жасалсын ба?\n\nТүскен ақша: ${formatMoney(plan.incomeTiyn)}\nШығын: ${formatMoney(plan.expenseTiyn)}` +
+      `${carriedLine}\nНәтиже: ${signed(plan.resultTiyn)}`,
+    )) return;
+    const settlement = settlementFromPlan(plan, crypto.randomUUID(), { uid: user.uid, name: userData.name });
+    setSaving(true);
+    setArmedId(null);
+    try {
+      await runTransaction(db, async (tx) => {
+        const current = storedSettlements(await tx.get(settingsRef));
+        if ((current.at(-1)?.id ?? null) !== (last?.id ?? null)) {
+          throw new Error("басқа расчет жаңа ғана жасалды — бетті қайта қарап шығыңыз");
+        }
+        tx.update(settingsRef, { [`settlements.${department}`]: [...current, settlement] });
+      });
+      await logAudit(db, { user, userData }, {
+        action: "cash.settlement.add", entityType: "applicationSettings", entityId: "global",
+        after: { ...settlement }, comment: `${settlementRange(plan, true)} расчет · ${signed(settlement.resultTiyn)}`,
+      }).catch(() => {});
+      onToast(`✅ ${range} расчет жасалды`);
+      setToText("");
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+    setSaving(false);
+  };
+
+  const handleUndo = async (s: Settlement) => {
+    if (!user || !userData) return;
+    setArmedId(null);
+    try {
+      await runTransaction(db, async (tx) => {
+        const current = storedSettlements(await tx.get(settingsRef));
+        if (current.at(-1)?.id !== s.id) throw new Error("бұл расчет енді соңғысы емес — өшірілмейді");
+        tx.update(settingsRef, { [`settlements.${department}`]: current.filter((x) => x.id !== s.id) });
+      });
+      await logAudit(db, { user, userData }, {
+        action: "cash.settlement.remove", entityType: "applicationSettings", entityId: "global",
+        before: { ...s }, comment: `${settlementRange(s, true)} расчет өшірілді`,
+      }).catch(() => {});
+      onToast(`✅ ${settlementRange(s)} расчет өшірілді — оның ақшасы мен шығындары келесі расчетқа кіреді`);
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  return (
+    <section className="panel-card settlement-card">
+      <div className="panel-head">
+        <h3>Расчет</h3>
+        {from && <span className="wh-sub">келесісі №{shortOrderNumber(from)} заказдан</span>}
+      </div>
+      <div className="form-group">
+        <label htmlFor="settle-to">Қай заказға дейін? (№)</label>
+        <input id="settle-to" className="form-input settlement-to" type="text" inputMode="numeric" autoComplete="off"
+          value={toText} placeholder={latest ? shortOrderNumber(latest) : ""}
+          onChange={(e) => setToText(e.target.value.replace(/\D/g, ""))} />
+        {problem && <p className="form-hint is-error">{problem}</p>}
+        {allSettled && latest && (
+          <p className="form-hint">
+            Барлық заказ есептелді (<span className="jt-nowrap">№{shortOrderNumber(latest)}-ға</span> дейін) — келесі расчет
+            №{shortOrderNumber(from)} заказдан.
+            {waiting && !isEmptyPlan(waiting) && (
+              <>
+                {" "}Оған қазірдің өзінде күтіп тұр: түскен <Money tiyn={waiting.incomeTiyn + waiting.carriedIncomeTiyn} />,
+                шығын <Money tiyn={waiting.expenseTiyn + waiting.carriedExpenseTiyn} />.
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      {plan && (
+        <>
+          <dl className="settlement-sum">
+            <div>
+              <dt>Түскен ақша · {settlementRange(plan)} заказдары</dt>
+              <dd><Money tiyn={plan.incomeTiyn} /></dd>
+            </div>
+            <div className="is-sub">
+              <dt>
+                {CASH_ACCOUNTS.map((a, i) => (
+                  <span key={a}>
+                    {i > 0 && " · "}
+                    <span className="settlement-pot">{CASH_ACCOUNT_LABELS[a]} {formatMoney(plan.incomeByAccount[a])}</span>
+                  </span>
+                ))}
+              </dt>
+            </div>
+            {plan.lateIncomeTiyn > 0 && (
+              <div className="is-sub">
+                <dt>
+                  оның ішінде <span className="jt-nowrap">№{shortOrderNumber(plan.fromOrderNumber)}-дан</span> бұрынғы
+                  заказдарға кейін түскені
+                </dt>
+                <dd><Money tiyn={plan.lateIncomeTiyn} /></dd>
+              </div>
+            )}
+            <div>
+              <dt>Шығын · {plan.expenses.length} жазба</dt>
+              <dd><Money tiyn={-plan.expenseTiyn} sign /></dd>
+            </div>
+            {/* What moved in the earlier settlements' own records since they were made — a figure
+                retyped, a payment reversed, an expense deleted (lib/settlements.ts). */}
+            {plan.carriedIncomeTiyn !== 0 && (
+              <div title="Бұрынғы расчетқа кірген төлемдер кейін түзетілген, қайтарылған немесе Кассаға қосылған">
+                <dt>Түзету · бұрынғы төлемдер</dt>
+                <dd><Money tiyn={plan.carriedIncomeTiyn} sign /></dd>
+              </div>
+            )}
+            {potsCarried && (
+              <div className="is-sub">
+                <dt>
+                  {CASH_ACCOUNTS.filter((a) => plan.carriedByAccount[a] !== 0).map((a, i) => (
+                    <span key={a}>
+                      {i > 0 && " · "}
+                      <span className="settlement-pot">{CASH_ACCOUNT_LABELS[a]} {signed(plan.carriedByAccount[a])}</span>
+                    </span>
+                  ))}
+                </dt>
+              </div>
+            )}
+            {plan.carriedExpenseTiyn !== 0 && (
+              <div title="Бұрынғы расчетқа кірген шығындар кейін өшірілген немесе өзгерген">
+                <dt>Түзету · бұрынғы шығындар</dt>
+                <dd><Money tiyn={-plan.carriedExpenseTiyn} sign /></dd>
+              </div>
+            )}
+            <div className="is-total">
+              <dt>Нәтиже</dt>
+              <dd className={plan.resultTiyn < 0 ? "is-out" : "is-in"}><Money tiyn={plan.resultTiyn} sign /></dd>
+            </div>
+          </dl>
+          {plan.deferredTiyn > 0 && (
+            <p className="form-hint">
+              №{shortOrderNumber(plan.toOrderNumber)}-дан кейінгі заказдарға түскен <Money tiyn={plan.deferredTiyn} /> келесі расчетқа қалады.
+            </p>
+          )}
+          <p className="form-hint">Аренда мен Касса түзетулері заказдың ақшасы емес — расчетқа кірмейді. Касса қалдығы өзгермейді.</p>
+          {!ready && <p className="form-hint">Төлем түрлері жүктелуде…</p>}
+          {pendingWrite && <p className="form-hint">Жаңа жазба сақталып жатыр — бір сәт күтіңіз.</p>}
+          <button type="button" className="btn btn-primary" disabled={saving || !ready || pendingWrite || isEmptyPlan(plan)}
+            onClick={handleCreate}>
+            {saving ? "Сақталуда…" : `✓ ${settlementRange(plan)} расчет жасау`}
+          </button>
+        </>
+      )}
+
+      {settled.length > 0 && (
+        <details className="cashbox-excluded settlement-history" open>
+          <summary>Расчеттар: {settled.length}</summary>
+          <ul>
+            {[...settled].reverse().map((s) => {
+              const carriedNet = (s.carriedIncomeTiyn ?? 0) - (s.carriedExpenseTiyn ?? 0);
+              return (
+                <li key={s.id}>
+                  <span>
+                    <b>{settlementRange(s)}</b> · {dmy(s.date)} · {s.byName}
+                    <br />
+                    <small>
+                      <span className="jt-nowrap">түскен {formatMoney(s.incomeTiyn)}</span>
+                      {" − "}<span className="jt-nowrap">шығын {formatMoney(s.expenseTiyn)}</span>
+                      {carriedNet !== 0 && <> · <span className="jt-nowrap">түзету {signed(carriedNet)}</span></>}
+                    </small>
+                  </span>
+                  <strong>{signed(s.resultTiyn)}</strong>
+                  {s.id === last?.id && (
+                    <button type="button" className={armedId === s.id ? "btn btn-outline btn-sm is-armed" : "jt-icon-btn"}
+                      title="Өшіру" aria-label={`${settlementRange(s)} расчетын өшіру`}
+                      onClick={() => (armedId === s.id ? handleUndo(s) : setArmedId(s.id))}>
+                      {armedId === s.id ? "Өшіру?" : "✕"}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
 
 /**
  * "Банкпен теңестіру" — Admin types what the account really holds right now, and the difference

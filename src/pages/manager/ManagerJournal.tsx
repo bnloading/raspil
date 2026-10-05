@@ -97,7 +97,8 @@ import {
   PAYMENT_STATUS_LABELS,
   PRODUCTION_STATUS_ORDER,
 } from "../../lib/statuses";
-import type { Material, Order, OrderLineJob, Payment, PaymentMethodDef, PaymentStatus, PvcType } from "../../types/domain";
+import { currentSettlements, nextSettlementStart, settlementsInOrder } from "../../lib/settlements";
+import type { Material, Order, OrderLineJob, Payment, PaymentMethodDef, PaymentStatus, PvcType, Settlement } from "../../types/domain";
 
 // SHOW_ALL last: the escape hatch for "just show me everything", which is what a manager
 // reaches for the first time they notice the ledger has more pages than they expected.
@@ -593,6 +594,38 @@ export default function ManagerJournal() {
   const booksLine = booksStartOrderNumber
     ? { orderNumber: booksStartOrderNumber, date: settings.cashStartDate ?? null }
     : null;
+
+  /**
+   * Each «расчет» ruled under its last order — "№281–№300 расчет істелді" (lib/settlements.ts).
+   * Keyed by the row it falls under, found over `filtered` like the line above, so it stays with
+   * that order whichever page it lands on: under the LAST row it covers, so a row whose Күні was
+   * moved and now sits lower down is still above the line it was settled in. `next` comes from the
+   * chain — the next settlement's first order, or where the next one will start (across New Year,
+   * №1 rather than №501) — so a search or a chip that hides rows never makes it read wrong.
+   */
+  const lineSettlements = useMemo(
+    () => settlementsInOrder(settings.settlements?.[myDepartment]),
+    [settings.settlements, myDepartment],
+  );
+  const nextAfterLastSettlement = useMemo(
+    () => nextSettlementStart(
+      currentSettlements(lineSettlements, settings.cashStartDate ?? null, settings.cashStartOrderNumber ?? null),
+      settings.cashStartOrderNumber ?? null,
+      orders.filter((o) => departmentOfOrder(o) === myDepartment),
+    ),
+    [lineSettlements, settings.cashStartDate, settings.cashStartOrderNumber, orders, myDepartment],
+  );
+  const settlementLinesAfter = useMemo(() => {
+    const after = new Map<string, { settlement: Settlement; next: string | null }[]>();
+    lineSettlements.forEach((s, k) => {
+      let i = filtered.length - 1;
+      while (i >= 0 && filtered[i].orderNumber > s.toOrderNumber) i--;
+      if (i < 0) return;
+      const next = lineSettlements[k + 1]?.fromOrderNumber ?? nextAfterLastSettlement;
+      after.set(filtered[i].id, [...(after.get(filtered[i].id) ?? []), { settlement: s, next }]);
+    });
+    return after;
+  }, [filtered, lineSettlements, nextAfterLastSettlement]);
 
   /**
    * "Материал" — the materials this line's ledger is cut from. Taken from every live row rather
@@ -1532,6 +1565,11 @@ export default function ManagerJournal() {
                       🗑 Жолды өшіру
                     </button>
                   </div>
+                  {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
+                    <div key={settlement.id} className="journal-card-books" role="separator">
+                      <SettlementLine settlement={settlement} next={next} />
+                    </div>
+                  ))}
                   </Fragment>
                 );
               })
@@ -1619,6 +1657,11 @@ export default function ManagerJournal() {
                       onDelete={() => handleDeleteOrder(order)}
                       onError={showToast}
                     />
+                    {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
+                      <tr key={settlement.id} className="jt-books">
+                        <td colSpan={bodyColSpan}><SettlementLine settlement={settlement} next={next} /></td>
+                      </tr>
+                    ))}
                     </Fragment>
                   ))}
                   {pageView.newerCount > 0 && (
@@ -2183,6 +2226,25 @@ function HiddenRowsNotice({
         </button>
       </td>
     </tr>
+  );
+}
+
+/**
+ * Under a settlement's last order: "✓ №281–№300 расчет істелді · 05.10.2026 · ↓ келесі расчет
+ * №301 заказдан басталады". `next` is where the next settlement starts — taken from the chain of
+ * settlements, never from the row below, which a search or a moved Күні can make any order at all.
+ */
+function SettlementLine({ settlement, next }: { settlement: Settlement; next: string | null }) {
+  const from = shortOrderNumber(settlement.fromOrderNumber);
+  const to = shortOrderNumber(settlement.toOrderNumber);
+  return (
+    <>
+      <span className="jt-books-text">
+        ✓ <b className="jt-nowrap">№{from === to ? to : `${from}–№${to}`}</b> расчет істелді
+      </span>
+      <span className="jt-books-date">{formatDateDMY(new Date(`${settlement.date}T12:00:00+05:00`))}</span>
+      {next && <span className="jt-books-next">↓ келесі расчет №{shortOrderNumber(next)} заказдан басталады</span>}
+    </>
   );
 }
 

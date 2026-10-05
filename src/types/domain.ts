@@ -1036,6 +1036,52 @@ export interface ApplicationSettings {
    * account held on `cashStartDate`, and every correction stays visible with its date and reason.
    */
   cashAdjustments?: Partial<Record<Department, CashAdjustment[]>>;
+  /**
+   * The owner's «расчет»s, oldest first per line — "№281-ден №300-ге дейін расчет істелді" — see
+   * lib/settlements.ts. Same department keying and Admin-only write as the corrections above.
+   */
+  settlements?: Partial<Record<Department, Settlement[]>>;
+}
+
+/**
+ * One «расчет»: the money that came in on a run of orders, less the expenses since the last one.
+ *
+ * It stores where it ends and when it was made, not a list of what it took — that pair is enough
+ * to say which settlement any payment or expense belongs to (lib/settlements.ts) — plus the totals
+ * it came to, so correcting a record afterwards never rewrites a settlement already made.
+ */
+export interface Settlement {
+  id: string;
+  /** "ORD-2026-000281" — the first order it covers: the one after the last settlement's, or where the books start. */
+  fromOrderNumber: string;
+  /** "ORD-2026-000300" — the last; the journal draws its line under this row. */
+  toOrderNumber: string;
+  /** The Касса restart it was made under (cashStartDate / cashStartOrderNumber then) — a later restart leaves it as history. */
+  startDate: string | null;
+  startOrderNumber: string | null;
+  /** Payments and expenses recorded up to this moment (epoch ms, server time) and not settled before are in it. */
+  atMs: number;
+  /** "YYYY-MM-DD" in Almaty — the day it was made. */
+  date: string;
+  incomeTiyn: number;
+  incomeByAccount: Record<CashAccount, number>;
+  /** Of incomeTiyn: money on orders before fromOrderNumber that came in after they were settled. */
+  lateIncomeTiyn: number;
+  paymentCount: number;
+  expenseTiyn: number;
+  expenseCount: number;
+  /**
+   * «түзету»: how far the earlier settlements' records had moved by the time this one was made — a
+   * payment retyped or reversed, an expense deleted, an old order's money brought in — so the
+   * settlements together keep coming to what Касса counts (lib/settlements.ts).
+   */
+  carriedIncomeTiyn: number;
+  carriedByAccount: Record<CashAccount, number>;
+  carriedExpenseTiyn: number;
+  /** incomeTiyn + carriedIncomeTiyn − expenseTiyn − carriedExpenseTiyn. */
+  resultTiyn: number;
+  byUid: string;
+  byName: string;
 }
 
 /** One dated correction to a Касса pot (see ApplicationSettings.cashAdjustments). */

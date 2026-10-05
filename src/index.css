@@ -8168,6 +8168,39 @@ body {
 .cashbox-excluded li { align-items: center; flex-wrap: wrap; }
 .cashbox-excluded li .btn,
 .cashbox-excluded li .jt-icon-btn { flex: 0 0 auto; }
+/* «Расчет»: what the next settlement would come to, a line per figure, the result last and heaviest.
+   Capped in width so a figure stays within reach of its label on a wide screen. */
+.settlement-sum { max-width: 640px; margin: 4px 0 10px; }
+.settlement-sum > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.settlement-sum > div:first-child { border-top: 0; }
+.settlement-sum dt { min-width: 0; overflow-wrap: anywhere; }
+.settlement-sum dd { margin: 0; flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.settlement-sum > .is-sub { padding-top: 0; border-top: 0; font-size: 0.8rem; color: var(--text-secondary); }
+.settlement-sum > .is-sub dd { font-weight: 600; }
+.settlement-sum > .is-total { border-top: 2px solid var(--border-strong); font-size: 1.05rem; }
+.settlement-sum > .is-total dt { font-weight: 700; }
+.settlement-sum > .is-total dd { font-weight: 800; }
+/* The darker green and red of .cashbox-flow — the theme's own fall below 4.5:1 on white at this size. */
+.settlement-sum dd.is-in { color: #047857; }
+.settlement-sum dd.is-out { color: #b91c1c; }
+/* One pot never splits from its sum: «Қолма-қол 1 185 780 ₸» breaks only between pots. */
+.settlement-pot { white-space: nowrap; }
+.settlement-to { max-width: 12em; }
+.settlement-card .form-hint.is-error { color: #b91c1c; }
+/* .btn never wraps; a long range would push the button out of a phone-width card. */
+.settlement-card > .btn { margin-top: 12px; max-width: 100%; white-space: normal; }
+.settlement-history { max-width: 640px; margin: 14px 0 0; }
+.settlement-history li strong { margin-left: auto; }
+.settled-tag,
+.expense-week-name small.settled-tag { color: #047857; }
+/* A ruled line stays green under the pointer, like the row it is not. */
+.journal-table tbody tr.jt-books:hover td { background: var(--emerald-light); }
 /* "Шығындар тарихы" — a week to a line (range · count · total), its entries opened by a tap. */
 .expense-weeks { display: flex; flex-direction: column; }
 .expense-week { border-top: 1px solid var(--border); }
@@ -8633,10 +8666,11 @@ body {
   white-space: normal;
   font-size: var(--jt-font);
 }
-.jt-books-text { color: var(--emerald); font-weight: 600; }
+/* The darker green and grey: the theme's own read 3.3:1 and 4.3:1 on this green, below 4.5:1. */
+.jt-books-text { color: #047857; font-weight: 600; }
 .jt-books-text b { font-weight: 800; }
-.jt-books-date { margin-left: 10px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.jt-books-next { margin-left: 14px; color: var(--text-secondary); font-size: var(--jt-font-sm); }
+.jt-books-date { margin-left: 10px; color: #4b5563; font-variant-numeric: tabular-nums; }
+.jt-books-next { margin-left: 14px; color: #4b5563; font-size: var(--jt-font-sm); }
 /* Between two phone cards: the same line, wrapping rather than running off the edge. */
 .journal-card-books {
   display: flex;
