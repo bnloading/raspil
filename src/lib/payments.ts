@@ -40,7 +40,7 @@ export function paymentNote(payment: Pick<Payment, "comment">): string | null {
 
 /**
  * Everything people wrote on an order's live payments, each once, in the order given — what the
- * journal row prints under its method ("💬 30000"). Once each: an Аралас split writes the one cash
+ * journal row prints under «Төленді» ("💬 30000"). Once each: an Аралас split writes the one cash
  * note on every cash leg, and "30000 · 30000" says nothing the first one did not.
  */
 export function paymentNotes(payments: readonly Pick<Payment, "comment" | "reversed">[]): string[] {

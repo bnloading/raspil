@@ -15,7 +15,7 @@ describe("paymentNote — what a person wrote on the cash, not the app's own tag
   });
 });
 
-describe("paymentNotes — what the journal row prints under its method", () => {
+describe("paymentNotes — what the journal row prints under «Төленді»", () => {
   it("keeps what people wrote on live payments, in order, each once", () => {
     // An Аралас split with two cash legs writes its one note on both; then a second payment.
     expect(paymentNotes([

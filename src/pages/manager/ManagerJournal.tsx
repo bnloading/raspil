@@ -2330,11 +2330,12 @@ function JournalRow({
     })
     .join(" · ");
   // What people wrote on the money — mostly the cash note, "Ерболға берілді", "30000" — written out
-  // under the method it came in by. It used to be a 💬 on the pill with the words on hover, and the
-  // owner asked to see it on the page (05.10): the ledger is read down the rows, not one hover at a time.
+  // under «Төленді», the figure it was written about, where the owner asked for it (05.10). It used
+  // to be a 💬 on the method pill with the words on hover; the ledger is read down the rows, not one
+  // hover at a time.
   const notes = paymentNotes(payments);
   const noteLine = notes.length > 0 && (
-    <div className="jt-method-note" title={notes.join("\n")}>💬 {notes.join(" · ")}</div>
+    <div className="jt-pay-comment" title={notes.join("\n")}>💬 {notes.join(" · ")}</div>
   );
 
   const shortNum = shortOrderNumber(order.orderNumber);
@@ -2483,14 +2484,13 @@ function JournalRow({
           <PaidCell paidTiyn={paid} title={methodBreakdown} onCommit={onSetPaid} />
           <span className="jt-pay-note-cur">₸</span>
         </div>
+        {noteLine}
         {preview.debtTiyn > 0 && (
           <div className="jt-pay-owing">Қарыз: {formatMoneyBare(preview.debtTiyn)} ₸</div>
         )}
         {preview.debtTiyn < 0 && (
           <div className="jt-pay-owing is-over">Артық: {formatMoneyBare(-preview.debtTiyn)} ₸</div>
         )}
-        {/* "Төлем түрі" switched off: what was written on the cash stays on the row, under Төлем. */}
-        {!show("method") && noteLine}
       </td>
 
       {/* Which pot the money landed in, in the colour the counter already calls it by. Clicking
@@ -2501,7 +2501,6 @@ function JournalRow({
             title={methodBreakdown || "Төлем тіркеу"}>
             {methodLabel}
           </button>
-          {noteLine}
         </td>
       )}
 
