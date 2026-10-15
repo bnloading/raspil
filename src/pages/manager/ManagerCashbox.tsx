@@ -786,6 +786,14 @@ function OpeningBalanceEditor({
 }
 
 /**
+ * The "left out" list under the accounts starts after this day. The owner went through every late
+ * payment on an old order taken up to 15.10 — counted some in, left the rest as the old books' — and
+ * asked for only what comes after to be listed. Since then such a payment counts by itself
+ * (lib/payments.ts recordPayment), so what can still appear is a correction re-recorded as old money.
+ */
+const EXCLUDED_SHOWN_AFTER = "2026-10-15";
+
+/**
  * One card per account and the total under them. Each card leads with "Қазір бізде бар" — the
  * all-time balance, which is the money actually in that account today — and shows the sum behind
  * it: бастапқы + түсті − шықты, or the chosen month's own түсті/шықты when a month is picked.
@@ -818,6 +826,9 @@ export function CashboxAccounts({
 }) {
   const nowByAccount = new Map(cashboxNow.accounts.map((a) => [a.account, a.balanceTiyn]));
   const totalOpeningTiyn = CASH_ACCOUNTS.reduce((s, a) => s + (openingBalanceTiyn[a] ?? 0), 0);
+  // Only what was paid after the owner went through the list (EXCLUDED_SHOWN_AFTER): the earlier
+  // ones were each counted in or left as the old books' on purpose, and stay out of Касса unlisted.
+  const excludedShown = cashboxNow.excludedOldOrders.filter((p) => p.paymentDay > EXCLUDED_SHOWN_AFTER);
   // Two taps for anything that moves a balance: the first arms the button ("Растау?"), the second
   // acts. Not window.confirm() — a phone draws that itself, and on an iPhone it showed only its edge.
   const [armed, setArmed] = useState<string | null>(null);
@@ -947,18 +958,18 @@ export function CashboxAccounts({
           (lib/cashbox.ts computeCashbox), but listed, so a late payment on an old order is never
           simply gone: it is the old books', and this is where the owner can see it went. An Admin
           can count one in after all, when it was real money taken today. */}
-      {cashboxNow.excludedOldOrders.length > 0 && (
+      {excludedShown.length > 0 && (
         <details className="cashbox-excluded">
           <summary>
             {startOrderNumber
               ? `№${shortOrderNumber(startOrderNumber)} заказға дейінгі`
               : startDate ? `${dmy(startDate)}-ға дейінгі` : "Ескі"} заказдарға кейін түскен{" "}
-            {cashboxNow.excludedOldOrders.length} төлем —{" "}
-            <strong>{formatMoney(cashboxNow.excludedOldOrders.reduce((s, p) => s + p.amountTiyn, 0))}</strong>.
+            {excludedShown.length} төлем —{" "}
+            <strong>{formatMoney(excludedShown.reduce((s, p) => s + p.amountTiyn, 0))}</strong>.
             Бұл Кассаға кірмейді.
           </summary>
           <ul>
-            {cashboxNow.excludedOldOrders.map((p) => (
+            {excludedShown.map((p) => (
               <li key={p.paymentId}>
                 <span>
                   {p.orderNumber} · заказ {dmy(p.orderDay)} · төленді {dmy(p.paymentDay)} · {p.methodName}
