@@ -919,10 +919,11 @@ export interface Payment {
   correctedAt?: Timestamp;
   createdAt?: Timestamp;
   /**
-   * Admin's call that this payment is today's money even though its order predates the accounting
-   * restart — the exception to lib/cashbox.ts leaving such payments out of Касса (a customer
-   * settling an old debt in real cash after the books reopened). Admin-only: firestore.rules lets a
-   * Manager change a payment's method or reverse it, never this.
+   * This payment is today's money even though its order predates the accounting restart — the
+   * exception to lib/cashbox.ts leaving such payments out of Касса (a customer settling an old debt
+   * after the books reopened). Since 15.10 set when the payment is recorded (lib/payments.ts
+   * recordPayment); before that, an Admin's «Кассаға қосу». A Manager cannot change it on an
+   * existing payment (firestore.rules lets them change only the method, or reverse it).
    */
   countsInCurrentBooks?: boolean;
 }

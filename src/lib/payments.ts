@@ -1,8 +1,9 @@
 import { collection, doc, runTransaction, serverTimestamp, Timestamp, writeBatch, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import type { Order, Payment, UserDoc } from "../types/domain";
+import type { ApplicationSettings, Order, Payment, UserDoc } from "../types/domain";
 import type { StrandedPayment } from "./orderMerge";
 import { logAudit } from "./audit";
+import { isBeforeRestart } from "./cashbox";
 import { computePaymentStatus } from "./statuses";
 
 type Actor = { user: User; userData: UserDoc };
@@ -39,6 +40,15 @@ export function paymentNote(payment: Pick<Payment, "comment">): string | null {
 }
 
 /**
+ * Whether money re-recorded in place of these payments is Касса's: only if every one of them was
+ * (Payment.countsInCurrentBooks). Otherwise it stays out, so correcting an order from before the
+ * restart never brings the old books' money into Касса.
+ */
+export function countedInBooks(payments: readonly Pick<Payment, "countsInCurrentBooks">[]): boolean {
+  return payments.length > 0 && payments.every((p) => p.countsInCurrentBooks === true);
+}
+
+/**
  * Everything people wrote on an order's live payments, each once, in the order given — what the
  * journal row prints under «Төленді» ("💬 30000"). Once each: an Аралас split writes the one cash
  * note on every cash leg, and "30000 · 30000" says nothing the first one did not.
@@ -65,6 +75,13 @@ export async function recordPayment(
     receiptNumber?: string;
     groupId?: string;
     paymentDate?: Date;
+    /**
+     * Whether Касса counts it although its order predates the restart (Payment.countsInCurrentBooks).
+     * Left out, it is decided here: money taken on such an order now is today's money. A caller
+     * re-recording money that was already taken — a corrected «Төленді», «Жартылай» — passes what
+     * the payments it replaces had, so correcting an old order never brings old money into Касса.
+     */
+    countsInCurrentBooks?: boolean;
   },
 ): Promise<void> {
   const orderRef = doc(db, "orders", params.orderId);
@@ -74,6 +91,14 @@ export async function recordPayment(
     const orderSnap = await tx.get(orderRef);
     if (!orderSnap.exists()) throw new Error("Заказ табылмады");
     const order = orderSnap.data() as Order;
+    // A debt on an order from before the books were closed, paid now, lands in Касса by itself —
+    // the owner's call (15.10): it used to wait for an Admin's «Кассаға қосу», and until then the
+    // money was in the account and the drawer but in no figure here.
+    let counts = params.countsInCurrentBooks;
+    if (counts === undefined) {
+      const settings = (await tx.get(doc(db, "applicationSettings", "global"))).data() as ApplicationSettings | undefined;
+      counts = isBeforeRestart(order, settings?.cashStartDate ?? null, settings?.cashStartOrderNumber ?? null);
+    }
     const newPaid = order.paidTiyn + params.amountTiyn;
     const newDebt = order.totalTiyn - newPaid;
     const newPaymentStatus = computePaymentStatus(order.totalTiyn, newPaid);
@@ -91,6 +116,7 @@ export async function recordPayment(
       receiptNumber: params.receiptNumber ?? "",
       groupId: params.groupId ?? null,
       reversed: false,
+      ...(counts ? { countsInCurrentBooks: true } : {}),
       createdAt: serverTimestamp(),
     });
     tx.update(orderRef, {

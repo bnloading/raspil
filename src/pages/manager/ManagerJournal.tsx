@@ -88,7 +88,9 @@ import {
 } from "../../lib/customerSuggest";
 import { IconLayers, IconPvc } from "../../components/layout/icons";
 import { logAudit } from "../../lib/audit";
-import { correctPaymentAmount, paymentNote, paymentNotes, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment } from "../../lib/payments";
+import {
+  correctPaymentAmount, countedInBooks, paymentNote, paymentNotes, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment,
+} from "../../lib/payments";
 import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
 import { sheetsKeptOnCancel } from "../../lib/orderLines";
 import {
@@ -343,7 +345,7 @@ export default function ManagerJournal() {
   /** Order whose payment dialog is open. */
   const [payFor, setPayFor] = useState<Order | null>(null);
   /** «Жартылай» on a settled row: the note of the money it reversed, for the payment dialog to open on. */
-  const [carriedNote, setCarriedNote] = useState<{ orderId: string; note: string } | null>(null);
+  const [carriedNote, setCarriedNote] = useState<{ orderId: string; note: string; countsInCurrentBooks: boolean } | null>(null);
   /** A cut row being struck off — asks whether its sheets go back (see handleDeleteOrder). */
   const [strikeFor, setStrikeFor] = useState<Order | null>(null);
 
@@ -839,10 +841,12 @@ export default function ManagerJournal() {
       // first and the manager types the real figure into the dialog.
       if (paid > 0 && remaining <= 0) {
         if (!confirm("Тіркелген төлемдер қайтарылып, жаңа сома жазылады. Жалғастырасыз ба?")) return;
-        // The dialog opens on what was written on the money it replaces, rather than losing it.
-        const notes = paymentNotes(livePaymentsFor(order.id)).join(" · ");
+        // The dialog opens on what was written on the money it replaces, rather than losing it —
+        // and the figure typed into it is that money again, so it is in Касса only if it was.
+        const replaced = livePaymentsFor(order.id);
+        const notes = paymentNotes(replaced).join(" · ");
         await reverseLivePayments(order, "Жартылай төлемге өзгертілді");
-        setCarriedNote({ orderId: order.id, note: notes });
+        setCarriedNote({ orderId: order.id, note: notes, countsInCurrentBooks: countedInBooks(replaced) });
       }
       setPayFor(order);
     } catch (err: unknown) {
@@ -892,6 +896,8 @@ export default function ManagerJournal() {
           methodId: method.id,
           methodName: method.name,
           comment: notes || "Журналда түзетілді",
+          // The same money, re-recorded: in Касса only if what it replaces was (lib/payments.ts).
+          countsInCurrentBooks: countedInBooks(live),
         });
       }
       showToast("✅ Төленген сома түзетілді");
@@ -1136,6 +1142,8 @@ export default function ManagerJournal() {
       return;
     }
     const groupId = resolved.length > 1 ? crypto.randomUUID() : undefined;
+    // «Жартылай» just reversed this order's money: what is typed now replaces it, not new money.
+    const replacing = carriedNote?.orderId === order.id ? carriedNote.countsInCurrentBooks : undefined;
     try {
       for (const leg of resolved) {
         await recordPayment(db, actor, {
@@ -1146,6 +1154,7 @@ export default function ManagerJournal() {
           // What was typed for the cash goes on the cash leg; every other leg keeps the app's tag.
           comment: note && accountForMethod(leg.method!) === "cash" ? note : "Журнал арқылы",
           ...(groupId ? { groupId } : {}),
+          ...(replacing !== undefined ? { countsInCurrentBooks: replacing } : {}),
         });
       }
       const lastMethod = resolved[resolved.length - 1].method!;

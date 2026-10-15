@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { Timestamp } from "firebase/firestore";
-import { paymentNote, paymentNotes, planOverpaymentTrim } from "./payments";
+import { countedInBooks, paymentNote, paymentNotes, planOverpaymentTrim } from "./payments";
+
+describe("countedInBooks — re-recorded money is Касса's only if what it replaces was", () => {
+  it("is when every payment it replaces was counted", () => {
+    expect(countedInBooks([{ countsInCurrentBooks: true }, { countsInCurrentBooks: true }])).toBe(true);
+  });
+
+  it("is not when any of it was the old books', or there was nothing", () => {
+    expect(countedInBooks([{ countsInCurrentBooks: true }, {}])).toBe(false);
+    expect(countedInBooks([{ countsInCurrentBooks: false }])).toBe(false);
+    expect(countedInBooks([])).toBe(false);
+  });
+});
 
 describe("paymentNote — what a person wrote on the cash, not the app's own tag", () => {
   it("returns what was typed", () => {
