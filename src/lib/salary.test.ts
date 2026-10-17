@@ -10,7 +10,20 @@ import {
   pieceRateLines,
   cutCounts,
   cutCountsLabel,
+  decidedEntry,
 } from "./salary";
+
+describe("decidedEntry — the stored figure a worker sees in place of the live count", () => {
+  it("is one an Admin confirmed or paid", () => {
+    expect(decidedEntry({ status: "confirmed" as const })).toEqual({ status: "confirmed" });
+    expect(decidedEntry({ status: "paid" as const })).toEqual({ status: "paid" });
+  });
+
+  it("is never a «calculated» snapshot, which falls behind the work between Admin visits", () => {
+    expect(decidedEntry({ status: "calculated" as const })).toBeUndefined();
+    expect(decidedEntry(undefined)).toBeUndefined();
+  });
+});
 
 describe("pieceRateLines — what each group of sheets is cut for", () => {
   // Declared here: this block sits above the file's own T helper, and describe runs at once.

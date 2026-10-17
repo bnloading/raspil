@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
-import { useSalaryEntries, useSalaryRule, useAttendance } from "../hooks/useSalary";
+import { useSalaryEntries, useSalaryAdjustments, useSalaryRule, useAttendance } from "../hooks/useSalary";
 import { useMaterials } from "../hooks/useMaterials";
 import { formatMoney } from "../lib/money";
-import { computeSalaryBase, cutCounts, cutCountsLabel, measureWork } from "../lib/salary";
+import { computeFinalSalary, computeSalaryBase, cutCounts, cutCountsLabel, decidedEntry, measureWork } from "../lib/salary";
 import { currentPeriodKey, salaryPeriodKind } from "../lib/salaryPeriod";
 import type { Order } from "../types/domain";
 
@@ -31,6 +31,7 @@ export function WorkerSalaryTeaser({
 }) {
   const { user, userData } = useAuth();
   const { entries } = useSalaryEntries(uid);
+  const { adjustments } = useSalaryAdjustments(uid);
   const { rule } = useSalaryRule(uid);
   const { records } = useAttendance(uid);
   const { materials } = useMaterials(false);
@@ -45,7 +46,9 @@ export function WorkerSalaryTeaser({
   const periodKind = salaryPeriodKind(uid === user?.uid ? userData?.role : undefined);
   const periodWord = periodKind === "week" ? "аптадағы" : "айдағы";
   const period = currentPeriodKey(periodKind);
-  const entry = entries.find((e) => e.periodKey === period);
+  const stored = entries.find((e) => e.periodKey === period);
+  // Confirmed or paid only: a «calculated» entry is a snapshot that falls behind the work (decidedEntry).
+  const entry = decidedEntry(stored);
 
   const categoryByMaterialId = new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const));
   const work = measureWork(orders, records, uid, period, categoryByMaterialId);
@@ -53,7 +56,13 @@ export function WorkerSalaryTeaser({
 
   // Confirmed figure if there is one; otherwise the live estimate, which is only worth showing
   // once a rule exists — a MANUAL worker has no formula, so there is nothing honest to display.
-  const amountTiyn = entry ? entry.finalTiyn : Math.max(0, live.baseTiyn - live.deductionTiyn);
+  // The estimate keeps the period's Түзету and any bonus already on the entry, as a recalculation would.
+  const amountTiyn = entry ? entry.finalTiyn : computeFinalSalary({
+    baseTiyn: live.baseTiyn,
+    deductionTiyn: live.deductionTiyn,
+    bonusTiyn: stored?.bonusTiyn ?? 0,
+    adjustmentTiyn: adjustments.filter((a) => a.periodKey === period).reduce((s, a) => s + a.amountTiyn, 0),
+  });
   const isEstimate = !entry;
   if (!entry && (!rule || rule.mode === "MANUAL")) return null;
 

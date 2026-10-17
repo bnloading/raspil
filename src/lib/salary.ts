@@ -330,6 +330,17 @@ export function computeSalaryBase(
   return { mode, baseTiyn, deductionTiyn };
 }
 
+/**
+ * The stored entry a worker's own page shows in place of the live count: only one an Admin has
+ * confirmed or paid. A «calculated» entry is the Admin page's last automatic snapshot, rewritten
+ * only when an Admin opens that page, so between visits it falls behind the work — Олжас's week of
+ * 12.10 read 70 500 ₸ for 131 sheets on 17.10, three days after it was taken, with 442 cut — and the
+ * live count from the same engine is the truer figure until somebody decides one.
+ */
+export function decidedEntry<T extends Pick<SalaryEntry, "status">>(entry: T | undefined): T | undefined {
+  return entry && (entry.status === "confirmed" || entry.status === "paid") ? entry : undefined;
+}
+
 /** base + bonus + adjustments − deductions, floored at zero (a payslip is never negative). */
 export function computeFinalSalary(input: {
   baseTiyn: number;

@@ -7,7 +7,7 @@ import { useCutterOrders, usePvcOrders, useMdfOrders } from "../hooks/useOrders"
 import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
 import { summariseAdvances } from "../lib/advances";
-import { measureWork, computeSalaryBase, cutCounts, pieceRateLines } from "../lib/salary";
+import { measureWork, computeFinalSalary, computeSalaryBase, cutCounts, decidedEntry, pieceRateLines } from "../lib/salary";
 import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -65,7 +65,10 @@ export default function MySalary() {
   // whoever happens to glance at the phone screen next to a worker in the workshop.
   const [revealed, setRevealed] = useState(false);
 
-  const entry = entries.find((e) => e.periodKey === period);
+  const stored = entries.find((e) => e.periodKey === period);
+  // The figure an Admin decided — confirmed or paid — when there is one. A «calculated» entry is
+  // only the Admin page's last snapshot and falls behind the work between visits (decidedEntry).
+  const entry = decidedEntry(stored);
   const categoryByMaterialId = useMemo(
     () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
     [materials],
@@ -82,7 +85,15 @@ export default function MySalary() {
   // столешница apart (lib/salary.ts cutCounts), the quantities the "Кесу бағасы" lines are paid on.
   const cut = cutCounts(entry ?? work);
   const rateLines = pieceRateLines(rule, entry ?? work);
-  const liveFinalTiyn = Math.max(0, live.baseTiyn - live.deductionTiyn);
+  const periodAdjustments = adjustments.filter((a) => a.periodKey === period);
+  // What "Қайта есептеу" would store right now: the live base, the period's Түзету, and the bonus
+  // an Admin put on the entry — so the estimate never drops a correction already made.
+  const liveFinalTiyn = computeFinalSalary({
+    baseTiyn: live.baseTiyn,
+    deductionTiyn: live.deductionTiyn,
+    bonusTiyn: stored?.bonusTiyn ?? 0,
+    adjustmentTiyn: periodAdjustments.reduce((s, a) => s + a.amountTiyn, 0),
+  });
   const finalTiyn = entry?.finalTiyn ?? liveFinalTiyn;
   const isEstimate = !entry;
 
@@ -92,7 +103,6 @@ export default function MySalary() {
     periodKey: period,
     earnedTiyn: finalTiyn,
   });
-  const periodAdjustments = adjustments.filter((a) => a.periodKey === period);
 
   const pastEntries = useMemo(
     () => [...entries].filter((e) => e.periodKey !== period).sort((a, b) => b.periodKey.localeCompare(a.periodKey)).slice(0, 6),
