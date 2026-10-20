@@ -536,6 +536,11 @@ export interface Order {
   extraServicesTiyn: number;
   deliveryCostTiyn: number;
   discountTiyn: number;
+  /**
+   * «Жеңілдік, %» from the journal — when set, discountTiyn is this share of the row before any
+   * discount, recomputed whenever the row changes (lib/journalOrders.ts effectiveDiscountTiyn).
+   */
+  discountPercent?: number;
   totalTiyn: number;
   paidTiyn: number;
   debtTiyn: number;

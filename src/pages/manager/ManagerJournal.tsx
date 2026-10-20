@@ -71,6 +71,7 @@ import {
   createJournalOrder,
   draftFromOrder,
   draftHasContent,
+  effectiveDiscountTiyn,
   emptyJournalDraft,
   emptyJournalLine,
   saveJournalRow,
@@ -2851,6 +2852,8 @@ function JournalDetailPanel({
   };
 
   const preview = computeJournalRowTotals(totalsInputFor(draft, paid));
+  // The discount as the row charges it — 6% of the row when given as a percentage.
+  const discountTiyn = effectiveDiscountTiyn(draft);
   const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
 
   return (
@@ -2968,13 +2971,27 @@ function JournalDetailPanel({
               ariaLabel="Кесу бағасы" placeholder="0"
               onChange={(v) => patchDraft({ cuttingCostTiyn: Math.round(v * 100) })} />
           </div>
+          {/* A discount as a share of the price — "6" takes 6% off the row, and stays 6% of it
+              when a line is edited afterwards (effectiveDiscountTiyn). Clearing it clears the
+              discount; typing a Жалпы сома replaces it with the figure agreed. */}
+          <div className="journal-money-row">
+            <span>Жеңілдік</span>
+            <NumberField className="form-input jt-input-num" value={draft.discountPercent} min={0} suffix="%"
+              ariaLabel="Жеңілдік, пайызбен" placeholder="0"
+              onChange={(v) => {
+                const percent = Math.min(100, Math.max(0, v));
+                patchDraft({ discountPercent: percent, ...(percent === 0 ? { discountTiyn: 0 } : {}) });
+              }} />
+          </div>
           {(draft.hdfCostTiyn > 0 || draft.deliveryCostTiyn > 0
-            || draft.extraServicesTiyn > 0 || draft.discountTiyn > 0) && (
+            || draft.extraServicesTiyn > 0 || discountTiyn > 0) && (
             <div className="journal-money-extras">
               {draft.hdfCostTiyn > 0 && <span>ХДФ: {formatMoneyBare(draft.hdfCostTiyn)}</span>}
               {draft.deliveryCostTiyn > 0 && <span>Жеткізу: {formatMoneyBare(draft.deliveryCostTiyn)}</span>}
               {draft.extraServicesTiyn > 0 && <span>Қосымша: {formatMoneyBare(draft.extraServicesTiyn)}</span>}
-              {draft.discountTiyn > 0 && <span>Жеңілдік: −{formatMoneyBare(draft.discountTiyn)}</span>}
+              {discountTiyn > 0 && (
+                <span>Жеңілдік{draft.discountPercent > 0 ? ` ${draft.discountPercent}%` : ""}: −{formatMoneyBare(discountTiyn)}</span>
+              )}
             </div>
           )}
         </section>

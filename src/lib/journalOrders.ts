@@ -1,6 +1,6 @@
 import { collection, doc, serverTimestamp, setDoc, Timestamp, updateDoc, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import { computeJournalRowTotals } from "./journal";
+import { computeJournalRowTotals, computeLineTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
 import { syncLineJobs } from "./orderLines";
@@ -55,6 +55,11 @@ export interface JournalDraft {
   extraServicesTiyn: number;
   deliveryCostTiyn: number;
   discountTiyn: number;
+  /**
+   * «Жеңілдік, %» — a discount given as a share of the row rather than a sum (Order.discountPercent).
+   * While it is above 0 it decides discountTiyn (effectiveDiscountTiyn); 0 leaves discountTiyn as typed.
+   */
+  discountPercent: number;
   orderDate: Date;
 }
 
@@ -107,7 +112,8 @@ export function draftHasContent(draft: JournalDraft): boolean {
     draft.cuttingCostTiyn !== empty.cuttingCostTiyn ||
     draft.extraServicesTiyn !== empty.extraServicesTiyn ||
     draft.deliveryCostTiyn !== empty.deliveryCostTiyn ||
-    draft.discountTiyn !== empty.discountTiyn
+    draft.discountTiyn !== empty.discountTiyn ||
+    draft.discountPercent !== empty.discountPercent
   );
 }
 
@@ -121,6 +127,7 @@ export function emptyJournalDraft(): JournalDraft {
     extraServicesTiyn: 0,
     deliveryCostTiyn: 0,
     discountTiyn: 0,
+    discountPercent: 0,
     orderDate: new Date(),
   };
 }
@@ -163,6 +170,7 @@ export function draftFromOrder(order: Order): JournalDraft {
     extraServicesTiyn: order.extraServicesTiyn ?? 0,
     deliveryCostTiyn: order.deliveryCostTiyn ?? 0,
     discountTiyn: order.discountTiyn ?? 0,
+    discountPercent: order.discountPercent ?? 0,
     orderDate: order.createdAt ? order.createdAt.toDate() : new Date(),
   };
 }
@@ -236,16 +244,31 @@ export function pvcByTypeFromDraft(draft: JournalDraft, pvcTypes: Map<string, Pv
 export function totalOverrideFor(
   draft: JournalDraft,
   targetTiyn: number,
-): { extraServicesTiyn: number; discountTiyn: number } {
-  const lines = draft.lines.reduce(
-    (sum, l) => sum + Math.round(l.sheetQty * l.sheetPriceTiyn) + Math.round(l.pvcMeters * l.pvcPricePerMeterTiyn),
-    0,
-  );
+): { extraServicesTiyn: number; discountTiyn: number; discountPercent: number } {
+  // Each line as the row prices it — прифуговка included — or a typed total on an edge-jointed row
+  // came out 20 ₸ a metre off what was typed.
+  const lines = draft.lines.reduce((sum, l) => sum + computeLineTotals(l).lineTotalTiyn, 0);
   const base = lines + draft.hdfCostTiyn + draft.cuttingCostTiyn + draft.deliveryCostTiyn;
   const delta = Math.max(0, targetTiyn) - base;
+  // A typed total is the figure agreed: it replaces a percentage rather than being discounted again.
   return delta >= 0
-    ? { extraServicesTiyn: delta, discountTiyn: 0 }
-    : { extraServicesTiyn: 0, discountTiyn: -delta };
+    ? { extraServicesTiyn: delta, discountTiyn: 0, discountPercent: 0 }
+    : { extraServicesTiyn: 0, discountTiyn: -delta, discountPercent: 0 };
+}
+
+/**
+ * The discount a row carries. Given as a percentage, it is that share of everything the row charges
+ * before any discount — the lines with their прифуговка, ХДФ, кесу, қосымша, жеткізу — to the
+ * tenge, worked out afresh on every change, so a line edited afterwards is still 6% off the new
+ * figure. Otherwise it is the sum typed or set by a typed total (totalOverrideFor).
+ */
+export function effectiveDiscountTiyn(
+  draft: Pick<JournalDraft, "lines" | "hdfCostTiyn" | "cuttingCostTiyn" | "extraServicesTiyn" | "deliveryCostTiyn" | "discountTiyn" | "discountPercent">,
+): number {
+  if (!(draft.discountPercent > 0)) return draft.discountTiyn;
+  const lines = draft.lines.reduce((sum, l) => sum + computeLineTotals(l).lineTotalTiyn, 0);
+  const base = lines + draft.hdfCostTiyn + draft.cuttingCostTiyn + draft.extraServicesTiyn + draft.deliveryCostTiyn;
+  return Math.round((base * Math.min(100, draft.discountPercent)) / 100 / 100) * 100;
 }
 
 /** The row-level money input the totals are computed from — the same object the preview uses. */
@@ -256,7 +279,7 @@ export function totalsInputFor(draft: JournalDraft, paidTiyn: number) {
     cuttingCostTiyn: draft.cuttingCostTiyn,
     extraServicesTiyn: draft.extraServicesTiyn,
     deliveryCostTiyn: draft.deliveryCostTiyn,
-    discountTiyn: draft.discountTiyn,
+    discountTiyn: effectiveDiscountTiyn(draft),
     paidTiyn,
   };
 }
@@ -315,7 +338,8 @@ function aggregatesFor(draft: JournalDraft, catalog: JournalCatalog) {
     cuttingCostTiyn: draft.cuttingCostTiyn,
     extraServicesTiyn: draft.extraServicesTiyn,
     deliveryCostTiyn: draft.deliveryCostTiyn,
-    discountTiyn: draft.discountTiyn,
+    discountTiyn: effectiveDiscountTiyn(draft),
+    discountPercent: draft.discountPercent,
   };
 }
 

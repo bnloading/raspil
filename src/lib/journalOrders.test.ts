@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   draftHasContent,
+  effectiveDiscountTiyn,
   emptyJournalDraft,
   emptyJournalLine,
   pvcByTypeFromDraft,
@@ -141,29 +142,64 @@ describe("totalOverrideFor — typing a total by hand", () => {
   const BASE = 11440000;
 
   it("records a lower figure as a discount", () => {
-    expect(totalOverrideFor(draft(), 11000000)).toEqual({ extraServicesTiyn: 0, discountTiyn: 440000 });
+    expect(totalOverrideFor(draft(), 11000000)).toEqual({ extraServicesTiyn: 0, discountTiyn: 440000, discountPercent: 0 });
   });
 
   it("records a higher figure as a surcharge", () => {
-    expect(totalOverrideFor(draft(), 12000000)).toEqual({ extraServicesTiyn: 560000, discountTiyn: 0 });
+    expect(totalOverrideFor(draft(), 12000000)).toEqual({ extraServicesTiyn: 560000, discountTiyn: 0, discountPercent: 0 });
   });
 
   it("clears both when the typed figure is exactly what the lines come to", () => {
-    expect(totalOverrideFor(draft(), BASE)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0 });
+    expect(totalOverrideFor(draft(), BASE)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0, discountPercent: 0 });
   });
 
   it("counts the order's other charges as part of the base, not as the override", () => {
     const withCharges = draft({ hdfCostTiyn: 750000, cuttingCostTiyn: 200000, deliveryCostTiyn: 300000 });
     // base is now 114 400 + 7 500 + 2 000 + 3 000 = 126 900 ₸ — typing that clears the override.
-    expect(totalOverrideFor(withCharges, 12690000)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0 });
+    expect(totalOverrideFor(withCharges, 12690000)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0, discountPercent: 0 });
   });
 
   it("re-typing the original figure undoes an earlier override", () => {
-    const discounted = draft({ discountTiyn: 440000 });
-    expect(totalOverrideFor(discounted, BASE)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0 });
+    const discounted = draft({ discountTiyn: 440000, discountPercent: 0 });
+    expect(totalOverrideFor(discounted, BASE)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0, discountPercent: 0 });
   });
 
   it("treats a negative typed figure as zero rather than inventing a surcharge", () => {
-    expect(totalOverrideFor(draft(), -5000)).toEqual({ extraServicesTiyn: 0, discountTiyn: BASE });
+    expect(totalOverrideFor(draft(), -5000)).toEqual({ extraServicesTiyn: 0, discountTiyn: BASE, discountPercent: 0 });
+  });
+
+  it("prices прифуговка into the base, so a typed total on an edge-jointed row lands on the figure", () => {
+    // 92 м × (200 + 20) = 20 240, so the row comes to 96 000 + 20 240 = 116 240 ₸.
+    const jointed = draft({ lines: [{ ...draft().lines[0], pvcJointed: true }] });
+    expect(totalOverrideFor(jointed, 11624000)).toEqual({ extraServicesTiyn: 0, discountTiyn: 0, discountPercent: 0 });
+  });
+});
+
+describe("effectiveDiscountTiyn — «Жеңілдік, %»", () => {
+  // №496's lines: 52 Кашемир, 3 Ақ Томск, 1 Дуб Каньон, 9 ХДФ and their edging — 1 235 040 ₸.
+  const row = (over: Partial<JournalDraft> = {}): JournalDraft => ({
+    ...emptyJournalDraft(),
+    lines: [{ ...emptyJournalLine(), sheetQty: 52, sheetPriceTiyn: 1700000, pvcMeters: 898, pvcPricePerMeterTiyn: 22000, pvcJointed: true },
+      { ...emptyJournalLine(), sheetQty: 9, sheetPriceTiyn: 750000 }],
+    ...over,
+  });
+
+  it("takes that share of the whole row, to the tenge", () => {
+    // 884 000 + 215 520 + 67 500 = 1 167 020 ₸; 6% is 70 021.2 → 70 021 ₸.
+    expect(effectiveDiscountTiyn(row({ discountPercent: 6 }))).toBe(7002100);
+  });
+
+  it("counts every charge before the discount — кесу, қосымша, жеткізу, ХДФ — in what the share is of", () => {
+    expect(effectiveDiscountTiyn(row({ discountPercent: 10, cuttingCostTiyn: 1298000 }))).toBe(11800000);
+  });
+
+  it("follows the row when a line changes, rather than keeping the old sum", () => {
+    const edited = row({ discountPercent: 6 });
+    edited.lines[1] = { ...edited.lines[1], sheetQty: 19 }; // +75 000 ₸ of ХДФ
+    expect(effectiveDiscountTiyn(edited)).toBe(7452100);
+  });
+
+  it("leaves a typed discount as it is when no percentage is set", () => {
+    expect(effectiveDiscountTiyn(row({ discountTiyn: 500000 }))).toBe(500000);
   });
 });
