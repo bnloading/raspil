@@ -308,6 +308,16 @@ describe("computeSheetsCutByPeriod: real cuts shown on Касса/Қойма", (
     expect(ldspOnly.week).toBe(4);
     expect(ldspOnly.month).toBe(4);
   });
+
+  it("leaves out sheets sold whole off the rack — they left the warehouse, but nothing was cut", () => {
+    const movements = [
+      makeMovement({ qty: -4, createdAt: ts(new Date("2026-09-08T09:00:00+05:00")) }),
+      makeMovement({ qty: -5, withoutCutting: true, createdAt: ts(new Date("2026-09-08T10:00:00+05:00")) }),
+    ];
+    const { week, month } = computeSheetsCutByPeriod(movements, now);
+    expect(week).toBe(4);
+    expect(month).toBe(4);
+  });
 });
 
 describe("computeIncomeAllocation", () => {

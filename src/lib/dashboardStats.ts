@@ -88,7 +88,7 @@ export function computeKpis(input: DashboardInput): {
     .filter((o) => !NON_DEBT_STATUSES.includes(o.productionStatus))
     .reduce((s, o) => s + Math.max(0, o.debtTiyn || 0), 0);
 
-  const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption");
+  const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption" && !m.withoutCutting);
   const sheetsToday = cuttingMovements.filter((m) => inRange(m.createdAt, today)).reduce((s, m) => s + -m.qty, 0);
   const sheetsMonth = cuttingMovements.filter((m) => inRange(m.createdAt, monthStart)).reduce((s, m) => s + -m.qty, 0);
   const totalSheetsCut = cuttingMovements.reduce((s, m) => s + -m.qty, 0);
@@ -254,7 +254,7 @@ export function computePvcProductivity(orders: Order[]): Map<string, number> {
 
 /**
  * How many sheets were actually cut ("cutting_consumption" movements — real warehouse deductions,
- * not orders merely sitting in the queue) this week and this month. Standalone rather than folded
+ * not orders merely sitting in the queue, nor sheets sold whole without the saw) this week and this month. Standalone rather than folded
  * into computeKpis so Касса/Қойма pages, which don't load orders/payments, can show it without
  * pulling in unrelated data.
  */
@@ -280,7 +280,7 @@ export function computeSheetsCutByPeriod(
   const weekStart = clamp(startOfWeekAlmaty(now));
   const monthStart = clamp(startOfMonthAlmaty(now));
   const cuttingMovements = movements.filter(
-    (m) => m.type === "cutting_consumption" && (!materialIds || materialIds.has(m.materialId)),
+    (m) => m.type === "cutting_consumption" && !m.withoutCutting && (!materialIds || materialIds.has(m.materialId)),
   );
   const week = cuttingMovements.filter((m) => inRange(m.createdAt, weekStart)).reduce((s, m) => s + -m.qty, 0);
   const month = cuttingMovements.filter((m) => inRange(m.createdAt, monthStart)).reduce((s, m) => s + -m.qty, 0);
@@ -288,7 +288,7 @@ export function computeSheetsCutByPeriod(
 }
 
 export function computeMaterialCutBreakdown(movements: InventoryMovement[], materials: Material[]): { label: string; value: number }[] {
-  const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption");
+  const cuttingMovements = movements.filter((m) => m.type === "cutting_consumption" && !m.withoutCutting);
   const map = new Map<string, number>();
   for (const m of cuttingMovements) {
     const material = materials.find((mat) => mat.id === m.materialId);

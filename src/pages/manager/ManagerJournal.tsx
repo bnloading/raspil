@@ -92,7 +92,7 @@ import { logAudit } from "../../lib/audit";
 import {
   correctPaymentAmount, countedInBooks, paymentNote, paymentNotes, planOverpaymentTrim, reattachPayments, recordPayment, reversePayment,
 } from "../../lib/payments";
-import { cancelOrder, enterCuttingQueue } from "../../lib/orderStatus";
+import { cancelOrder, enterCuttingQueue, takeFromStockWithoutCutting } from "../../lib/orderStatus";
 import { sheetsKeptOnCancel } from "../../lib/orderLines";
 import {
   canEnterCuttingQueue,
@@ -240,6 +240,7 @@ function stageStates(order: Order): { cutting: StageIndicator; pvc: StageIndicat
 
   const cutting: StageIndicator =
     s === "cancelled" ? { label: "—", tone: "muted" }
+    : order.withoutCutting ? { label: "Распилсіз", tone: "muted" }
     : reached("cutting_completed") ? { label: "Кесілді", tone: "green" }
     : s === "cutting_started" ? { label: "Кесіліп жатыр", tone: "blue" }
     : s === "cutting_queue" ? { label: "Распил кезегінде", tone: "amber" }
@@ -1040,6 +1041,47 @@ export default function ManagerJournal() {
   };
 
   /**
+   * "Қоймадан шегеру · распилсіз" — whole sheets handed over off the rack. The warehouse goes down
+   * by the row's sheets and the order is Дайын at once, without ever reaching the saw (see
+   * lib/orderStatus.ts takeFromStockWithoutCutting). Unlike the saw buttons this one asks first:
+   * it skips the whole shop floor in one click, and the counter has pressed the wrong button before.
+   */
+  const handleTakeWithoutCutting = async (order: Order) => {
+    if (queuePending.current.has(order.id)) return;
+    const blockReason = zeroSheetBlockReason(order);
+    if (blockReason) {
+      showToast("⚠️ " + blockReason);
+      return;
+    }
+    // Edging is done on the cut pieces, so a row with ПВХ on it has to go through the saw.
+    if (order.pvcMetersTotal > 0) {
+      showToast(`⚠️ «${order.orderNumber}»: ПВХ жазылған — оны распилға жіберу керек. Распилсіз берілетін болса, алдымен ПВХ-ны өшіріңіз.`);
+      return;
+    }
+    const owed = Math.max(0, order.totalTiyn - netPaidTiyn(livePaymentsFor(order.id)));
+    const sheets = linesOf(order)
+      .filter((l) => l.sheetQty > 0)
+      .map((l) => `${l.materialName || "материал"} — ${l.sheetQty} лист`)
+      .join("\n");
+    if (!confirm(
+      `${order.orderNumber} — ${order.customerName}\n\nРаспилға жібермей, қоймадан шегеріледі:\n${sheets}`
+      + (owed > 0 ? `\n\nҚарыз қалады: ${formatMoney(owed)}` : "")
+      + "\n\nЖалғастырасыз ба?",
+    )) return;
+    queuePending.current.add(order.id);
+    try {
+      const { consumed } = await takeFromStockWithoutCutting(db, actor, order, { owedTiyn: owed });
+      showToast(consumed > 0
+        ? `✅ ${order.orderNumber}: қоймадан ${consumed} лист шегерілді — дайын`
+        : `✅ ${order.orderNumber}: дайын (қоймада есептелетін лист жоқ)`);
+    } catch (err: unknown) {
+      showToast("Қате: " + (err as Error).message);
+    } finally {
+      queuePending.current.delete(order.id);
+    }
+  };
+
+  /**
    * "🗑 Жолды өшіру" — strikes a row off the ledger.
    *
    * The everyday case is a row written down at the counter for a customer who then never brought
@@ -1081,8 +1123,10 @@ export default function ManagerJournal() {
   /** `wasCut`: struck off from the cut-row dialog — its reason then says the boards were cut. */
   const strikeOff = async (order: Order, returnCutSheets: boolean, wasCut = false) => {
     const reason = returnCutSheets
-      ? "Журналдан өшірілді — кесілген лист қоймаға қайтарылды"
-      : wasCut ? "Журналдан өшірілді — лист кесілген, қоймаға қайтпады" : "Журналдан өшірілді — клиент кестірмеді";
+      ? `Журналдан өшірілді — ${order.withoutCutting ? "" : "кесілген "}лист қоймаға қайтарылды`
+      : wasCut
+        ? `Журналдан өшірілді — лист ${order.withoutCutting ? "берілген" : "кесілген"}, қоймаға қайтпады`
+        : "Журналдан өшірілді — клиент кестірмеді";
     try {
       await cancelOrder(db, actor, order, reason, { returnCutSheets });
       showToast(`🗑 ${order.orderNumber} өшірілді${returnCutSheets ? " — лист қоймаға қайтарылды" : ""}`);
@@ -1567,6 +1611,12 @@ export default function ManagerJournal() {
                         </button>
                       )
                     )}
+                    {onGate && (
+                      <button className="btn btn-outline btn-full journal-card-action"
+                        onClick={() => handleTakeWithoutCutting(order)}>
+                        Қоймадан шегеру · распилсіз
+                      </button>
+                    )}
 
                     {/* Same on the phone as on the ledger: a row written down for a job that never
                         came in has to be strikeable from wherever it is being read. */}
@@ -1664,6 +1714,7 @@ export default function ManagerJournal() {
                       onSetPaid={(amountTiyn) => handleSetPaid(order, amountTiyn)}
                       onQueue={() => handleQueueOrder(order)}
                       onOverrideQueue={() => handleOverrideQueueOrder(order)}
+                      onTakeWithoutCutting={() => handleTakeWithoutCutting(order)}
                       onDelete={() => handleDeleteOrder(order)}
                       onError={showToast}
                     />
@@ -1788,6 +1839,7 @@ export default function ManagerJournal() {
             onClose={() => setOpenId(null)}
             onOpenFull={() => navigate(`/manager/order/${openOrder.id}`)}
             onQueue={() => handleQueueOrder(openOrder)}
+            onTakeWithoutCutting={() => handleTakeWithoutCutting(openOrder)}
             onError={showToast}
           />
         )}
@@ -1855,10 +1907,12 @@ function StrikeCutOrderDialog({
     <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="modal">
         <div className="modal-handle" />
-        <h2>🗑 Кесілген заказды өшіру</h2>
+        <h2>🗑 {order.withoutCutting ? "Қоймадан берілген" : "Кесілген"} заказды өшіру</h2>
         <p className="scan-hint">{order.orderNumber} · {order.customerName}</p>
         <p>
-          Бұл заказдың листтері кесіліп, қоймадан алынған:{" "}
+          {order.withoutCutting
+            ? "Бұл заказдың листтері распилсіз қоймадан шегерілген:"
+            : "Бұл заказдың листтері кесіліп, қоймадан алынған:"}{" "}
           <strong>{kept.map((j) => `${j.materialName} ×${j.consumedQty}`).join(", ")}</strong>.
         </p>
         <p className="pay-warn">
@@ -1877,7 +1931,9 @@ function StrikeCutOrderDialog({
           </button>
         </div>
         <p className="form-hint">
-          «Лист қайтпасын» — тек листтер шынымен кесіліп кеткен болса (клиент алмай кетті, т.б.).
+          {order.withoutCutting
+            ? "«Лист қайтпасын» — тек клиент листті шынымен алып кеткен болса."
+            : "«Лист қайтпасын» — тек листтер шынымен кесіліп кеткен болса (клиент алмай кетті, т.б.)."}
         </p>
       </div>
     </div>
@@ -2315,7 +2371,7 @@ function JournalRow({
   order, hidden, pvcTypesById, directory, absorbed, isExpanded, onToggleExpand, onPickRange,
   materials, methods, payments, actor, selected, isOpen,
   onToggleSelect, onOpenPanel, onOpen,
-  onAddPayment, onSetPaymentState, onSetPaid, onQueue, onOverrideQueue, onDelete, onError,
+  onAddPayment, onSetPaymentState, onSetPaid, onQueue, onOverrideQueue, onTakeWithoutCutting, onDelete, onError,
 }: {
   order: Order;
   /** Columns the manager has put away — the header and the colSpan are driven off the same set. */
@@ -2347,6 +2403,8 @@ function JournalRow({
   onSetPaid: (amountTiyn: number) => void;
   onQueue: () => void;
   onOverrideQueue: () => void;
+  /** Sheets sold whole: off the rack and Дайын, never to the saw. */
+  onTakeWithoutCutting: () => void;
   /** Strikes the row off: a written-down order the customer never came back for. */
   onDelete: () => void;
   onError: (message: string) => void;
@@ -2590,6 +2648,12 @@ function JournalRow({
               </button>
             )
           )}
+          {onGate && (
+            <button className="btn btn-outline btn-sm jt-cut-btn" onClick={onTakeWithoutCutting}
+              title="Распилға жібермей, листті қоймадан шегеру — заказ бірден «Дайын» болады">
+              Қоймадан шегеру · распилсіз
+            </button>
+          )}
         </td>
       )}
 
@@ -2633,7 +2697,8 @@ function JournalRow({
             ...(onGate
               ? [canEnterCuttingQueue(order.paymentStatus)
                   ? { label: "Распилге жіберу", onClick: onQueue }
-                  : { label: "Қарызға жіберу", onClick: onOverrideQueue, danger: true }]
+                  : { label: "Қарызға жіберу", onClick: onOverrideQueue, danger: true },
+                { label: "Қоймадан шегеру · распилсіз", onClick: onTakeWithoutCutting }]
               : []),
             { label: "🗑 Жолды өшіру", onClick: onDelete, danger: true },
           ]}
@@ -2715,7 +2780,7 @@ function JournalRow({
  */
 function JournalDetailPanel({
   order, materials, pvcTypes, payments, actor, structuralEditsAllowed,
-  onClose, onOpenFull, onQueue, onError,
+  onClose, onOpenFull, onQueue, onTakeWithoutCutting, onError,
 }: {
   order: Order;
   materials: Material[];
@@ -2726,6 +2791,8 @@ function JournalDetailPanel({
   onClose: () => void;
   onOpenFull: () => void;
   onQueue: () => void;
+  /** Sheets sold whole: off the rack and Дайын, never to the saw. */
+  onTakeWithoutCutting: () => void;
   onError: (message: string) => void;
 }) {
   const materialsById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -3024,6 +3091,12 @@ function JournalDetailPanel({
               </p>
             )}
           </>
+        )}
+        {/* Whole sheets sold off the rack — paid or not, the same as the row's own button. */}
+        {onGate && (
+          <button className="btn btn-outline btn-full" onClick={onTakeWithoutCutting}>
+            Қоймадан шегеру · распилсіз
+          </button>
         )}
       </footer>
     </aside>

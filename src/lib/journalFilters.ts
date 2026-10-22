@@ -184,7 +184,8 @@ export function journalProgress(order: Order, paidTiyn: number): ProgressStep[] 
 
   return [
     { key: "payment", label: "Төлем", state: payment },
-    { key: "cutting", label: "Распил", state: cutting },
+    // Sold whole off the rack: the step is done, but it was never the saw that did it.
+    { key: "cutting", label: order.withoutCutting ? "Распилсіз" : "Распил", state: cutting },
     { key: "ready", label: "Дайын", state: ready },
   ];
 }

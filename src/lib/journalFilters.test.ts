@@ -191,6 +191,13 @@ describe("journalProgress — the three dots", () => {
     expect(at("cancelled", T(100000)).every((s) => s.state === "blocked")).toBe(true);
   });
 
+  it("sheets handed over without the saw read «Распилсіз», done, rather than as cut", () => {
+    const steps = journalProgress(order({ totalTiyn: T(100000), productionStatus: "ready", withoutCutting: true }), T(100000));
+    expect(steps.map((s) => s.label)).toEqual(["Төлем", "Распилсіз", "Дайын"]);
+    expect(steps.every((s) => s.state === "done")).toBe(true);
+    expect(at("ready", T(100000))[1].label).toBe("Распил");
+  });
+
   it("an order cut on credit still shows the money as outstanding", () => {
     // "Қарызға жіберу" moves the sheets without the money — the row must keep saying so.
     const [payment, cutting] = at("cutting_started", 0);

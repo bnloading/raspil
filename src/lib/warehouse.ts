@@ -93,6 +93,10 @@ function isStockTracked(material: { stockTracked?: boolean }): boolean {
  * No-ops when the order has already had its sheets taken, so a retried queue action can never
  * subtract twice. Lines whose material is not shop stock (a customer's own board, an offcut) move
  * nothing at all.
+ *
+ * `withoutCutting` is the same draw for sheets sold whole off the rack («распилға жібермей
+ * қоймадан шегеру»): the order goes straight to Дайын instead of the queue, and each ledger entry
+ * says so, so the «кесілген» counts can leave it out — nothing was cut.
  */
 export async function consumeStockOnQueue(
   db: Firestore,
@@ -100,6 +104,7 @@ export async function consumeStockOnQueue(
   params: {
     orderId: string; orderNumber: string; jobs: OrderLineJob[];
     queue?: { isAdmin: boolean; overrideReason?: string; queuePosition: number };
+    withoutCutting?: boolean;
   },
 ): Promise<{ jobs: OrderLineJob[]; consumed: number; alreadyQueued?: boolean }> {
   const orderRef = doc(db, "orders", params.orderId);
@@ -109,7 +114,21 @@ export async function consumeStockOnQueue(
     if (!orderSnap.exists()) throw new Error("Заказ табылмады");
     const existing = orderSnap.data() as Order;
     let queueUpdate = {};
-    if (params.queue) {
+    if (params.withoutCutting) {
+      // A second click, or a second manager on the same row: already handed out, never twice.
+      if (existing.withoutCutting) {
+        return { jobs: existing.lineJobs ?? params.jobs, consumed: 0, alreadyQueued: true };
+      }
+      if (!["waiting_payment", "partially_paid", "paid"].includes(existing.productionStatus)) {
+        throw new Error("Заказ күйі өзгерді. Бетті жаңартып, қайта тексеріңіз");
+      }
+      queueUpdate = {
+        productionStatus: "ready",
+        readyAt: serverTimestamp(),
+        withoutCutting: true,
+        withoutCuttingAt: serverTimestamp(),
+      };
+    } else if (params.queue) {
       if (existing.productionStatus === "cutting_queue") {
         return { jobs: existing.lineJobs ?? params.jobs, consumed: 0, alreadyQueued: true };
       }
@@ -128,14 +147,14 @@ export async function consumeStockOnQueue(
       };
     }
     if (existing.cuttingConsumedAt) {
-      if (params.queue) tx.update(orderRef, queueUpdate);
+      if (params.queue || params.withoutCutting) tx.update(orderRef, queueUpdate);
       return { jobs: existing.lineJobs ?? params.jobs, consumed: 0 }; // already taken — never twice
     }
 
     // Two lines can share a material (the same colour typed on two rows), so the balance is
     // moved once per material, not once per line. A line with no material picked yet has no
     // balance to move and is simply skipped — it must not keep the order off the saw.
-    const inputJobs = params.queue ? buildLineJobs(existing) : params.jobs;
+    const inputJobs = params.queue || params.withoutCutting ? buildLineJobs(existing) : params.jobs;
     const wanted = new Map<string, number>();
     for (const job of inputJobs) {
       if (job.sheetQty > 0 && job.materialId) {
@@ -188,9 +207,11 @@ export async function consumeStockOnQueue(
         // The shortfall is named in the ledger entry itself, so the Қойма history explains a
         // negative balance without anyone having to work out which order caused it.
         comment:
-          balanceAfter < 0
-            ? `${params.orderNumber} распил кезегіне қосылды — қоймада ${-balanceAfter} лист жетіспеді`
-            : `${params.orderNumber} распил кезегіне қосылды`,
+          (params.withoutCutting
+            ? `${params.orderNumber} распилсіз берілді`
+            : `${params.orderNumber} распил кезегіне қосылды`)
+          + (balanceAfter < 0 ? ` — қоймада ${-balanceAfter} лист жетіспеді` : ""),
+        ...(params.withoutCutting ? { withoutCutting: true } : {}),
         balanceBefore,
         balanceAfter,
         createdAt: serverTimestamp(),

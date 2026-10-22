@@ -214,6 +214,43 @@ export async function enterCuttingQueue(
 }
 
 /**
+ * «Распилға жібермей қоймадан шегеру» — whole sheets sold off the rack, with no saw involved.
+ *
+ * The sheets leave the warehouse exactly as a queued order's do, line by line, and the order goes
+ * straight to Дайын. It never reaches the cutter's queue or the workshop board, and no line is
+ * marked cut, so it is in nobody's pay (lib/salary.ts counts only lines with cuttingCompletedAt).
+ * There is no payment gate: handing sheets over before they are paid for is the same credit call
+ * as «Қарызға жіберу», and the amount still owed is written into the audit the same way.
+ */
+export async function takeFromStockWithoutCutting(
+  db: Firestore,
+  actor: Actor,
+  order: Order,
+  opts: { owedTiyn: number },
+): Promise<{ consumed: number }> {
+  const jobs = buildLineJobs(order);
+  const result = await consumeStockOnQueue(db, actor, {
+    orderId: order.id, orderNumber: order.orderNumber, jobs, withoutCutting: true,
+  });
+  if (result.alreadyQueued) return { consumed: 0 };
+  const comment = "Распилсіз — қоймадан шегерілді"
+    + (opts.owedTiyn > 0 ? `, қалдық қарыз ${(opts.owedTiyn / 100).toLocaleString("ru-RU")} ₸` : "");
+  await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "ready", comment);
+  await logAudit(db, actor, {
+    action: "order.taken_without_cutting",
+    entityId: order.id,
+    before: { productionStatus: order.productionStatus },
+    after: { productionStatus: "ready", sheetsTaken: result.consumed },
+    comment,
+  });
+  await notify(db, order.customerId, "Заказ дайын", `${order.orderNumber} дайын — алып кетуге болады`, order.id);
+  for (const materialId of new Set(jobs.map((j) => j.materialId))) {
+    await notifyIfLowStock(db, materialId);
+  }
+  return { consumed: result.consumed };
+}
+
+/**
  * Releases any reservation left on an order from before per-line stock tracking existed — the
  * previous flow reserved the whole order's sheets against one material at queue time and never
  * released that hold until the (single) completion write. Once every line has its own stock

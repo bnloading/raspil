@@ -594,6 +594,13 @@ export interface Order {
   /** Sheets already taken out of the warehouse for this order (at cutting-queue entry). */
   cuttingConsumedQty?: number;
   /**
+   * Sold whole off the rack, never sent to the saw («распилға жібермей қоймадан шегеру» — see
+   * lib/orderStatus.ts takeFromStockWithoutCutting). The sheets left the warehouse as a queued
+   * order's do, but no line was cut, so the order went straight to Дайын.
+   */
+  withoutCutting?: boolean;
+  withoutCuttingAt?: Timestamp;
+  /**
    * Per-material progress on the shop floor, written when the order enters the cutting queue. A
    * merged order (5 sheets of Ақ + 3 of ХДФ) is cut and edged one material at a time, so each line
    * starts and finishes on its own — and each is taken from its own warehouse balance.
@@ -950,6 +957,8 @@ export interface InventoryMovement {
   type: InventoryMovementType;
   qty: number; // signed
   orderId?: string;
+  /** A «cutting_consumption» for sheets sold whole, without the saw — not a cut, for every count of cut sheets. */
+  withoutCutting?: boolean;
   userId: string;
   userName: string;
   comment?: string;

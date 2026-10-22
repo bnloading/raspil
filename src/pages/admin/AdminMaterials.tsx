@@ -899,7 +899,7 @@ function LedgerModal({ material, onClose }: { material: Material; onClose: () =>
             {movements.map((m) => (
               <div key={m.id} className="data-row">
                 <div className="data-row-main">
-                  <strong>{movementTypeLabel(m.type)}</strong>
+                  <strong>{m.withoutCutting ? "Распилсіз берілді" : movementTypeLabel(m.type)}</strong>
                   <span>
                     {m.qty > 0 ? "+" : ""}
                     {m.qty} лист · қалдық {m.balanceBefore} → {m.balanceAfter}
