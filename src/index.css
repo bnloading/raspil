@@ -7598,6 +7598,8 @@ body {
   color: var(--text-light);
 }
 .wh-qty { white-space: nowrap; }
+/* Under the stock table: opens the rows the warehouse does not count («Сырттан келетін …»). */
+.wh-untracked-toggle { margin: 12px 0 4px; }
 .wh-bar {
   margin-top: 5px;
   height: 4px;

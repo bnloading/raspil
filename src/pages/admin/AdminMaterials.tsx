@@ -57,15 +57,17 @@ export default function AdminMaterials() {
   // come back "permission denied".
   const canEdit = canManageWarehouse(auth.userData?.role);
 
-  const stockTotals = useMemo(
-    () => ({
-      materials: materials.length,
-      sheets: materials.reduce((s, m) => s + (m.qtyOnHand ?? 0), 0),
-      reserved: materials.reduce((s, m) => s + (m.reservedQty ?? 0), 0),
-      low: lowStockCount(materials),
-    }),
-    [materials],
-  );
+  // Only shop stock: a customer's own board or an offcut has no balance, and the МДФ row's frozen
+  // qtyOnHand of 50 was being added into «Қоймада N лист» as if it were on the rack.
+  const stockTotals = useMemo(() => {
+    const stocked = materials.filter((m) => m.stockTracked !== false);
+    return {
+      materials: stocked.length,
+      sheets: stocked.reduce((s, m) => s + (m.qtyOnHand ?? 0), 0),
+      reserved: stocked.reduce((s, m) => s + (m.reservedQty ?? 0), 0),
+      low: lowStockCount(stocked),
+    };
+  }, [materials]);
   // "Нақты" — real cuts (cutting_consumption movements), not orders merely sitting in a queue.
   const sheetsCut = useMemo(() => computeSheetsCutByPeriod(movements), [movements]);
 
@@ -204,6 +206,12 @@ export function MaterialsTab({
   // balance that moves while the form is open is corrected against the new number, not a stale one.
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const correcting = materials.find((m) => m.id === correctingId) ?? null;
+  // «Сырттан келетін …», «Остаток» — rows the journal prices but the warehouse never counts. They
+  // are not on the rack, so they stay out of the stock table (the owner asked for that); the fold
+  // at the bottom still opens them, since this is the only place their name or price is edited.
+  const untracked = materials.filter((m) => m.stockTracked === false);
+  const [showUntracked, setShowUntracked] = useState(false);
+  const rows = showUntracked ? materials : materials.filter((m) => m.stockTracked !== false);
 
   /**
    * Takes a material out of circulation without touching anything that already happened.
@@ -309,7 +317,7 @@ export function MaterialsTab({
               </tr>
             </thead>
             <tbody>
-              {materials.map((m) => {
+              {rows.map((m) => {
                 const stock = stockStatus(m);
                 return (
                   <tr key={m.id} className={!m.active ? "blocked" : undefined}>
@@ -378,6 +386,14 @@ export function MaterialsTab({
               })}
             </tbody>
           </table>
+          {untracked.length > 0 && (
+            <button type="button" className="btn btn-outline btn-sm wh-untracked-toggle"
+              onClick={() => setShowUntracked((v) => !v)}>
+              {showUntracked
+                ? "Қоймада есептелмейтіндерді жасыру"
+                : `Қоймада есептелмейтіндер (${untracked.length}) — көрсету`}
+            </button>
+          )}
         </div>
       )}
 

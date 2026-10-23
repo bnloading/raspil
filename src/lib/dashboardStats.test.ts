@@ -154,6 +154,11 @@ describe("computeLowStock", () => {
     expect(result.map((m) => m.id)).toEqual(["m1"]);
   });
 
+  it("leaves out a material the warehouse does not count — «Сырттан келетін лист» is never low", () => {
+    const external = makeMaterial({ id: "ext", qtyOnHand: 0, reservedQty: 0, minStock: 0, stockTracked: false });
+    expect(computeLowStock([external])).toEqual([]);
+  });
+
   it("excludes inactive materials even if below threshold", () => {
     const inactive = makeMaterial({ id: "m3", active: false, qtyOnHand: 0, reservedQty: 0, minStock: 10 });
     expect(computeLowStock([inactive])).toEqual([]);

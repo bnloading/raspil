@@ -118,7 +118,8 @@ export function computeKpis(input: DashboardInput): {
 /** Materials at or below their minimum stock threshold (available = qtyOnHand - reservedQty). Most-critical (biggest deficit) first. */
 export function computeLowStock(materials: Material[]): Material[] {
   return materials
-    .filter((m) => m.active && m.qtyOnHand - m.reservedQty <= m.minStock)
+    // A line that is not shop stock sits at 0 of 0 for ever — never "running low".
+    .filter((m) => m.active && m.stockTracked !== false && m.qtyOnHand - m.reservedQty <= m.minStock)
     .sort((a, b) => a.qtyOnHand - a.reservedQty - a.minStock - (b.qtyOnHand - b.reservedQty - b.minStock));
 }
 
