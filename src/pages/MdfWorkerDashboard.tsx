@@ -11,7 +11,7 @@ import { useMdfOrders } from "../hooks/useOrders";
 import { useToast } from "../hooks";
 import { ROLE_TO_MDF_STAGE } from "../lib/rbac";
 import { dayKey } from "../lib/dates";
-import { formatMdfArea } from "../lib/mdfJournal";
+import { formatMdfArea, mdfPatternOf } from "../lib/mdfJournal";
 import { MDF_STAGES, MDF_STAGE_LABELS } from "../types/domain";
 
 export default function MdfWorkerDashboard() {
@@ -49,7 +49,7 @@ export default function MdfWorkerDashboard() {
           <div className="station-job-status"><span className={`station-state ${started ? "is-active" : completed ? "is-done" : ""}`}>{completed ? "ДАЙЫН" : started ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{order.priority || 1}</span></div>
           <button className="station-order-link" onClick={() => navigate(`/${userData.role}/order/${order.id}`)}>{order.orderNumber}</button>
           <div className="station-customer"><IconUsers />{order.customerName}</div>
-          <div className="station-facts"><span>{formatMdfArea(order.mdfAreaM2)}</span><span>{order.mdfFilmColor || "Түс көрсетілмеген"}</span></div>
+          <div className="station-facts"><span>{formatMdfArea(order.mdfAreaM2)}</span>{mdfPatternOf(order) && <span>{mdfPatternOf(order)}</span>}<span>{order.mdfFilmColor || "Түс көрсетілмеген"}</span></div>
           <div className="station-status-line"><span>{completed ? `${label} дайын` : started ? `${label} басталды` : current ? "Кезекте" : `${order.mdfStage ? MDF_STAGE_LABELS[order.mdfStage] : "Алдыңғы кезең"} күтілуде`}</span></div>
           {order.adminNote && <p className="station-note">{order.adminNote}</p>}
           {order.productionNote && <p className="station-note">{order.productionNote}</p>}

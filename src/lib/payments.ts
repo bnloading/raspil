@@ -17,7 +17,7 @@ type Actor = { user: User; userData: UserDoc };
  */
 const PRE_CUTTING_STATUSES: Order["productionStatus"][] = ["waiting_payment", "partially_paid", "paid"];
 
-function nextProductionStatusForPayment(
+export function nextProductionStatusForPayment(
   current: Order["productionStatus"],
   paymentStatus: "unpaid" | "partial" | "paid" | "overpaid" | "refunded",
 ): Order["productionStatus"] | null {

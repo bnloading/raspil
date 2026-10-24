@@ -425,6 +425,12 @@ export const MDF_PATTERN_LABELS: Record<MdfPattern, string> = {
  * computeMdfPanelsAreaM2 — so the two never disagree. Purely a spec/pricing breakdown: unlike
  * ЛДСП's CuttingPart, panels carry no per-piece production tracking of their own.
  */
+/** One «Узор» on the МДФ journal's price list (ApplicationSettings.mdfPatternTemplates). */
+export interface MdfPatternTemplate {
+  name: string;
+  pricePerM2Tiyn: number;
+}
+
 export interface MdfPanel {
   id: string;
   lengthMm: number;
@@ -618,6 +624,14 @@ export interface Order {
   mdfPanels?: MdfPanel[];
   /** Free-text wrap film colour/name, typed by whoever creates the order. */
   mdfFilmColor?: string;
+  /**
+   * The «Узор» a journal order is milled with, by name — picked from the shop's templates
+   * (ApplicationSettings.mdfPatternTemplates), which also filled in mdfPricePerM2Tiyn, or typed by
+   * hand. Kept as the name rather than a template id so a template renamed or repriced later
+   * never rewrites what an order already says. A customer's own order carries its patterns per
+   * panel in mdfPanels instead.
+   */
+  mdfPatternName?: string;
   mdfPricePerM2Tiyn?: number;
   /** Manager-set flag — never affects the customer's price, only credits a flat bonus to whichever
    *  vacuum worker finishes this order (see lib/salary.ts's packagingOrdersCount). */
@@ -1056,6 +1070,12 @@ export interface ApplicationSettings {
    * lib/settlements.ts. Same department keying and Admin-only write as the corrections above.
    */
   settlements?: Partial<Record<Department, Settlement[]>>;
+  /**
+   * The МДФ journal's «Узор» price list — picking one on an order fills its м² price in. Edited by
+   * an Admin on the МДФ journal; unset means lib/mdfJournal.ts DEFAULT_MDF_PATTERN_TEMPLATES, the
+   * shop's fixed rates.
+   */
+  mdfPatternTemplates?: MdfPatternTemplate[];
 }
 
 /**

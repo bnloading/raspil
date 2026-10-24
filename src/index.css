@@ -562,6 +562,14 @@ textarea.form-input {
   grid-column: 1 / -1;
   margin: -4px 0 0;
 }
+/* МДФ «Узор шаблондары» (ManagerMdfJournal) — name, м² price, remove. */
+.mdf-template-row {
+  display: grid;
+  grid-template-columns: 1fr 120px auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
 @media (max-width: 560px) {
   .mdf-panel-row {
     grid-template-columns: 1fr 1fr;

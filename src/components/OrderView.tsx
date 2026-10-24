@@ -107,6 +107,7 @@ export function OrderView({
           <h3>МДФ</h3>
           <p>
             {order.mdfFilmColor || "Пленка көрсетілмеген"} · {formatMdfArea(order.mdfAreaM2)}
+            {order.mdfPatternName ? ` · Узор: ${order.mdfPatternName}` : ""}
           </p>
           {order.mdfPanels && order.mdfPanels.length > 0 && (
             <div className="parts-table-wrap">

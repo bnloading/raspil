@@ -1,4 +1,5 @@
-import type { MdfPanel, MdfPattern, PaymentStatus } from "../types/domain";
+import type { ApplicationSettings, MdfPanel, MdfPattern, MdfPatternTemplate, PaymentStatus } from "../types/domain";
+import { MDF_PATTERN_LABELS, MDF_PATTERNS } from "../types/domain";
 import { computePaymentStatus } from "./statuses";
 
 /**
@@ -37,6 +38,58 @@ export const MDF_PATTERN_PRICE_TIYN: Partial<Record<MdfPattern, number>> = {
   vyborka50: 1_950_000,
   vyborka20: 2_050_000,
 };
+
+/**
+ * The МДФ journal's «Узор» list before an Admin has edited it: the shop's fixed patterns at their
+ * fixed rates, in the order the customer form offers them. "Басқа" is not a template — it is the
+ * journal's "type the name and price by hand" choice.
+ */
+export const DEFAULT_MDF_PATTERN_TEMPLATES: MdfPatternTemplate[] = MDF_PATTERNS
+  .filter((p) => MDF_PATTERN_PRICE_TIYN[p] !== undefined)
+  .map((p) => ({ name: MDF_PATTERN_LABELS[p], pricePerM2Tiyn: MDF_PATTERN_PRICE_TIYN[p]! }));
+
+/** The templates the journal offers: the Admin's list once one is saved, the fixed rates until then. */
+export function mdfPatternTemplates(settings: Pick<ApplicationSettings, "mdfPatternTemplates">): MdfPatternTemplate[] {
+  const saved = settings.mdfPatternTemplates;
+  return saved && saved.length > 0 ? saved : DEFAULT_MDF_PATTERN_TEMPLATES;
+}
+
+/** The template an order's «Узор» name is, ignoring case and stray spaces — undefined for a name typed by hand. */
+export function findMdfPatternTemplate(
+  templates: readonly MdfPatternTemplate[],
+  name: string,
+): MdfPatternTemplate | undefined {
+  const key = name.trim().toLowerCase();
+  if (!key) return undefined;
+  return templates.find((t) => t.name.trim().toLowerCase() === key);
+}
+
+/**
+ * What an order is milled with, for the journal and the stations: the «Узор» the journal wrote
+ * down, or — on a customer's own order — the patterns of its panels. Empty when neither says.
+ */
+export function mdfPatternOf(order: { mdfPatternName?: string; mdfPanels?: readonly Pick<MdfPanel, "pattern">[] }): string {
+  const typed = order.mdfPatternName?.trim();
+  if (typed) return typed;
+  return [...new Set((order.mdfPanels ?? []).map((p) => MDF_PATTERN_LABELS[p.pattern]))].join(", ");
+}
+
+/**
+ * Checks an edited template list before it is saved: every row named and priced, no name twice
+ * (the journal picks a template by its name). Returns what is wrong, or null when it can be saved.
+ */
+export function mdfTemplatesProblem(templates: readonly MdfPatternTemplate[]): string | null {
+  if (templates.length === 0) return "Кемінде бір узор керек";
+  const seen = new Set<string>();
+  for (const t of templates) {
+    const key = t.name.trim().toLowerCase();
+    if (!key) return "Узор аты жазылмаған";
+    if (!(t.pricePerM2Tiyn > 0)) return `«${t.name.trim()}»: м² бағасы жазылмаған`;
+    if (seen.has(key)) return `«${t.name.trim()}» екі рет жазылған`;
+    seen.add(key);
+  }
+  return null;
+}
 
 /** A panel's cost at the shop's fixed rate for its pattern, or undefined when that pattern has no
  *  fixed price (see MDF_PATTERN_PRICE_TIYN). */

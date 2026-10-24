@@ -8,7 +8,7 @@ import { IconLayers, IconOrders, IconWarehouse } from "../../components/layout/i
 import { useAllOrders } from "../../hooks/useOrders";
 import { useStaff } from "../../hooks/useStaff";
 import { formatMoney } from "../../lib/money";
-import { formatMdfArea } from "../../lib/mdfJournal";
+import { formatMdfArea, mdfPatternOf } from "../../lib/mdfJournal";
 import { formatDateDMY } from "../../lib/dates";
 import {
   computeMdfBoard,
@@ -164,7 +164,7 @@ export default function AdminMdfHome() {
                       </strong>
                     </div>
                     <div className="track-card-meta-row">
-                      <span>{formatMdfArea(o.mdfAreaM2)} · {o.mdfFilmColor || "—"}</span>
+                      <span>{[formatMdfArea(o.mdfAreaM2), mdfPatternOf(o), o.mdfFilmColor || "—"].filter(Boolean).join(" · ")}</span>
                       {o.createdAt && <span>{formatDateDMY(o.createdAt)}</span>}
                     </div>
                   </div>

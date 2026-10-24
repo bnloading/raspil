@@ -4,6 +4,7 @@ import { computeMdfOrderTotal } from "./mdfJournal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
+import { nextProductionStatusForPayment } from "./payments";
 import type { Order, UserDoc } from "../types/domain";
 
 type Actor = { user: User; userData: UserDoc };
@@ -17,6 +18,8 @@ export interface MdfJournalDraft {
   customerName: string;
   customerPhone: string;
   areaM2: number;
+  /** «Узор» — a template's name (which filled pricePerM2Tiyn in) or one typed by hand. */
+  patternName: string;
   pricePerM2Tiyn: number;
   filmColor: string;
   extraServicesTiyn: number;
@@ -33,6 +36,7 @@ export function emptyMdfJournalDraft(): MdfJournalDraft {
     customerName: "",
     customerPhone: "",
     areaM2: 0,
+    patternName: "",
     pricePerM2Tiyn: 0,
     filmColor: "",
     extraServicesTiyn: 0,
@@ -49,6 +53,7 @@ export function mdfDraftHasContent(draft: MdfJournalDraft): boolean {
     draft.customerName.trim() !== "" ||
     draft.customerPhone.trim() !== "" ||
     draft.areaM2 !== 0 ||
+    draft.patternName.trim() !== "" ||
     draft.pricePerM2Tiyn !== 0 ||
     draft.filmColor.trim() !== "" ||
     draft.extraServicesTiyn !== 0 ||
@@ -64,6 +69,7 @@ export function draftFromMdfOrder(order: Order): MdfJournalDraft {
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     areaM2: order.mdfAreaM2 ?? 0,
+    patternName: order.mdfPatternName ?? "",
     pricePerM2Tiyn: order.mdfPricePerM2Tiyn ?? 0,
     filmColor: order.mdfFilmColor ?? "",
     extraServicesTiyn: order.extraServicesTiyn ?? 0,
@@ -112,12 +118,16 @@ export async function saveMdfJournalRow(
 ): Promise<void> {
   const totals = computeMdfOrderTotal(totalsInputFor(draft, order.paidTiyn));
   const linkedId = order.customerId ? null : await findCustomerIdByPhone(db, draft.customerPhone);
+  // A corrected total can settle an order or reopen its debt, and the stage before production
+  // follows that exactly as a payment moves it — or «Өндіріске жіберу» never appears.
+  const productionStatus = nextProductionStatusForPayment(order.productionStatus, totals.paymentStatus);
 
   await updateDoc(doc(db, "orders", order.id), {
     customerName: draft.customerName.trim(),
     customerPhone: draft.customerPhone.trim(),
     ...(linkedId ? { customerId: linkedId } : {}),
     mdfAreaM2: draft.areaM2,
+    mdfPatternName: draft.patternName.trim(),
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
     mdfPackaging: draft.packaging,
@@ -127,6 +137,7 @@ export async function saveMdfJournalRow(
     totalTiyn: totals.totalTiyn,
     debtTiyn: totals.debtTiyn,
     paymentStatus: totals.paymentStatus,
+    ...(productionStatus ? { productionStatus } : {}),
     createdAt: Timestamp.fromDate(draft.orderDate),
     updatedAt: serverTimestamp(),
   });
@@ -135,8 +146,14 @@ export async function saveMdfJournalRow(
     action: "order.mdf_journal_edit",
     entityType: "order",
     entityId: order.id,
-    before: { totalTiyn: order.totalTiyn },
-    after: { totalTiyn: totals.totalTiyn },
+    before: {
+      totalTiyn: order.totalTiyn, mdfAreaM2: order.mdfAreaM2 ?? 0,
+      mdfPatternName: order.mdfPatternName ?? "", mdfPricePerM2Tiyn: order.mdfPricePerM2Tiyn ?? 0,
+    },
+    after: {
+      totalTiyn: totals.totalTiyn, mdfAreaM2: draft.areaM2,
+      mdfPatternName: draft.patternName.trim(), mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
+    },
   });
 }
 
@@ -207,6 +224,7 @@ export async function createMdfJournalOrder(db: Firestore, actor: Actor, draft: 
     materialId: "",
     materialSnapshot: MDF_MATERIAL_SNAPSHOT,
     mdfAreaM2: draft.areaM2,
+    mdfPatternName: draft.patternName.trim(),
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
     mdfPackaging: draft.packaging,

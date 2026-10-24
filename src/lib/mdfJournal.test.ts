@@ -3,10 +3,16 @@ import {
   computeMdfOrderTotal,
   computeMdfPanelsAreaM2,
   computeMdfPanelsCostTiyn,
+  DEFAULT_MDF_PATTERN_TEMPLATES,
+  findMdfPatternTemplate,
   formatMdfArea,
   mdfPanelCostTiyn,
+  mdfPatternOf,
+  mdfPatternTemplates,
+  mdfTemplatesProblem,
   type MdfOrderInput,
 } from "./mdfJournal";
+import { emptyMdfJournalDraft, mdfDraftHasContent } from "./mdfJournalOrders";
 import type { MdfPanel } from "../types/domain";
 
 function panel(overrides: Partial<MdfPanel> = {}): Pick<MdfPanel, "lengthMm" | "widthMm" | "qty" | "pattern"> {
@@ -146,5 +152,62 @@ describe("formatMdfArea", () => {
   it("defaults a missing area to zero rather than showing nothing", () => {
     expect(formatMdfArea(undefined)).toBe("0.00 м²");
     expect(formatMdfArea(null)).toBe("0.00 м²");
+  });
+});
+
+describe("«Узор» templates — what the МДФ journal fills an order's м² price from", () => {
+  it("starts from the shop's fixed rates, «Басқа» left out (it is the typed-by-hand choice)", () => {
+    expect(DEFAULT_MDF_PATTERN_TEMPLATES).toEqual([
+      { name: "Модерн", pricePerM2Tiyn: T(16500) },
+      { name: "Рифленка", pricePerM2Tiyn: T(17500) },
+      { name: "Квадро", pricePerM2Tiyn: T(18500) },
+      { name: "Выборка 50мм", pricePerM2Tiyn: T(19500) },
+      { name: "20мм выборка", pricePerM2Tiyn: T(20500) },
+    ]);
+  });
+
+  it("uses the Admin's list once one is saved, and the fixed rates until then", () => {
+    const saved = [{ name: "Модерн", pricePerM2Tiyn: T(17000) }];
+    expect(mdfPatternTemplates({ mdfPatternTemplates: saved })).toBe(saved);
+    expect(mdfPatternTemplates({})).toBe(DEFAULT_MDF_PATTERN_TEMPLATES);
+    expect(mdfPatternTemplates({ mdfPatternTemplates: [] })).toBe(DEFAULT_MDF_PATTERN_TEMPLATES);
+  });
+
+  it("finds an order's template by name, whatever the case or stray spaces", () => {
+    expect(findMdfPatternTemplate(DEFAULT_MDF_PATTERN_TEMPLATES, "  рифленка ")?.pricePerM2Tiyn).toBe(T(17500));
+    expect(findMdfPatternTemplate(DEFAULT_MDF_PATTERN_TEMPLATES, "Классика")).toBeUndefined();
+    expect(findMdfPatternTemplate(DEFAULT_MDF_PATTERN_TEMPLATES, "")).toBeUndefined();
+  });
+
+  it("refuses a list it could not pick from: a blank name, no price, or one name twice", () => {
+    expect(mdfTemplatesProblem(DEFAULT_MDF_PATTERN_TEMPLATES)).toBeNull();
+    expect(mdfTemplatesProblem([])).toBe("Кемінде бір узор керек");
+    expect(mdfTemplatesProblem([{ name: " ", pricePerM2Tiyn: T(100) }])).toBe("Узор аты жазылмаған");
+    expect(mdfTemplatesProblem([{ name: "Классика", pricePerM2Tiyn: 0 }])).toBe("«Классика»: м² бағасы жазылмаған");
+    expect(mdfTemplatesProblem([
+      { name: "Модерн", pricePerM2Tiyn: T(16500) },
+      { name: "модерн ", pricePerM2Tiyn: T(17000) },
+    ])).toBe("«модерн» екі рет жазылған");
+  });
+});
+
+describe("mdfPatternOf — what an order is milled with", () => {
+  it("is the «Узор» the journal wrote down", () => {
+    expect(mdfPatternOf({ mdfPatternName: " Модерн " })).toBe("Модерн");
+  });
+
+  it("falls back to a customer's own panels, each pattern named once", () => {
+    expect(mdfPatternOf({ mdfPanels: [{ pattern: "modern" }, { pattern: "kvadro" }, { pattern: "modern" }] })).toBe("Модерн, Квадро");
+  });
+
+  it("is empty when neither says", () => {
+    expect(mdfPatternOf({})).toBe("");
+  });
+});
+
+describe("mdfDraftHasContent", () => {
+  it("counts a picked «Узор» as typing, so closing the form asks first", () => {
+    expect(mdfDraftHasContent(emptyMdfJournalDraft())).toBe(false);
+    expect(mdfDraftHasContent({ ...emptyMdfJournalDraft(), patternName: "Модерн" })).toBe(true);
   });
 });
