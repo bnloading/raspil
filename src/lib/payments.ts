@@ -28,7 +28,11 @@ export function nextProductionStatusForPayment(
 }
 
 /** Comments the app writes on a payment itself — where it was taken, not anything a person typed. */
-const APP_PAYMENT_COMMENTS = new Set(["Журнал арқылы", "Журналда түзетілді", "Артық төлем түзетілді"]);
+const APP_PAYMENT_COMMENTS = new Set([
+  "Журнал арқылы", "Журналда түзетілді", "Артық төлем түзетілді",
+  // Cash taken on the МДФ line's «Қолма-қол» page with nothing written on it.
+  "Қолма-қол беті арқылы",
+]);
 
 /**
  * What a person wrote on a payment — "Ерболға берілді" on cash taken at the counter — or null when

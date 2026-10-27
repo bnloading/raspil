@@ -143,6 +143,8 @@ const METHOD_TONES: Record<string, string> = {
   nur: "green",
   balim: "indigo",
   mixed: "amber",
+  // The МДФ line's transfer account — its «Нұр», so it wears the same green.
+  akhzhol: "green",
 };
 
 export function methodTone(methodId: string | null | undefined): string {

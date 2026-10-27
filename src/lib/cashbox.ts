@@ -1,6 +1,7 @@
 import { dayKey, monthKey } from "./dates";
 import type {
   CashAccount,
+  Department,
   Expense,
   Order,
   Payment,
@@ -42,6 +43,33 @@ export const CASH_ACCOUNT_HINTS: Record<CashAccount, string> = {
   pay: "Kaspi/Pay шотына түскен ақша",
   cash: "Қолма-қол алынған ақша",
 };
+
+/**
+ * The МДФ line's own names for the same three pots. Its money never goes near Нұр's account: a
+ * transfer lands on Ахжол's («Ахжол» method), «Басқа» is whatever other account a customer paid
+ * into, and cash is cash. Labelled as the ЛДСП pots, Мейрам's 220 110 ₸ to Ахжол read on the МДФ
+ * Касса as money «Нұрға түсті» (the owner, 26.10).
+ */
+const MDF_ACCOUNT_LABELS: Record<CashAccount, string> = {
+  deposit: "Ахжол",
+  pay: "Басқа",
+  cash: "Қолма-қол",
+};
+const MDF_ACCOUNT_HINTS: Record<CashAccount, string> = {
+  deposit: "Ахжолдың шотына аударыммен түскен ақша",
+  pay: "Басқа шотқа түскен ақша",
+  cash: "Қолма-қол алынған ақша",
+};
+
+/** What each pot is called on one line's screens. */
+export function cashAccountLabels(department: Department): Record<CashAccount, string> {
+  return department === "mdf" ? MDF_ACCOUNT_LABELS : CASH_ACCOUNT_LABELS;
+}
+
+/** The line under each pot's name on one line's Касса. */
+export function cashAccountHints(department: Department): Record<CashAccount, string> {
+  return department === "mdf" ? MDF_ACCOUNT_HINTS : CASH_ACCOUNT_HINTS;
+}
 
 /**
  * The method id the seed gives cash ("Нал / Қолма-қол"). Every other method is a transfer, so the

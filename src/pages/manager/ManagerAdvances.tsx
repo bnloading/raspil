@@ -33,8 +33,14 @@ const monthName = (key: string) => {
  */
 export default function ManagerAdvances() {
   const { user, userData } = useAuth();
+  // useStaff is already the viewer's own line only, and so is every advance shown below: an МДФ
+  // manager never sees what the ЛДСП saw was handed, nor the other way round.
   const { staff, loading: staffLoading } = useStaff();
-  const { advances, loading } = useAdvances();
+  const { advances: allAdvances, loading } = useAdvances();
+  const advances = useMemo(() => {
+    const ours = new Set(staff.map((s) => s.id));
+    return allAdvances.filter((a) => ours.has(a.userId));
+  }, [allAdvances, staff]);
   const { message, visible, showToast } = useToast();
 
   // Each worker's advance is filed against their own pay period — a week for распил, a month for

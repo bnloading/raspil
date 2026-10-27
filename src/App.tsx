@@ -21,6 +21,7 @@ const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminProfit = lazy(() => import("./pages/admin/AdminProfit"));
 const AdminRent = lazy(() => import("./pages/admin/AdminRent"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
+const ManagerCashLog = lazy(() => import("./pages/manager/ManagerCashLog"));
 const ManagerCashbox = lazy(() => import("./pages/manager/ManagerCashbox"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 const AdminCsvSettings = lazy(() => import("./pages/admin/AdminCsvSettings"));
@@ -373,6 +374,15 @@ export default function App() {
               element={
                 <RouteGuard roles={["manager", "admin"]}>
                   <ManagerCashbox />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/manager/cash"
+              element={
+                // «Қолма-қол» — the МДФ line's cash book, in Аренда's place on its phone bar.
+                <RouteGuard roles={["manager", "admin"]}>
+                  <ManagerCashLog />
                 </RouteGuard>
               }
             />

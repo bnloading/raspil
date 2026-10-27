@@ -9,11 +9,16 @@ import { formatMoney } from "../../lib/money";
 import { formatDateDMY } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv } from "../../lib/exportTable";
+import { departmentOf } from "../../lib/rbac";
 
 /**
  * "Қарыз" ledger for Admin/Manager — one card per customer, every figure derived from orders via
  * computeCustomerDebts() rather than stored, so it can never disagree with the Manager journal,
  * an order's own detail page, or the reports.
+ *
+ * Only the viewer's own line. It used to open on Распил for everyone, МДФ one tap away, so the МДФ
+ * counter's «Қарыз» was the ЛДСП debt list (the owner, 26.10) — the two lines are separate
+ * businesses and never read each other's customers.
  */
 export default function ManagerDebt() {
   const { userData } = useAuth();
@@ -21,7 +26,7 @@ export default function ManagerDebt() {
   const { orders, loading } = useAllOrders();
   const [search, setSearch] = useState("");
   const [onlyOwing, setOnlyOwing] = useState(true);
-  const [lineFilter, setLineFilter] = useState<"cutting" | "mdf_wrap">("cutting");
+  const lineFilter = userData && departmentOf(userData) === "mdf" ? "mdf_wrap" : "cutting";
 
   const allDebts = useMemo(() => computeCustomerDebts(orders), [orders]);
   const debts = useMemo(() => allDebts.filter((d) => d.orderKind === lineFilter), [allDebts, lineFilter]);
@@ -84,23 +89,6 @@ export default function ManagerDebt() {
           <div className="number">{formatMoney(totals.paid)}</div>
           <div className="label">Жалпы төленген</div>
         </div>
-      </div>
-
-      <div className="status-filter-row">
-        <button
-          className={`status-filter-btn${lineFilter === "cutting" ? " active" : ""}`}
-          onClick={() => setLineFilter("cutting")}
-        >
-          <span>Распил</span>
-          <b>{allDebts.filter((d) => d.orderKind === "cutting" && d.debtTiyn > 0).length}</b>
-        </button>
-        <button
-          className={`status-filter-btn${lineFilter === "mdf_wrap" ? " active" : ""}`}
-          onClick={() => setLineFilter("mdf_wrap")}
-        >
-          <span>МДФ</span>
-          <b>{allDebts.filter((d) => d.orderKind === "mdf_wrap" && d.debtTiyn > 0).length}</b>
-        </button>
       </div>
 
       <div className="status-filter-row">

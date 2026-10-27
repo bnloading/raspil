@@ -4581,6 +4581,20 @@ body {
      the narrowest this column ever gets is with the detail panel open beside it. */
   .journal-table .jt-w-act { width: 11%; }
 }
+/* The МДФ ledger (ManagerMdfJournal) — the same table with its own ten columns: who, the «Узор»,
+   the м² and its rate, then the money and the floor exactly as ЛДСП has them. */
+@media (min-width: 768px) {
+  .journal-table.is-mdf .jt-w-who { width: 18%; }
+  .journal-table.is-mdf .jt-w-pattern { width: 11%; }
+  .journal-table.is-mdf .jt-w-area { width: 7%; }
+  .journal-table.is-mdf .jt-w-rate { width: 8%; }
+  .journal-table.is-mdf .jt-w-total { width: 9%; }
+  .journal-table.is-mdf .jt-w-pay { width: 13%; }
+  .journal-table.is-mdf .jt-w-method { width: 8%; }
+  .journal-table.is-mdf .jt-w-progress { width: 12%; }
+  .journal-table.is-mdf .jt-w-date { width: 7%; }
+  .journal-table.is-mdf .jt-w-act { width: 7%; }
+}
 /* Nothing may spill out of its column, or the ellipsis never happens. */
 .journal-table td,
 .journal-table th {
@@ -7340,6 +7354,34 @@ body {
   font-size: 17px;
 }
 .kpi-icon.is-indigo { background: var(--primary-soft); }
+
+/* «Қолма-қол» cash book (ManagerCashLog) — one block per day, one line per tenge that moved. */
+.cashlog-day { padding: 10px 0; border-top: 1px solid var(--border); }
+.cashlog-day:first-of-type { border-top: none; }
+.cashlog-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cashlog-day-head span { display: inline-flex; gap: 10px; }
+.cashlog-day-head .is-in,
+.cashlog-row.is-in .cashlog-row-sum { color: var(--success); }
+.cashlog-day-head .is-out,
+.cashlog-row.is-out .cashlog-row-sum { color: var(--danger); }
+.cashlog-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 6px 0;
+}
+.cashlog-row-main { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.cashlog-row-title { font-weight: 600; overflow-wrap: anywhere; }
+.cashlog-row-note { font-size: 0.85rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.cashlog-row-by { font-size: 0.78rem; color: var(--text-light); }
+.cashlog-row-sum { white-space: nowrap; }
 .kpi-icon.is-blue { background: var(--info-light); }
 .kpi-icon.is-green { background: var(--success-light); }
 .kpi-icon.is-red { background: var(--danger-light); }
@@ -9526,6 +9568,11 @@ body {
   color: var(--text-secondary);
 }
 .jt-pay-note .jt-input-num.is-paid { color: var(--emerald); }
+/* The МДФ row shows the paid figure as text — it is corrected in the payment dialog. */
+.jt-pay-paid { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.jt-pay-paid.is-paid { color: var(--emerald); font-weight: 600; }
+/* The МДФ phone sheet: area and rate side by side. */
+.mdf-sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* What people wrote on the money — mostly the cash note, "💬 30000" — under «Төленді», the figure
    it was written about. Two lines at most; all of it on hover. */
 .jt-pay-comment {

@@ -63,6 +63,34 @@ export function mdfDraftHasContent(draft: MdfJournalDraft): boolean {
   );
 }
 
+/**
+ * A total typed by hand over what the area comes to — the shop agrees a round figure — kept as the
+ * ЛДСП row keeps one (journalOrders.ts totalOverrideFor): the difference from area × rate (plus
+ * delivery) becomes a surcharge or a discount, so the area and the rate stay what they really were.
+ */
+export function mdfTotalOverride(
+  draft: MdfJournalDraft,
+  typedTiyn: number,
+): Pick<MdfJournalDraft, "extraServicesTiyn" | "discountTiyn"> {
+  const base = computeMdfOrderTotal({
+    areaM2: draft.areaM2,
+    pricePerM2Tiyn: draft.pricePerM2Tiyn,
+    extraServicesTiyn: 0,
+    deliveryCostTiyn: draft.deliveryCostTiyn,
+    discountTiyn: 0,
+    paidTiyn: 0,
+  }).totalTiyn;
+  const target = Math.max(0, Math.round(typedTiyn));
+  return target >= base
+    ? { extraServicesTiyn: target - base, discountTiyn: 0 }
+    : { extraServicesTiyn: 0, discountTiyn: base - target };
+}
+
+/** The row's totals as the journal shows them — the same arithmetic saveMdfJournalRow stores. */
+export function mdfDraftTotals(draft: MdfJournalDraft, paidTiyn: number) {
+  return computeMdfOrderTotal(totalsInputFor(draft, paidTiyn));
+}
+
 /** Reads an existing МДФ order back into the journal's editable shape. */
 export function draftFromMdfOrder(order: Order): MdfJournalDraft {
   return {

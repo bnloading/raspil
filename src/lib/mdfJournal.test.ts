@@ -6,13 +6,18 @@ import {
   DEFAULT_MDF_PATTERN_TEMPLATES,
   findMdfPatternTemplate,
   formatMdfArea,
+  formatMdfAreaInput,
+  mdfJournalProgress,
+  mdfMatchesQuickFilter,
   mdfPanelCostTiyn,
   mdfPatternOf,
   mdfPatternTemplates,
+  mdfStationLabel,
   mdfTemplatesProblem,
+  parseMdfArea,
   type MdfOrderInput,
 } from "./mdfJournal";
-import { emptyMdfJournalDraft, mdfDraftHasContent } from "./mdfJournalOrders";
+import { emptyMdfJournalDraft, mdfDraftHasContent, mdfDraftTotals, mdfTotalOverride } from "./mdfJournalOrders";
 import type { MdfPanel } from "../types/domain";
 
 function panel(overrides: Partial<MdfPanel> = {}): Pick<MdfPanel, "lengthMm" | "widthMm" | "qty" | "pattern"> {
@@ -209,5 +214,101 @@ describe("mdfDraftHasContent", () => {
   it("counts a picked «Узор» as typing, so closing the form asks first", () => {
     expect(mdfDraftHasContent(emptyMdfJournalDraft())).toBe(false);
     expect(mdfDraftHasContent({ ...emptyMdfJournalDraft(), patternName: "Модерн" })).toBe(true);
+  });
+});
+
+describe("parseMdfArea — the м² cell as the counter types it", () => {
+  it("reads a comma or a point", () => {
+    expect(parseMdfArea("13,34")).toBe(13.34);
+    expect(parseMdfArea("13.34")).toBe(13.34);
+    expect(parseMdfArea(" 28 ")).toBe(28);
+  });
+
+  it("adds the pieces up, without float noise", () => {
+    expect(parseMdfArea("2,5 + 3,1")).toBe(5.6);
+    expect(parseMdfArea("2,5+3,1+0,8")).toBe(6.4);
+  });
+
+  it("is 0 when empty, and null while half typed, so the last good figure stays", () => {
+    expect(parseMdfArea("")).toBe(0);
+    expect(parseMdfArea("2,5+")).toBeNull();
+    expect(parseMdfArea("он үш")).toBeNull();
+    expect(parseMdfArea("-3")).toBeNull();
+  });
+
+  it("writes an area back as it would be typed", () => {
+    expect(formatMdfAreaInput(13.34)).toBe("13,34");
+    expect(formatMdfAreaInput(5.6000000000000005)).toBe("5,6");
+    expect(formatMdfAreaInput(0)).toBe("");
+  });
+});
+
+describe("mdfTotalOverride — a total typed by hand", () => {
+  // Мейрам, 26.10: 13,34 м² Модерн at 16 500 ₸ — 220 110 ₸.
+  const draft = { ...emptyMdfJournalDraft(), areaM2: 13.34, pricePerM2Tiyn: T(16500) };
+
+  it("keeps a lower figure as a discount, the area and the rate untouched", () => {
+    const patch = mdfTotalOverride(draft, T(220000));
+    expect(patch).toEqual({ extraServicesTiyn: 0, discountTiyn: T(110) });
+    expect(mdfDraftTotals({ ...draft, ...patch }, 0).totalTiyn).toBe(T(220000));
+  });
+
+  it("keeps a higher figure as a surcharge", () => {
+    expect(mdfTotalOverride(draft, T(225000))).toEqual({ extraServicesTiyn: T(4890), discountTiyn: 0 });
+  });
+
+  it("clears both when the typed figure is what the area comes to", () => {
+    expect(mdfTotalOverride({ ...draft, discountTiyn: T(110) }, T(220110))).toEqual({ extraServicesTiyn: 0, discountTiyn: 0 });
+  });
+
+  it("counts delivery as part of what the area comes to", () => {
+    expect(mdfTotalOverride({ ...draft, deliveryCostTiyn: T(5000) }, T(225110))).toEqual({ extraServicesTiyn: 0, discountTiyn: 0 });
+  });
+});
+
+describe("mdfJournalProgress — the МДФ row's three dots", () => {
+  const at = (productionStatus: Parameters<typeof mdfJournalProgress>[0]["productionStatus"], paid: number) =>
+    mdfJournalProgress({ productionStatus, totalTiyn: T(220110) }, paid).map((s) => s.state);
+
+  it("unpaid and not sent: money is what holds it up", () => {
+    expect(at("waiting_payment", 0)).toEqual(["blocked", "todo", "todo"]);
+  });
+
+  it("paid and on the floor", () => {
+    expect(at("mdf_production", T(220110))).toEqual(["done", "active", "todo"]);
+  });
+
+  it("sent on credit still says the money is owed", () => {
+    expect(at("mdf_production", T(100000))).toEqual(["active", "active", "todo"]);
+  });
+
+  it("finished", () => {
+    expect(at("ready", T(220110))).toEqual(["done", "done", "done"]);
+  });
+
+  it("names the steps as the counter does", () => {
+    expect(mdfJournalProgress({ productionStatus: "paid", totalTiyn: 1 }, 1).map((s) => s.label)).toEqual(["Төлем", "Өндіріс", "Дайын"]);
+  });
+});
+
+describe("mdfStationLabel", () => {
+  it("says which station has it", () => {
+    expect(mdfStationLabel({ productionStatus: "mdf_production", mdfStage: "cnc" })).toBe("ЧПУ-да");
+    expect(mdfStationLabel({ productionStatus: "mdf_production", mdfStage: "vacuum" })).toBe("Вакуумда");
+    expect(mdfStationLabel({ productionStatus: "paid" })).toBe("Жіберілмеді");
+    expect(mdfStationLabel({ productionStatus: "ready" })).toBe("Дайын");
+  });
+});
+
+describe("mdfMatchesQuickFilter", () => {
+  const o = (productionStatus: Parameters<typeof mdfMatchesQuickFilter>[0]["productionStatus"]) => ({ productionStatus, totalTiyn: T(1000) });
+
+  it("sorts rows under the chips", () => {
+    expect(mdfMatchesQuickFilter(o("waiting_payment"), 0, "debt")).toBe(true);
+    expect(mdfMatchesQuickFilter(o("paid"), T(1000), "debt")).toBe(false);
+    expect(mdfMatchesQuickFilter(o("paid"), T(1000), "paid")).toBe(true);
+    expect(mdfMatchesQuickFilter(o("mdf_production"), T(1000), "production")).toBe(true);
+    expect(mdfMatchesQuickFilter(o("delivered"), T(1000), "ready")).toBe(true);
+    expect(mdfMatchesQuickFilter(o("ready"), 0, "all")).toBe(true);
   });
 });

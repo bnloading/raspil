@@ -9,7 +9,8 @@ import { useToast } from "../../hooks";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { useRentPayments } from "../../hooks/useRentPayments";
 import { addRentPayment, deleteRentPayment } from "../../lib/rent";
-import { accountForMethod, CASH_ACCOUNTS, CASH_ACCOUNT_LABELS } from "../../lib/cashbox";
+import { accountForMethod, CASH_ACCOUNTS } from "../../lib/cashbox";
+import { useCashAccountLabels } from "../../hooks/useCashAccountLabels";
 import { formatMoney } from "../../lib/money";
 import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
 import { departmentOf, methodVisibleTo } from "../../lib/rbac";
@@ -29,6 +30,7 @@ const dmy = (day: string) => formatDateDMY(new Date(`${day}T12:00:00+05:00`));
  * (App.tsx, firestore.rules).
  */
 export default function AdminRent() {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const isAdmin = userData?.role === "admin";
   const canDelete = (r: RentPayment) => isAdmin || r.createdByUid === user?.uid;
@@ -105,7 +107,7 @@ export default function AdminRent() {
                 <div className="kpi-value">{formatMoney(counted.reduce((s, r) => s + r.amountTiyn, 0))}</div>
                 {countedByAccount.length > 0 && (
                   <div className="kpi-sub">
-                    {countedByAccount.map((a) => `${CASH_ACCOUNT_LABELS[a.account]} ${formatMoney(a.amountTiyn)}`).join(" · ")}
+                    {countedByAccount.map((a) => `${accountLabels[a.account]} ${formatMoney(a.amountTiyn)}`).join(" · ")}
                   </div>
                 )}
               </div>
@@ -202,6 +204,7 @@ function RentForm({
   onSaved: (name: string, amountTiyn: number) => void;
   onError: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const [payerName, setPayerName] = useState("");
   const [amountTenge, setAmountTenge] = useState(0);
@@ -263,7 +266,7 @@ function RentForm({
           <span>Төлем түрі</span>
           <select className="form-input" value={method?.id ?? ""} onChange={(e) => setMethodId(e.target.value)}>
             {methods.map((m) => (
-              <option key={m.id} value={m.id}>{m.name} — {CASH_ACCOUNT_LABELS[accountForMethod(m)]}</option>
+              <option key={m.id} value={m.id}>{m.name} — {accountLabels[accountForMethod(m)]}</option>
             ))}
           </select>
         </label>

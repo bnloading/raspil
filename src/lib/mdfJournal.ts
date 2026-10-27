@@ -1,4 +1,5 @@
-import type { ApplicationSettings, MdfPanel, MdfPattern, MdfPatternTemplate, PaymentStatus } from "../types/domain";
+import type { ApplicationSettings, MdfPanel, MdfPattern, MdfPatternTemplate, MdfStage, Order, PaymentStatus } from "../types/domain";
+import type { ProgressStep, StepState } from "./journalFilters";
 import { MDF_PATTERN_LABELS, MDF_PATTERNS } from "../types/domain";
 import { computePaymentStatus } from "./statuses";
 
@@ -150,4 +151,91 @@ export function computeMdfOrderTotal(input: MdfOrderInput): MdfOrderTotals {
     debtTiyn: totalTiyn - input.paidTiyn,
     paymentStatus: computePaymentStatus(totalTiyn, input.paidTiyn),
   };
+}
+
+/**
+ * The area as the counter types it: «13,34», or the pieces it was measured in, «2,5 + 3,1 + 0,8».
+ * A comma or a point for the decimals; empty is 0. Null while it is not yet a number — «2,5+» half
+ * typed — so the caller keeps the last good figure instead of saving a wrong one.
+ */
+export function parseMdfArea(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return 0;
+  let sum = 0;
+  for (const raw of trimmed.split("+")) {
+    const part = raw.trim().replace(",", ".");
+    if (!/^(\d+(\.\d*)?|\.\d+)$/.test(part)) return null;
+    sum += Number(part);
+  }
+  // Summing decimals carries float noise (2.5 + 3.1 = 5.6000000000000005); four places is far
+  // finer than any panel is measured to.
+  return Math.round(sum * 10000) / 10000;
+}
+
+/** An area back into the cell as it would be typed: «13,34», no trailing zeros. */
+export function formatMdfAreaInput(areaM2: number): string {
+  return areaM2 ? String(Math.round(areaM2 * 10000) / 10000).replace(".", ",") : "";
+}
+
+/** Where a МДФ order is on the floor, in the counter's words. */
+const MDF_STATION_WHERE: Record<MdfStage, string> = {
+  cnc: "ЧПУ-да",
+  sanding: "Шкуркада",
+  painting: "Краскада",
+  vacuum: "Вакуумда",
+};
+
+export function mdfStationLabel(order: Pick<Order, "productionStatus" | "mdfStage">): string {
+  if (order.productionStatus === "ready") return "Дайын";
+  if (order.productionStatus === "delivered") return "Берілді";
+  if (order.productionStatus === "mdf_production" && order.mdfStage) return MDF_STATION_WHERE[order.mdfStage];
+  return "Жіберілмеді";
+}
+
+/**
+ * The МДФ row's three dots — money in, on the floor, finished — the same read-out the ЛДСП ledger
+ * gives (lib/journalFilters.ts journalProgress), with the four stations folded into one «Өндіріс».
+ */
+export function mdfJournalProgress(order: Pick<Order, "productionStatus" | "totalTiyn">, paidTiyn: number): ProgressStep[] {
+  const s = order.productionStatus;
+  const cancelled = s === "cancelled";
+  const finished = s === "ready" || s === "delivered";
+  const owing = order.totalTiyn - paidTiyn;
+  const payment: StepState = cancelled ? "blocked" : owing <= 0 ? "done" : paidTiyn > 0 ? "active" : "blocked";
+  const production: StepState = cancelled ? "blocked" : finished ? "done" : s === "mdf_production" ? "active" : "todo";
+  const ready: StepState = cancelled ? "blocked" : finished ? "done" : "todo";
+  return [
+    { key: "payment", label: "Төлем", state: payment },
+    { key: "cutting", label: "Өндіріс", state: production },
+    { key: "ready", label: "Дайын", state: ready },
+  ];
+}
+
+/** The МДФ journal's chips. */
+export type MdfQuickFilter = "all" | "debt" | "paid" | "production" | "ready";
+export const MDF_QUICK_FILTERS: { id: MdfQuickFilter; label: string }[] = [
+  { id: "all", label: "Барлығы" },
+  { id: "debt", label: "Қарыз" },
+  { id: "paid", label: "Төленді" },
+  { id: "production", label: "Өндірісте" },
+  { id: "ready", label: "Дайын" },
+];
+
+export function mdfMatchesQuickFilter(
+  order: Pick<Order, "productionStatus" | "totalTiyn">,
+  paidTiyn: number,
+  filter: MdfQuickFilter,
+): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "debt":
+      return order.totalTiyn - paidTiyn > 0;
+    case "paid":
+      return order.totalTiyn > 0 && paidTiyn >= order.totalTiyn;
+    case "production":
+      return order.productionStatus === "mdf_production";
+    case "ready":
+      return order.productionStatus === "ready" || order.productionStatus === "delivered";
+  }
 }

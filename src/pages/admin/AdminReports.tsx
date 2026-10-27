@@ -30,7 +30,8 @@ import {
   MACHINE_WASTE_PCT,
   type FinanceSummary,
 } from "../../lib/finance";
-import { CASH_ACCOUNTS, CASH_ACCOUNT_LABELS, accountForExpense, computeCashbox } from "../../lib/cashbox";
+import { CASH_ACCOUNTS, accountForExpense, computeCashbox } from "../../lib/cashbox";
+import { useCashAccountLabels } from "../../hooks/useCashAccountLabels";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder } from "../../lib/rbac";
 import type { CashAccount, Department, Expense, ExpenseCategory, PaymentMethodDef } from "../../types/domain";
 import {
@@ -361,6 +362,7 @@ function ExpenseLogTab({
   orders: ReturnType<typeof useAllOrders>["orders"];
   showToast: (msg: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { userData, user } = useAuth();
   const [adding, setAdding] = useState(false);
 
@@ -440,7 +442,7 @@ function ExpenseLogTab({
                   <td data-label="Атауы"><strong>{e.name}</strong></td>
                   <td data-label="Қай кассадан">
                     <span className={`cashbox-tag is-${accountForExpense(e)}`}>
-                      {CASH_ACCOUNT_LABELS[accountForExpense(e)]}
+                      {accountLabels[accountForExpense(e)]}
                     </span>
                   </td>
                   <td className="num jt-debt" data-label="Сомасы">−{formatMoney(e.amountTiyn)}</td>
@@ -470,6 +472,7 @@ function ExpenseModal({
   onClose: () => void;
   showToast: (msg: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const [name, setName] = useState("");
   const [amountTiyn, setAmountTiyn] = useState(0);
@@ -529,7 +532,7 @@ function ExpenseModal({
           <div className="form-group">
             <label>Қай кассадан</label>
             <select className="form-input" value={account} onChange={(e) => setAccount(e.target.value as CashAccount)}>
-              {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+              {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{accountLabels[a]}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -571,6 +574,7 @@ function FinanceTab({
   expenses: Expense[];
   department: Department;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const months = useMemo(() => availableMonths(orders), [orders]);
   // Opens on "Барлық уақыт" (null), not the latest month — the owner reads Таза пайда as a running
   // total, not a monthly snapshot, and having to remember to switch the dropdown every visit was
@@ -771,7 +775,7 @@ function FinanceTab({
             of them. The drawer is left out — this block is about money on account. */}
         {costsVisible && cashbox.accounts.filter((a) => a.account !== "cash").map((a) => (
           <div key={a.account} className="summary-row is-final">
-            <span>{CASH_ACCOUNT_LABELS[a.account]} шотындағы ақша</span>
+            <span>{accountLabels[a.account]} шотындағы ақша</span>
             <strong className="jt-total">{formatMoney(a.balanceTiyn)}</strong>
           </div>
         ))}

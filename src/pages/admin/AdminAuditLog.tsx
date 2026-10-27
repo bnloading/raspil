@@ -1,15 +1,28 @@
-import { useEffect, useState } from "react";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../../firebase";
+import { useAuth } from "../../AuthContext";
 import { Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { formatDateTimeDMY } from "../../lib/dates";
-import type { AuditLogEntry } from "../../types/domain";
+import { departmentOf } from "../../lib/rbac";
+import type { AuditLogEntry, Department, UserDoc } from "../../types/domain";
 
 export default function AdminAuditLog() {
+  const { userData } = useAuth();
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState("all");
+  // Whose line each person works on, so each line's admin reads only its own people's actions —
+  // the ЛДСП and МДФ lines do not see into each other (the owner, 26.10).
+  const [deptByUid, setDeptByUid] = useState<Map<string, Department> | null>(null);
+
+  useEffect(() => {
+    getDocs(collection(db, "users"))
+      .then((snap) => setDeptByUid(new Map(snap.docs.map((d) => [d.id, departmentOf(d.data() as UserDoc)]))))
+      .catch(() => setDeptByUid(new Map()));
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(200));
@@ -22,8 +35,13 @@ export default function AdminAuditLog() {
     return unsub;
   }, []);
 
-  const actions = ["all", ...Array.from(new Set(entries.map((e) => e.action)))];
-  const filtered = actionFilter === "all" ? entries : entries.filter((e) => e.action === actionFilter);
+  // Someone no longer on the books is read as ЛДСП, the line every older account belonged to.
+  const mine = useMemo(
+    () => (deptByUid ? entries.filter((e) => (deptByUid.get(e.userId) ?? "ldsp") === myDepartment) : []),
+    [entries, deptByUid, myDepartment],
+  );
+  const actions = ["all", ...Array.from(new Set(mine.map((e) => e.action)))];
+  const filtered = actionFilter === "all" ? mine : mine.filter((e) => e.action === actionFilter);
 
   return (
     <AppShell title="Аудит журналы" subtitle="Барлық әрекеттер тарихы">
@@ -38,7 +56,7 @@ export default function AdminAuditLog() {
       </div>
 
       <div className="panel-card">
-        {loading ? (
+        {loading || !deptByUid ? (
           <Spinner />
         ) : filtered.length === 0 ? (
           <div className="empty-state">

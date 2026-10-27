@@ -227,3 +227,14 @@ export function IconKey({ className }: IconProps) {
     </svg>
   );
 }
+
+/** "Қолма-қол" — a banknote, for the cash the МДФ counter takes in. */
+export function IconCash({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 12h.01M18 12h.01" />
+    </svg>
+  );
+}

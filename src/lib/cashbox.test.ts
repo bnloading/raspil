@@ -8,6 +8,7 @@ import {
   groupExpensesByName,
   isBeforeRestart,
   CASH_ACCOUNT_LABELS,
+  cashAccountLabels,
 } from "./cashbox";
 import type { Expense, Payment, PaymentMethodDef } from "../types/domain";
 
@@ -476,5 +477,16 @@ describe("the owner's exceptions and corrections", () => {
     expect(all.totalAdjustTiyn).toBe(T(2000));
     const sept = computeCashbox({ payments: [], expenses: [], methods, period: "2026-09", startDate: "2026-09-22", adjustments: [adj("2026-09-29"), adj("2026-10-02")] });
     expect(sept.totalAdjustTiyn).toBe(T(1000));
+  });
+});
+
+describe("cashAccountLabels — each line names its own pots", () => {
+  it("calls the МДФ transfer pot «Ахжол», never «Нұр»", () => {
+    // Мейрам's 220 110 ₸ went to Ахжол and read on the МДФ Касса as «Нұр» (26.10).
+    expect(cashAccountLabels("mdf")).toEqual({ deposit: "Ахжол", pay: "Басқа", cash: "Қолма-қол" });
+  });
+
+  it("keeps the ЛДСП names", () => {
+    expect(cashAccountLabels("ldsp")).toEqual({ deposit: "Нұр", pay: "Kaspi / Pay", cash: "Қолма-қол" });
   });
 });

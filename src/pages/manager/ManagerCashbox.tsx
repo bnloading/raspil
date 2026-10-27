@@ -10,6 +10,7 @@ import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
+import { useCashAccountLabels } from "../../hooks/useCashAccountLabels";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMaterials } from "../../hooks/useMaterials";
@@ -24,8 +25,6 @@ import {
   expensesInPeriod,
   groupExpensesByName,
   CASH_ACCOUNTS,
-  CASH_ACCOUNT_HINTS,
-  CASH_ACCOUNT_LABELS,
   accountForMethod,
 } from "../../lib/cashbox";
 import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
@@ -64,6 +63,7 @@ import type { CashboxSummary } from "../../lib/cashbox";
  * spent never means being shown what was earned.
  */
 export default function ManagerCashbox() {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const isAdmin = userData?.role === "admin";
   const myDepartment = userData ? departmentOf(userData) : "ldsp";
@@ -261,7 +261,7 @@ export default function ManagerCashbox() {
     rows.map((e) => ({
       Күні: e.date,
       Атауы: e.name,
-      Қайдан: CASH_ACCOUNT_LABELS[accountForExpense(e)],
+      Қайдан: accountLabels[accountForExpense(e)],
       Сомасы: e.amountTiyn / 100,
       Түсініктеме: e.comment ?? "",
       "Кім жазды": e.createdByName,
@@ -369,7 +369,7 @@ export default function ManagerCashbox() {
                         </td>
                         <td data-label="Қайдан">
                           <span className={`cashbox-tag is-${accountForExpense(e)}`}>
-                            {CASH_ACCOUNT_LABELS[accountForExpense(e)]}
+                            {accountLabels[accountForExpense(e)]}
                           </span>
                         </td>
                         <td className="num" data-label="Сомасы"><span className="jt-debt">{formatMoney(e.amountTiyn)}</span></td>
@@ -457,6 +457,7 @@ function ExpenseForm({
   onSaved: (name: string, amountTiyn: number) => void;
   onError: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const [name, setName] = useState("");
   const [amountTenge, setAmountTenge] = useState(0);
@@ -541,7 +542,7 @@ function ExpenseForm({
         <label className="cashbox-field">
           <span>Қайдан</span>
           <select className="form-input" value={account} onChange={(e) => setAccount(e.target.value as CashAccount)}>
-            {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+            {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{accountLabels[a]}</option>)}
           </select>
         </label>
         <label className="cashbox-field">
@@ -615,6 +616,7 @@ function MethodAccounts({
   department: Department;
   onError: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   // `methods` stays the full list (computeCashbox above needs every method, both lines', to price
   // payments correctly) — only what's rendered here is scoped to the viewer's own line, and
   // `change()` must still map over the FULL array or an optimistic update would drop the other
@@ -643,7 +645,7 @@ function MethodAccounts({
             <span>{m.name}</span>
             <select className="form-input" value={accountForMethod(m)} onChange={(e) => change(m, e.target.value as CashAccount)}
               aria-label={`${m.name} — кассасы`}>
-              {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+              {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{accountLabels[a]}</option>)}
             </select>
           </li>
         ))}
@@ -671,6 +673,7 @@ function OpeningBalanceEditor({
   cashStartOrderNumber: string | null;
   onError: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const [saving, setSaving] = useState<CashAccount | null>(null);
   const [savingDate, setSavingDate] = useState(false);
 
@@ -771,7 +774,7 @@ function OpeningBalanceEditor({
       <ul className="cashbox-mapping">
         {CASH_ACCOUNTS.map((a) => (
           <li key={a}>
-            <span>{CASH_ACCOUNT_LABELS[a]}</span>
+            <span>{accountLabels[a]}</span>
             <MoneyInput
               valueTiyn={openingBalanceTiyn[a] ?? 0}
               onChange={(tiyn) => change(a, tiyn)}
@@ -824,6 +827,7 @@ export function CashboxAccounts({
   /** Admin only: take back a correction entered by mistake. */
   onRemoveAdjustment?: (adjustment: CashAdjustment) => void;
 }) {
+  const { labels: accountLabels, hints: accountHints } = useCashAccountLabels();
   const nowByAccount = new Map(cashboxNow.accounts.map((a) => [a.account, a.balanceTiyn]));
   const totalOpeningTiyn = CASH_ACCOUNTS.reduce((s, a) => s + (openingBalanceTiyn[a] ?? 0), 0);
   // Only what was paid after the owner went through the list (EXCLUDED_SHOWN_AFTER): the earlier
@@ -868,8 +872,8 @@ export function CashboxAccounts({
         {cashbox.accounts.map((acc) => (
           <section key={acc.account} className={`cashbox-card is-${acc.account}`}>
             <header>
-              <h3>{CASH_ACCOUNT_LABELS[acc.account]}</h3>
-              <p>{CASH_ACCOUNT_HINTS[acc.account]}</p>
+              <h3>{accountLabels[acc.account]}</h3>
+              <p>{accountHints[acc.account]}</p>
             </header>
             <div className="cashbox-balance">
               <span className="cashbox-balance-label">Қазір бізде бар</span>
@@ -938,7 +942,7 @@ export function CashboxAccounts({
             {cashboxNow.adjustments.map((a) => (
               <li key={a.id}>
                 <span>
-                  {dmy(a.date)} · {CASH_ACCOUNT_LABELS[a.account]} · {a.note}{a.byName ? ` · ${a.byName}` : ""}
+                  {dmy(a.date)} · {accountLabels[a.account]} · {a.note}{a.byName ? ` · ${a.byName}` : ""}
                 </span>
                 <strong>{signed(a.amountTiyn)}</strong>
                 {onRemoveAdjustment && (
@@ -1003,6 +1007,7 @@ function ExpenseHistory({ weeks, startDate, settlements }: {
   startDate: string | null;
   settlements: Settlement[];
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   if (weeks.length === 0) return null;
   const today = dayKey(new Date());
   return (
@@ -1034,7 +1039,7 @@ function ExpenseHistory({ weeks, startDate, settlements }: {
                       {!settled && startDate && e.date < startDate && <small> · Кассаға кірмейді</small>}
                       <SettledTag settlement={settlementOfExpense(e, settlements, startDate)} inline />
                     </span>
-                    <span className={`cashbox-tag is-${accountForExpense(e)}`}>{CASH_ACCOUNT_LABELS[accountForExpense(e)]}</span>
+                    <span className={`cashbox-tag is-${accountForExpense(e)}`}>{accountLabels[accountForExpense(e)]}</span>
                     <strong>{formatMoney(e.amountTiyn)}</strong>
                   </li>
                 ))}
@@ -1096,6 +1101,7 @@ function SettlementPanel({
   input: SettlementInput;
   onToast: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   // Every settlement, for the history and the one undo; the ones under the restart in force, for what comes next.
   const settled = useMemo(() => settlementsInOrder(input.settlements), [input.settlements]);
@@ -1244,7 +1250,7 @@ function SettlementPanel({
                 {CASH_ACCOUNTS.map((a, i) => (
                   <span key={a}>
                     {i > 0 && " · "}
-                    <span className="settlement-pot">{CASH_ACCOUNT_LABELS[a]} {formatMoney(plan.incomeByAccount[a])}</span>
+                    <span className="settlement-pot">{accountLabels[a]} {formatMoney(plan.incomeByAccount[a])}</span>
                   </span>
                 ))}
               </dt>
@@ -1276,7 +1282,7 @@ function SettlementPanel({
                   {CASH_ACCOUNTS.filter((a) => plan.carriedByAccount[a] !== 0).map((a, i) => (
                     <span key={a}>
                       {i > 0 && " · "}
-                      <span className="settlement-pot">{CASH_ACCOUNT_LABELS[a]} {signed(plan.carriedByAccount[a])}</span>
+                      <span className="settlement-pot">{accountLabels[a]} {signed(plan.carriedByAccount[a])}</span>
                     </span>
                   ))}
                 </dt>
@@ -1361,6 +1367,7 @@ function ReconcileEditor({
   cashboxNow: CashboxSummary;
   onToast: (message: string) => void;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const { user, userData } = useAuth();
   const [account, setAccount] = useState<CashAccount>("deposit");
   const [actualText, setActualText] = useState("");
@@ -1393,7 +1400,7 @@ function ReconcileEditor({
         action: "cash.adjustment.add", entityType: "applicationSettings", entityId: "global",
         before: { balanceTiyn: computed }, after: { ...adjustment, balanceTiyn: actual }, comment: adjustment.note,
       }).catch(() => {});
-      onToast(`✅ ${CASH_ACCOUNT_LABELS[account]}: ${signed(diff)} түзету жазылды`);
+      onToast(`✅ ${accountLabels[account]}: ${signed(diff)} түзету жазылды`);
       setActualText("");
     } catch (err: unknown) {
       onToast("Қате: " + (err as Error).message);
@@ -1411,7 +1418,7 @@ function ReconcileEditor({
           <label htmlFor="reconcile-account">Шот</label>
           <select id="reconcile-account" className="form-input" value={account}
             onChange={(e) => setAccount(e.target.value as CashAccount)}>
-            {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{CASH_ACCOUNT_LABELS[a]}</option>)}
+            {CASH_ACCOUNTS.map((a) => <option key={a} value={a}>{accountLabels[a]}</option>)}
           </select>
         </div>
         <div className="form-group">

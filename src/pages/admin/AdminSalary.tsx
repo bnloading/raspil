@@ -19,7 +19,7 @@ import {
 } from "../../lib/salaryPeriod";
 import { effectiveSalaryRule } from "../../lib/salaryPolicy";
 import { formatMoney } from "../../lib/money";
-import { ROLE_LABELS } from "../../lib/rbac";
+import { ROLE_LABELS, departmentOf } from "../../lib/rbac";
 import { useAdvances } from "../../hooks/useAdvances";
 import { summariseAdvances } from "../../lib/advances";
 import {
@@ -82,11 +82,17 @@ export default function AdminSalary() {
   const [busy, setBusy] = useState(false);
   const [editRuleFor, setEditRuleFor] = useState<string | null>(null);
 
+  // Only the viewer's own line: the МДФ admin pays the МДФ stations, the ЛДСП owner the saw and ПВХ.
+  const myDepartment = userData ? departmentOf(userData) : "ldsp";
   useEffect(() => {
     getDocs(query(collection(db, "users"), where("role", "in", ["manager", "raspil", "pvh", "cnc", "sanding", "painting", "vacuum"])))
-      .then((snap) => setStaff(snap.docs.map((d) => ({ id: d.id, ...(d.data() as UserDoc) }))))
+      .then((snap) => setStaff(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as UserDoc) }))
+          .filter((member) => departmentOf(member) === myDepartment),
+      ))
       .catch(() => setStaff([]));
-  }, []);
+  }, [myDepartment]);
 
   const periods = useMemo(
     () => availablePeriods(orders, attendance, new Date(), kind),

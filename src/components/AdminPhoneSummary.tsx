@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { formatMoney } from "../lib/money";
 import { formatDateDMY } from "../lib/dates";
-import { CASH_ACCOUNT_LABELS } from "../lib/cashbox";
+import { useCashAccountLabels } from "../hooks/useCashAccountLabels";
 import type { CashboxSummary } from "../lib/cashbox";
 import type { ProfitSummary } from "../lib/orderProfit";
 import { ProfitCard } from "./ProfitCard";
@@ -35,6 +35,7 @@ export function AdminPhoneSummary({
   /** ApplicationSettings.cashStartDate — the money figures count from it. */
   startDate: string | null;
 }) {
+  const { labels: accountLabels } = useCashAccountLabels();
   const since = startDate ? `${formatDateDMY(new Date(`${startDate}T12:00:00+05:00`))} бастап` : "Барлық уақыт";
   const totalOpening = cashbox.accounts.reduce((s, a) => s + (openingBalanceTiyn[a.account] ?? 0), 0);
 
@@ -64,7 +65,7 @@ export function AdminPhoneSummary({
           <MoneyRow
             key={acc.account}
             className={`is-${acc.account}`}
-            name={CASH_ACCOUNT_LABELS[acc.account]}
+            name={accountLabels[acc.account]}
             balanceTiyn={acc.balanceTiyn}
             openingTiyn={openingBalanceTiyn[acc.account] ?? 0}
             inTiyn={acc.inTiyn}

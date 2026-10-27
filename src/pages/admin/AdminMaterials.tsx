@@ -28,7 +28,7 @@ import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
-import { canManageWarehouse } from "../../lib/rbac";
+import { canManageWarehouse, departmentOf } from "../../lib/rbac";
 import { recordInventoryMovement } from "../../lib/warehouse";
 import { MATERIAL_CATEGORY_LABELS } from "../../types/domain";
 import type {
@@ -46,7 +46,15 @@ export default function AdminMaterials() {
   const auth = useAuth();
   const { message, visible, showToast } = useToast();
   const [tab, setTab] = useState<Tab>("materials");
-  const { materials, loading: materialsLoading } = useMaterials(false);
+  const { materials: allMaterials, loading: materialsLoading } = useMaterials(false);
+  // The МДФ line's Қойма is the board it buys, «МДФ бізден», and nothing of ЛДСП's — no sheets,
+  // no ПВХ rolls, no offcuts (the owner, 26.10). ЛДСП keeps the whole catalogue, МДФ бізден
+  // included: its own journal cuts and sells that board too.
+  const isMdf = auth.userData ? departmentOf(auth.userData) === "mdf" : false;
+  const materials = useMemo(
+    () => (isMdf ? allMaterials.filter((m) => m.category === "mdf" && m.stockTracked !== false) : allMaterials),
+    [allMaterials, isMdf],
+  );
   const { pvcTypes, loading: pvcLoading } = usePvcTypes(false);
   const { movements } = useAllInventoryMovements();
   const [ledgerFor, setLedgerFor] = useState<Material | null>(null);
@@ -118,35 +126,43 @@ export default function AdminMaterials() {
           </div>
           <span className="kpi-icon is-blue">🔖</span>
         </div>
-        <div className="kpi-card">
-          <div className="kpi-text">
-            <div className="kpi-label">Осы аптада нақты кесілген</div>
-            <div className="kpi-value">{sheetsCut.week} лист</div>
-          </div>
-          <span className="kpi-icon is-indigo">🪚</span>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-text">
-            <div className="kpi-label">Осы айда нақты кесілген</div>
-            <div className="kpi-value">{sheetsCut.month} лист</div>
-          </div>
-          <span className="kpi-icon is-green">🪚</span>
-        </div>
-      </div>
-
-      <div className="tab-pill-row">
-        <button className={`tab-pill${tab === "materials" ? " active" : ""}`} onClick={() => setTab("materials")}>
-          Материалдар
-        </button>
-        <button className={`tab-pill${tab === "pvc" ? " active" : ""}`} onClick={() => setTab("pvc")}>
-          ПВХ түрлері
-        </button>
-        {canEdit && (
-          <button className={`tab-pill${tab === "leftovers" ? " active" : ""}`} onClick={() => setTab("leftovers")}>
-            Қалдықтар
-          </button>
+        {/* What the ЛДСП saw cut — no figure of the МДФ line's. */}
+        {!isMdf && (
+          <>
+            <div className="kpi-card">
+              <div className="kpi-text">
+                <div className="kpi-label">Осы аптада нақты кесілген</div>
+                <div className="kpi-value">{sheetsCut.week} лист</div>
+              </div>
+              <span className="kpi-icon is-indigo">🪚</span>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-text">
+                <div className="kpi-label">Осы айда нақты кесілген</div>
+                <div className="kpi-value">{sheetsCut.month} лист</div>
+              </div>
+              <span className="kpi-icon is-green">🪚</span>
+            </div>
+          </>
         )}
       </div>
+
+      {/* ПВХ rolls and offcuts are the ЛДСП line's — МДФ has the one tab. */}
+      {!isMdf && (
+        <div className="tab-pill-row">
+          <button className={`tab-pill${tab === "materials" ? " active" : ""}`} onClick={() => setTab("materials")}>
+            Материалдар
+          </button>
+          <button className={`tab-pill${tab === "pvc" ? " active" : ""}`} onClick={() => setTab("pvc")}>
+            ПВХ түрлері
+          </button>
+          {canEdit && (
+            <button className={`tab-pill${tab === "leftovers" ? " active" : ""}`} onClick={() => setTab("leftovers")}>
+              Қалдықтар
+            </button>
+          )}
+        </div>
+      )}
 
       {tab === "materials" && (
         <MaterialsTab
@@ -159,14 +175,15 @@ export default function AdminMaterials() {
           showToast={showToast}
         />
       )}
-      {tab === "pvc" && (
+      {tab === "pvc" && !isMdf && (
         <PvcTab pvcTypes={pvcTypes} loading={pvcLoading} canEdit={canEdit} onEdit={setEditingPvc} showToast={showToast} />
       )}
-      {tab === "leftovers" && canEdit && <LeftoversTab materials={materials} showToast={showToast} />}
+      {tab === "leftovers" && canEdit && !isMdf && <LeftoversTab materials={materials} showToast={showToast} />}
 
       {editingMaterial && (
         <MaterialModal
           material={editingMaterial === "new" ? null : editingMaterial}
+          defaultCategory={isMdf ? "mdf" : "ldsp"}
           onClose={() => setEditingMaterial(null)}
           showToast={showToast}
         />
@@ -666,10 +683,13 @@ function ReceiveModal({
 
 function MaterialModal({
   material,
+  defaultCategory,
   onClose,
   showToast,
 }: {
   material: Material | null;
+  /** A new row's category — «МДФ» when the МДФ line adds one, so it lands on its own Қойма. */
+  defaultCategory: MaterialCategory;
   onClose: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -680,7 +700,7 @@ function MaterialModal({
   const [manufacturer, setManufacturer] = useState(material?.manufacturer ?? "");
   const [thicknessMm, setThicknessMm] = useState(String(material?.thicknessMm ?? 16));
   // Drives the cutter's piece rate (ЛДСП / ХДФ / столешница are paid differently).
-  const [category, setCategory] = useState<MaterialCategory>(material?.category ?? "ldsp");
+  const [category, setCategory] = useState<MaterialCategory>(material?.category ?? defaultCategory);
   const [sheetLengthMm, setSheetLengthMm] = useState(String(material?.sheetLengthMm ?? 2800));
   const [sheetWidthMm, setSheetWidthMm] = useState(String(material?.sheetWidthMm ?? 2070));
   const [sellingPrice, setSellingPrice] = useState(
