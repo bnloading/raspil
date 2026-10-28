@@ -5,7 +5,9 @@ import { findCustomerIdByPhone } from "./customerLink";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
 import { nextProductionStatusForPayment } from "./payments";
-import type { Order, UserDoc } from "../types/domain";
+import { mdfStageFor } from "./mdfRoute";
+import { syncWorkshopBoard } from "./workshopActivity";
+import type { MdfFinish, Order, UserDoc } from "../types/domain";
 
 type Actor = { user: User; userData: UserDoc };
 
@@ -20,6 +22,8 @@ export interface MdfJournalDraft {
   areaM2: number;
   /** «Узор» — a template's name (which filled pricePerM2Tiyn in) or one typed by hand. */
   patternName: string;
+  /** Пленка or Краска — which stations the order passes (lib/mdfRoute.ts). */
+  finish: MdfFinish;
   pricePerM2Tiyn: number;
   filmColor: string;
   extraServicesTiyn: number;
@@ -37,6 +41,7 @@ export function emptyMdfJournalDraft(): MdfJournalDraft {
     customerPhone: "",
     areaM2: 0,
     patternName: "",
+    finish: "film",
     pricePerM2Tiyn: 0,
     filmColor: "",
     extraServicesTiyn: 0,
@@ -98,6 +103,7 @@ export function draftFromMdfOrder(order: Order): MdfJournalDraft {
     customerPhone: order.customerPhone,
     areaM2: order.mdfAreaM2 ?? 0,
     patternName: order.mdfPatternName ?? "",
+    finish: order.mdfFinish ?? "film",
     pricePerM2Tiyn: order.mdfPricePerM2Tiyn ?? 0,
     filmColor: order.mdfFilmColor ?? "",
     extraServicesTiyn: order.extraServicesTiyn ?? 0,
@@ -149,6 +155,15 @@ export async function saveMdfJournalRow(
   // A corrected total can settle an order or reopen its debt, and the stage before production
   // follows that exactly as a payment moves it — or «Өндіріске жіберу» never appears.
   const productionStatus = nextProductionStatusForPayment(order.productionStatus, totals.paymentStatus);
+  // Пленка ↔ Краска changed on an order already on the floor: if the station it waits at is not on
+  // its new route, it goes to the one it belongs at now — a film order taken off «Краска» to the
+  // vacuum press, and back (lib/mdfRoute.ts). Every station of the new route already done: finished.
+  let reroute: Partial<Order> | Record<string, unknown> = {};
+  if (order.productionStatus === "mdf_production" && draft.finish !== (order.mdfFinish ?? "film")) {
+    const belongsAt = mdfStageFor({ mdfFinish: draft.finish, mdfStageJobs: order.mdfStageJobs });
+    if (!belongsAt) reroute = { productionStatus: "ready", readyAt: serverTimestamp() };
+    else if (belongsAt !== order.mdfStage) reroute = { mdfStage: belongsAt };
+  }
 
   await updateDoc(doc(db, "orders", order.id), {
     customerName: draft.customerName.trim(),
@@ -156,6 +171,7 @@ export async function saveMdfJournalRow(
     ...(linkedId ? { customerId: linkedId } : {}),
     mdfAreaM2: draft.areaM2,
     mdfPatternName: draft.patternName.trim(),
+    mdfFinish: draft.finish,
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
     mdfPackaging: draft.packaging,
@@ -166,9 +182,13 @@ export async function saveMdfJournalRow(
     debtTiyn: totals.debtTiyn,
     paymentStatus: totals.paymentStatus,
     ...(productionStatus ? { productionStatus } : {}),
+    ...reroute,
     createdAt: Timestamp.fromDate(draft.orderDate),
     updatedAt: serverTimestamp(),
   });
+  if (Object.keys(reroute).length > 0) {
+    await syncWorkshopBoard(db, { ...order, mdfFinish: draft.finish, ...(reroute as Partial<Order>) });
+  }
 
   await logAudit(db, actor, {
     action: "order.mdf_journal_edit",
@@ -253,6 +273,7 @@ export async function createMdfJournalOrder(db: Firestore, actor: Actor, draft: 
     materialSnapshot: MDF_MATERIAL_SNAPSHOT,
     mdfAreaM2: draft.areaM2,
     mdfPatternName: draft.patternName.trim(),
+    mdfFinish: draft.finish,
     mdfPricePerM2Tiyn: draft.pricePerM2Tiyn,
     mdfFilmColor: draft.filmColor.trim(),
     mdfPackaging: draft.packaging,

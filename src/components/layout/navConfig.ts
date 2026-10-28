@@ -55,7 +55,10 @@ const LDSP_ONLY_KEYS = new Set([
   // Customers ranked by sheets cut — the saw's figure.
   "leaderboard",
 ]);
-const MDF_ONLY_KEYS = new Set(["admin-mdf", "admin-mdf-journal", "manager-mdf-journal", "admin-cash", "manager-cash"]);
+const MDF_ONLY_KEYS = new Set([
+  "admin-mdf", "admin-mdf-journal", "manager-mdf-journal", "admin-cash", "manager-cash",
+  "admin-mdf-tariffs", "manager-mdf-tariffs",
+]);
 
 function byDepartment(items: NavItem[], department: Department): NavItem[] {
   const hidden = department === "mdf" ? LDSP_ONLY_KEYS : MDF_ONLY_KEYS;
@@ -93,6 +96,7 @@ function adminNav(department: Department): NavItem[] {
       // morning, and Камера — the item it displaces — is a utility reached when it is wanted.
       { key: "admin-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main", mobile: true },
       { key: "admin-salary", label: "Айлық", path: "/admin/salary", icon: IconReports, group: "main" },
+      { key: "admin-mdf-tariffs", label: "МДФ тарифтері", path: "/manager/mdf-tariffs", icon: IconProfit, group: "main" },
       { key: "admin-cashbox", label: "Касса / Шығын", path: "/manager/cashbox", icon: IconReports, group: "main" },
       { key: "admin-rent", label: "Аренда", path: "/admin/rent", icon: IconKey, group: "main" },
       { key: "admin-cash", label: "Қолма-қол", path: "/manager/cash", icon: IconCash, group: "main" },
@@ -131,6 +135,8 @@ function managerNav(department: Department): NavItem[] {
       // The МДФ line's cash book, in Аренда's place on its phone bar (the owner, 26.10).
       { key: "manager-cash", label: "Қолма-қол", short: "Қолма-қол", path: "/manager/cash", icon: IconCash, group: "main", mobile: true },
       { key: "manager-advances", label: "Аванс", path: "/manager/advances", icon: IconReports, group: "main" },
+      // The МДФ stations' per-m² pay, which the МДФ manager writes (the owner, 28.10).
+      { key: "manager-mdf-tariffs", label: "МДФ тарифтері", path: "/manager/mdf-tariffs", icon: IconProfit, group: "main" },
       { key: "manager-attendance", label: "Жұмысқа келу", short: "Келу", path: "/attendance", icon: IconUsers, group: "main" },
       { key: "manager-customers", label: "Клиенттер", path: "/setup", icon: IconUsers, group: "secondary" },
       { key: "manager-reports", label: "Есептер", path: "/admin/reports", icon: IconReports, group: "secondary" },

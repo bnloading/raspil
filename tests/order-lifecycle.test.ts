@@ -125,6 +125,7 @@ function journalDraft(): JournalDraft {
     extraServicesTiyn: 0,
     deliveryCostTiyn: 0,
     discountTiyn: 0,
+    discountPercent: 0,
     orderDate: new Date(),
   };
 }

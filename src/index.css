@@ -8718,7 +8718,8 @@ body {
   border-bottom: 1px solid var(--border);
   white-space: normal;
 }
-.jt-more.is-newer td { border-top: 1px solid var(--border); }
+/* Newest first: the older orders' notice sits under the rows, so it is the one ruled off above. */
+.jt-more.is-older td { border-top: 1px solid var(--border); }
 .jt-more-text {
   font-size: var(--jt-font);
   color: var(--text-secondary);
@@ -9610,6 +9611,16 @@ body {
 /* The МДФ row shows the paid figure as text — it is corrected in the payment dialog. */
 .jt-pay-paid { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .jt-pay-paid.is-paid { color: var(--emerald); font-weight: 600; }
+/* The МДФ row's «Пленка / Краска» and its colour, side by side under the «Узор». */
+.jt-mdf-finish { display: flex; gap: 4px; min-width: 0; }
+.jt-mdf-finish select { flex: 0 0 auto; width: auto; max-width: 55%; }
+.jt-mdf-finish input { flex: 1 1 auto; min-width: 0; }
+/* «МДФ тарифтері» — one block per client with rates of their own, a rate per station. */
+.mdf-client-tariff { padding: 10px 0; border-top: 1px solid var(--border); }
+.mdf-client-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.mdf-client-head .form-input { flex: 1 1 auto; min-width: 0; }
+.mdf-client-rates { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.mdf-client-rate { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--text-secondary); }
 /* The МДФ phone sheet: area and rate side by side. */
 .mdf-sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* What people wrote on the money — mostly the cash note, "💬 30000" — under «Төленді», the figure

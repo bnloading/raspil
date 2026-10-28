@@ -1296,6 +1296,64 @@ describe("a worker sees only their own salary", () => {
   });
 });
 
+describe("the МДФ manager keeps the МДФ stations' per-m² tariffs, and nothing else", () => {
+  const MDF_MANAGER_UID = "manager-mdf";
+  const VACUUM_UID = "vacuum-1";
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "users", MDF_MANAGER_UID), { name: "Ахжол", role: "manager", department: "mdf", blocked: false, phone: "" });
+      await setDoc(doc(db, "users", VACUUM_UID), { name: "Аманжол", role: "vacuum", blocked: false, phone: "" });
+      await setDoc(doc(db, "salaryRules", CNC_UID), { userId: CNC_UID, mode: "PER_MDF_M2", perMdfM2Tiyn: 100000 });
+      await setDoc(doc(db, "salaryRules", CUTTER_UID), { userId: CUTTER_UID, mode: "PER_SHEET", perSheetTiyn: 60000 });
+    });
+  });
+
+  it("the МДФ manager CAN read and change a МДФ station's m² rate and a client's own rate", async () => {
+    const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "salaryRules", CNC_UID)));
+    await assertSucceeds(updateDoc(doc(db, "salaryRules", CNC_UID), {
+      perMdfM2Tiyn: 110000, perMdfM2ByClientTiyn: { Динко: 90000 }, updatedByUid: MDF_MANAGER_UID, updatedByName: "Ахжол",
+    }));
+  });
+
+  it("the МДФ manager CAN set up a МДФ worker who has no rule yet, per m² only", async () => {
+    const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "salaryRules", VACUUM_UID), {
+      userId: VACUUM_UID, mode: "PER_MDF_M2", perMdfM2Tiyn: 220000, perMdfM2ByClientTiyn: { Динко: 200000 },
+    }));
+    await assertFails(setDoc(doc(db, "salaryRules", SANDING_UID), {
+      userId: SANDING_UID, mode: "FIXED_MONTHLY", fixedMonthlyTiyn: 99900000,
+    }));
+  });
+
+  it("the МДФ manager CANNOT touch anything else about a МДФ worker's pay", async () => {
+    const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(db, "salaryRules", CNC_UID), { fixedMonthlyTiyn: 99900000 }));
+    await assertFails(updateDoc(doc(db, "salaryRules", CNC_UID), { mode: "FIXED_MONTHLY" }));
+    await assertFails(deleteDoc(doc(db, "salaryRules", CNC_UID)));
+  });
+
+  it("the МДФ manager CANNOT read or change an ЛДСП worker's pay", async () => {
+    const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
+    await assertFails(getDoc(doc(db, "salaryRules", CUTTER_UID)));
+    await assertFails(updateDoc(doc(db, "salaryRules", CUTTER_UID), { perSheetTiyn: 99900 }));
+  });
+
+  it("an ЛДСП manager CANNOT change a МДФ station's rate", async () => {
+    const db = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(getDoc(doc(db, "salaryRules", CNC_UID)));
+    await assertFails(updateDoc(doc(db, "salaryRules", CNC_UID), { perMdfM2Tiyn: 1 }));
+  });
+
+  it("a МДФ worker still CANNOT change their own rate", async () => {
+    const db = testEnv.authenticatedContext(CNC_UID).firestore();
+    await assertSucceeds(getDoc(doc(db, "salaryRules", CNC_UID)));
+    await assertFails(updateDoc(doc(db, "salaryRules", CNC_UID), { perMdfM2Tiyn: 999900 }));
+  });
+});
+
 describe("salary adjustments always carry a reason and are never rewritten", () => {
   it("admin CAN create an adjustment with a reason", async () => {
     const db = testEnv.authenticatedContext(ADMIN_UID).firestore();

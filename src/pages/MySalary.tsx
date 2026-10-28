@@ -7,7 +7,7 @@ import { useCutterOrders, usePvcOrders, useMdfOrders } from "../hooks/useOrders"
 import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
 import { summariseAdvances } from "../lib/advances";
-import { measureWork, computeFinalSalary, computeSalaryBase, cutCounts, decidedEntry, pieceRateLines } from "../lib/salary";
+import { measureWork, computeFinalSalary, computeSalaryBase, cutCounts, decidedEntry, mdfClientsOf, pieceRateLines } from "../lib/salary";
 import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { formatMoney } from "../lib/money";
@@ -77,8 +77,8 @@ export default function MySalary() {
   // same fallback WorkerSalaryTeaser uses, so a month with no formula (MANUAL) or nothing cut yet
   // just reads as zero rather than a dead end.
   const work = useMemo(
-    () => measureWork(orders, attendance, user?.uid ?? "", period, categoryByMaterialId),
-    [orders, attendance, user?.uid, period, categoryByMaterialId],
+    () => measureWork(orders, attendance, user?.uid ?? "", period, categoryByMaterialId, mdfClientsOf(rule)),
+    [orders, attendance, user?.uid, period, categoryByMaterialId, rule],
   );
   const live = computeSalaryBase(rule, work, periodKind);
   // The confirmed entry's figures when there is one, the live count otherwise — лист, ХДФ and

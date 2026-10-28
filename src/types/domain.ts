@@ -380,6 +380,19 @@ export const MDF_STAGE_LABELS: Record<MdfStage, string> = {
   vacuum: "Вакуум",
 };
 
+/**
+ * How a МДФ panel is finished — wrapped in film on the vacuum press, or painted. The two are
+ * alternatives, so an order passes through one of those stations, never both (lib/mdfRoute.ts):
+ * a film order waiting at «Краска», where nobody paints, was why Аманжол could not finish
+ * №562 (the owner, 28.10).
+ */
+export type MdfFinish = "film" | "paint";
+export const MDF_FINISHES: MdfFinish[] = ["film", "paint"];
+export const MDF_FINISH_LABELS: Record<MdfFinish, string> = {
+  film: "Пленка",
+  paint: "Краска",
+};
+
 /** One station's timing/assignment on one МДФ order — see Order.mdfStageJobs. Unlike OrderLineJob,
  *  this is not index-aligned to material lines: production tracking is always one job per order,
  *  never several — the CNC/sanding/painting/vacuum stations work the whole order at once, even
@@ -624,6 +637,9 @@ export interface Order {
   mdfPanels?: MdfPanel[];
   /** Free-text wrap film colour/name, typed by whoever creates the order. */
   mdfFilmColor?: string;
+  /** Пленка or Краска — decides the stations the order passes (lib/mdfRoute.ts). Unset is film,
+   *  which every order written before the choice existed was. */
+  mdfFinish?: MdfFinish;
   /**
    * The «Узор» a journal order is milled with, by name — picked from the shop's templates
    * (ApplicationSettings.mdfPatternTemplates), which also filled in mdfPricePerM2Tiyn, or typed by
@@ -808,6 +824,13 @@ export interface SalaryRule {
    *  of wrapped panel — unrelated to perMdfSheetTiyn above, which pays a распил-line cutter for
    *  cutting an МДФ-category sheet. Falls back to MANUAL (admin types the amount) when unset. */
   perMdfM2Tiyn?: number;
+  /**
+   * A client paid at a rate of their own per m² on this МДФ station — «Динкоға 2 000», where the
+   * vacuum press otherwise pays 2 200 (the owner, 28.10). Keyed by the client's name as the journal
+   * writes it; an order counts when its customer's name contains that name (lib/salary.ts
+   * mdfClientOf). Set on the «МДФ тарифтері» page.
+   */
+  perMdfM2ByClientTiyn?: Record<string, number>;
   perPvcMeterTiyn?: number;
   perOrderTiyn?: number;
   /** Flat bonus per МДФ order flagged "Упаковка" (mdfPackaging), credited to whichever vacuum
@@ -847,6 +870,8 @@ export interface SalaryEntry {
   mdfSheets?: number;
   /** m² of МДФ wrap production credited this period (cnc/sanding/painting/vacuum roles only). */
   mdfM2Processed?: number;
+  /** The part of mdfM2Processed done for a client with a rate of their own, by client. */
+  mdfM2ByClient?: Record<string, number>;
   /** МДФ orders flagged "Упаковка" this vacuum worker finished this period. */
   packagingOrdersCount?: number;
   pvcMeters: number;

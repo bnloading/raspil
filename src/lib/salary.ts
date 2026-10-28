@@ -33,6 +33,12 @@ export interface SalaryWorkTotals {
    *  production line (cnc/sanding/painting/vacuum roles), unrelated to mdfSheets above (which is
    *  a распил-line cutter cutting an МДФ-category sheet — see SalaryRule.perMdfM2Tiyn). */
   mdfM2Processed: number;
+  /**
+   * The part of mdfM2Processed done for a client this worker is paid a rate of their own for
+   * (SalaryRule.perMdfM2ByClientTiyn) — «Динко 6.4» — by client. Only the clients asked about are
+   * counted, and the field is left off when there are none, as Firestore takes no undefined.
+   */
+  mdfM2ByClient?: Record<string, number>;
   /** МДФ orders flagged "Упаковка" (mdfPackaging) whose vacuum stage this worker finished — a flat
    *  per-order bonus, separate from the per-m² mdfM2Processed above. Only ever accrues on the
    *  vacuum stage; every other role's count stays 0. */
@@ -76,6 +82,8 @@ export function measureWork(
   periodKey: string,
   /** Material category per materialId. Anything missing counts as ЛДСП, the common case. */
   categoryByMaterialId: Map<string, MaterialCategory> = new Map(),
+  /** Clients this worker is paid a rate of their own for (mdfClientsOf) — their m² are told apart. */
+  mdfClients: readonly string[] = [],
 ): SalaryWorkTotals {
   let sheetsCut = 0;
   let ldspSheets = 0;
@@ -84,6 +92,7 @@ export function measureWork(
   let mdfSheets = 0;
   let pvcMeters = 0;
   let mdfM2Processed = 0;
+  const mdfM2ByClient: Record<string, number> = {};
   let packagingOrdersCount = 0;
   let ordersCompleted = 0;
 
@@ -126,7 +135,10 @@ export function measureWork(
       for (const stage of MDF_STAGES) {
         const job = order.mdfStageJobs[stage];
         if (job?.byUid === userId && job.completedAt && periodContains(periodKey, job.completedAt.toDate())) {
-          mdfM2Processed += order.mdfAreaM2 ?? 0;
+          const m2 = order.mdfAreaM2 ?? 0;
+          mdfM2Processed += m2;
+          const client = mdfClientOf(order.customerName, mdfClients);
+          if (client) mdfM2ByClient[client] = (mdfM2ByClient[client] ?? 0) + m2;
           if (stage === "vacuum" && order.mdfPackaging) packagingOrdersCount += 1;
           touchedThisOrder = true;
         }
@@ -153,7 +165,49 @@ export function measureWork(
   return {
     sheetsCut, ldspSheets, hdfSheets, countertopSheets, mdfSheets,
     pvcMeters, mdfM2Processed, packagingOrdersCount, ordersCompleted, presentDays, absentDays, workedHours,
+    ...(Object.keys(mdfM2ByClient).length > 0 ? { mdfM2ByClient } : {}),
   };
+}
+
+/**
+ * Which of the clients with a rate of their own an order is for: its customer's name contains the
+ * client's — «Динко», «Ерасыл Динко» are both Динко — ignoring case. The longest name wins, so a
+ * client written more exactly is never swallowed by a shorter one. Null for everyone else.
+ */
+export function mdfClientOf(customerName: string | undefined, clients: readonly string[]): string | null {
+  const name = (customerName ?? "").trim().toLowerCase();
+  if (!name) return null;
+  let best: string | null = null;
+  for (const client of clients) {
+    const key = client.trim().toLowerCase();
+    if (key && name.includes(key) && (!best || key.length > best.trim().length)) best = client;
+  }
+  return best;
+}
+
+/** The clients a worker's rule pays at a rate of their own — what measureWork tells apart. */
+export function mdfClientsOf(rule: Pick<SalaryRule, "perMdfM2ByClientTiyn"> | undefined): string[] {
+  return Object.keys(rule?.perMdfM2ByClientTiyn ?? {});
+}
+
+/**
+ * The МДФ station pay for the period: every m² at the worker's own rate, except a client's m² at
+ * that client's rate — «6,4 м² Динко × 2 000 ₸» beside the rest at 2 200 ₸.
+ */
+export function mdfM2PayTiyn(
+  rule: Pick<SalaryRule, "perMdfM2Tiyn" | "perMdfM2ByClientTiyn"> | undefined,
+  work: Pick<SalaryWorkTotals, "mdfM2Processed" | "mdfM2ByClient">,
+): number {
+  const rate = rule?.perMdfM2Tiyn ?? 0;
+  let clientsM2 = 0;
+  let clientsPay = 0;
+  for (const [client, m2] of Object.entries(work.mdfM2ByClient ?? {})) {
+    const clientRate = rule?.perMdfM2ByClientTiyn?.[client];
+    if (clientRate === undefined) continue;
+    clientsM2 += m2;
+    clientsPay += m2 * clientRate;
+  }
+  return (work.mdfM2Processed - clientsM2) * rate + clientsPay;
 }
 
 type SheetTotals = { sheetsCut: number; ldspSheets?: number; hdfSheets?: number; mdfSheets?: number; countertopSheets?: number };
@@ -294,7 +348,7 @@ export function computeSalaryBase(
       baseTiyn = round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0));
       break;
     case "PER_MDF_M2":
-      baseTiyn = round(work.mdfM2Processed * (rule?.perMdfM2Tiyn ?? 0));
+      baseTiyn = round(mdfM2PayTiyn(rule, work));
       break;
     case "PER_ORDER":
       baseTiyn = round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0));
@@ -308,7 +362,7 @@ export function computeSalaryBase(
         round(monthlyShare(rule?.fixedMonthlyTiyn ?? 0)) +
         round(pieceRateTotal(rule, work)) +
         round(work.pvcMeters * (rule?.perPvcMeterTiyn ?? 0)) +
-        round(work.mdfM2Processed * (rule?.perMdfM2Tiyn ?? 0)) +
+        round(mdfM2PayTiyn(rule, work)) +
         round(work.ordersCompleted * (rule?.perOrderTiyn ?? 0)) +
         round(work.workedHours * (rule?.hourlyTiyn ?? 0));
       break;
@@ -369,6 +423,7 @@ export function buildSalaryEntry(params: {
     params.userId,
     params.periodKey,
     params.categoryByMaterialId,
+    mdfClientsOf(params.rule),
   );
   // The key's own shape says whether this is a week or a month, so nothing upstream has to carry
   // a second field saying which (see lib/salaryPeriod.ts).

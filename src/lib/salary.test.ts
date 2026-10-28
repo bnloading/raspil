@@ -11,6 +11,9 @@ import {
   cutCounts,
   cutCountsLabel,
   decidedEntry,
+  mdfClientOf,
+  mdfClientsOf,
+  mdfM2PayTiyn,
 } from "./salary";
 
 describe("decidedEntry — the stored figure a worker sees in place of the live count", () => {
@@ -673,5 +676,45 @@ describe("a material since deleted from the catalogue", () => {
     expect(work).toMatchObject({ countertopSheets: 2, ldspSheets: 3 });
     const rule: SalaryRule = { id: CUTTER, userId: CUTTER, mode: "PER_SHEET", perSheetTiyn: T(600), perCountertopTiyn: T(300) };
     expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(2 * 300 + 3 * 600));
+  });
+});
+
+describe("a client paid at a rate of their own — «Динкоға 2 000»", () => {
+  const VACUUM = "vacuum-1";
+  // Аманжол's press: 2 200 ₸/м², but 2 000 on Динко's orders (the owner, 28.10).
+  const rule: SalaryRule = {
+    id: VACUUM, userId: VACUUM, mode: "PER_MDF_M2",
+    perMdfM2Tiyn: T(2200), perMdfM2ByClientTiyn: { Динко: T(2000) },
+  };
+  const pressed = (customerName: string, mdfAreaM2: number) =>
+    order({ orderKind: "mdf_wrap", customerName, mdfAreaM2, mdfStageJobs: { vacuum: { byUid: VACUUM, completedAt: MARCH } } });
+
+  it("tells the client's m² apart from the rest, and pays each at its own rate", () => {
+    const work = measureWork(
+      [pressed("Динко", 6.4), pressed("Айгерим", 2.2), pressed("Ерасыл Динко", 1.6)],
+      [], VACUUM, "2026-03", new Map(), mdfClientsOf(rule),
+    );
+    expect(work.mdfM2Processed).toBeCloseTo(10.2);
+    expect(work.mdfM2ByClient).toEqual({ Динко: 8 });
+    // 8 м² × 2 000 + 2,2 м² × 2 200 = 16 000 + 4 840
+    expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(20840));
+  });
+
+  it("pays everything at the worker's rate when no client of theirs is on the orders", () => {
+    const work = measureWork([pressed("Айгерим", 2.2)], [], VACUUM, "2026-03", new Map(), mdfClientsOf(rule));
+    expect(work.mdfM2ByClient).toBeUndefined();
+    expect(computeSalaryBase(rule, work).baseTiyn).toBe(T(4840));
+  });
+
+  it("leaves a station with no client rate at its own rate, Динко or not", () => {
+    const cnc: SalaryRule = { id: "cnc-1", userId: "cnc-1", mode: "PER_MDF_M2", perMdfM2Tiyn: T(1000) };
+    expect(mdfM2PayTiyn(cnc, { mdfM2Processed: 6.4, mdfM2ByClient: { Динко: 6.4 } })).toBe(T(6400));
+  });
+
+  it("matches the client in the customer's name whatever the case, the longest name first", () => {
+    expect(mdfClientOf("ерасыл динко", ["Динко"])).toBe("Динко");
+    expect(mdfClientOf("Айгерим", ["Динко"])).toBeNull();
+    expect(mdfClientOf("Динко Строй", ["Динко", "Динко Строй"])).toBe("Динко Строй");
+    expect(mdfClientOf(undefined, ["Динко"])).toBeNull();
   });
 });

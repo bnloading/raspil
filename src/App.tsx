@@ -22,6 +22,7 @@ const AdminProfit = lazy(() => import("./pages/admin/AdminProfit"));
 const AdminRent = lazy(() => import("./pages/admin/AdminRent"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
 const ManagerCashLog = lazy(() => import("./pages/manager/ManagerCashLog"));
+const ManagerMdfTariffs = lazy(() => import("./pages/manager/ManagerMdfTariffs"));
 const ManagerCashbox = lazy(() => import("./pages/manager/ManagerCashbox"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 const AdminCsvSettings = lazy(() => import("./pages/admin/AdminCsvSettings"));
@@ -374,6 +375,15 @@ export default function App() {
               element={
                 <RouteGuard roles={["manager", "admin"]}>
                   <ManagerCashbox />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/manager/mdf-tariffs"
+              element={
+                // «МДФ тарифтері» — the МДФ stations' per-m² pay, kept by the МДФ manager.
+                <RouteGuard roles={["manager", "admin"]}>
+                  <ManagerMdfTariffs />
                 </RouteGuard>
               }
             />

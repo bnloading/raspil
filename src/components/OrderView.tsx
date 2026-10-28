@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { EDGE_KEYS, MDF_PATTERN_LABELS } from "../types/domain";
+import { EDGE_KEYS, MDF_FINISH_LABELS, MDF_PATTERN_LABELS } from "../types/domain";
 import type { CuttingPart, Order, Payment, StatusHistoryEntry } from "../types/domain";
 import { ProductionStatusBadge, PaymentStatusBadge } from "./StatusBadge";
 import { formatMoney } from "../lib/money";
@@ -106,7 +106,7 @@ export function OrderView({
         <section className="order-view-section">
           <h3>МДФ</h3>
           <p>
-            {order.mdfFilmColor || "Пленка көрсетілмеген"} · {formatMdfArea(order.mdfAreaM2)}
+            {MDF_FINISH_LABELS[order.mdfFinish ?? "film"]} · {order.mdfFilmColor || "түсі көрсетілмеген"} · {formatMdfArea(order.mdfAreaM2)}
             {order.mdfPatternName ? ` · Узор: ${order.mdfPatternName}` : ""}
           </p>
           {order.mdfPanels && order.mdfPanels.length > 0 && (

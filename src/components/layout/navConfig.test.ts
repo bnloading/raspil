@@ -26,13 +26,18 @@ describe("navConfig — the two lines keep to their own pages", () => {
   it("shows ЛДСП none of the МДФ line's pages", () => {
     for (const role of ["admin", "manager"] as const) {
       const ldsp = keys(role, "ldsp");
-      for (const mdfOnly of ["manager-mdf-journal", "admin-mdf-journal", "admin-mdf", "manager-cash", "admin-cash"]) {
+      for (const mdfOnly of ["manager-mdf-journal", "admin-mdf-journal", "admin-mdf", "manager-cash", "admin-cash", "manager-mdf-tariffs", "admin-mdf-tariffs"]) {
         expect(ldsp, `${role}: ${mdfOnly}`).not.toContain(mdfOnly);
       }
     }
   });
 
-  it("gives the МДФ admin the МДФ journal and the cash book", () => {
-    expect(keys("admin", "mdf")).toEqual(expect.arrayContaining(["admin-mdf-journal", "admin-cash"]));
+  it("gives the МДФ admin the МДФ journal, the cash book and the tariffs", () => {
+    expect(keys("admin", "mdf")).toEqual(expect.arrayContaining(["admin-mdf-journal", "admin-cash", "admin-mdf-tariffs"]));
+  });
+
+  it("gives the МДФ manager the tariffs page, off the full phone bar", () => {
+    expect(keys("manager", "mdf")).toContain("manager-mdf-tariffs");
+    expect(phoneBar("manager", "mdf")).not.toContain("МДФ тарифтері");
   });
 });

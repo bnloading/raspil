@@ -12,7 +12,8 @@ import { useToast } from "../hooks";
 import { ROLE_TO_MDF_STAGE } from "../lib/rbac";
 import { dayKey } from "../lib/dates";
 import { formatMdfArea, mdfPatternOf } from "../lib/mdfJournal";
-import { MDF_STAGES, MDF_STAGE_LABELS } from "../types/domain";
+import { mdfOrderHeadingTo } from "../lib/mdfRoute";
+import { MDF_FINISH_LABELS, MDF_STAGE_LABELS } from "../types/domain";
 
 export default function MdfWorkerDashboard() {
   const { user, userData } = useAuth();
@@ -28,7 +29,8 @@ export default function MdfWorkerDashboard() {
   const relevant = orders.filter((o) => o.productionStatus === "mdf_production" && o.mdfStage === stage);
   const active = relevant.filter((o) => o.mdfStageJobs?.[stage]?.startedAt);
   const queue = relevant.filter((o) => !o.mdfStageJobs?.[stage]?.startedAt).sort((a,b) => a.priority - b.priority);
-  const upcoming = orders.filter((o) => o.productionStatus === "mdf_production" && o.mdfStage && MDF_STAGES.indexOf(o.mdfStage) < MDF_STAGES.indexOf(stage));
+  // Only orders whose route reaches this station: a paint order never comes to the vacuum press.
+  const upcoming = orders.filter((o) => o.productionStatus === "mdf_production" && mdfOrderHeadingTo(o, stage));
   const history = orders.filter((o) => o.mdfStageJobs?.[stage]?.byUid === user.uid && o.mdfStageJobs[stage]?.completedAt)
     .sort((a,b) => (b.mdfStageJobs?.[stage]?.completedAt?.seconds ?? 0) - (a.mdfStageJobs?.[stage]?.completedAt?.seconds ?? 0));
   const doneToday = history.filter((o) => dayKey(o.mdfStageJobs![stage]!.completedAt!.toDate()) === dayKey(new Date()));
@@ -49,7 +51,7 @@ export default function MdfWorkerDashboard() {
           <div className="station-job-status"><span className={`station-state ${started ? "is-active" : completed ? "is-done" : ""}`}>{completed ? "ДАЙЫН" : started ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{order.priority || 1}</span></div>
           <button className="station-order-link" onClick={() => navigate(`/${userData.role}/order/${order.id}`)}>{order.orderNumber}</button>
           <div className="station-customer"><IconUsers />{order.customerName}</div>
-          <div className="station-facts"><span>{formatMdfArea(order.mdfAreaM2)}</span>{mdfPatternOf(order) && <span>{mdfPatternOf(order)}</span>}<span>{order.mdfFilmColor || "Түс көрсетілмеген"}</span></div>
+          <div className="station-facts"><span>{formatMdfArea(order.mdfAreaM2)}</span><span>{MDF_FINISH_LABELS[order.mdfFinish ?? "film"]}</span>{mdfPatternOf(order) && <span>{mdfPatternOf(order)}</span>}<span>{order.mdfFilmColor || "Түс көрсетілмеген"}</span></div>
           <div className="station-status-line"><span>{completed ? `${label} дайын` : started ? `${label} басталды` : current ? "Кезекте" : `${order.mdfStage ? MDF_STAGE_LABELS[order.mdfStage] : "Алдыңғы кезең"} күтілуде`}</span></div>
           {order.adminNote && <p className="station-note">{order.adminNote}</p>}
           {order.productionNote && <p className="station-note">{order.productionNote}</p>}

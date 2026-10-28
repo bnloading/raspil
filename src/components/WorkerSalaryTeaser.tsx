@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext";
 import { useSalaryEntries, useSalaryAdjustments, useSalaryRule, useAttendance } from "../hooks/useSalary";
 import { useMaterials } from "../hooks/useMaterials";
 import { formatMoney } from "../lib/money";
-import { computeFinalSalary, computeSalaryBase, cutCounts, cutCountsLabel, decidedEntry, measureWork } from "../lib/salary";
+import { computeFinalSalary, computeSalaryBase, cutCounts, cutCountsLabel, decidedEntry, measureWork, mdfClientsOf } from "../lib/salary";
 import { currentPeriodKey, salaryPeriodKind } from "../lib/salaryPeriod";
 import type { Order } from "../types/domain";
 
@@ -51,7 +51,7 @@ export function WorkerSalaryTeaser({
   const entry = decidedEntry(stored);
 
   const categoryByMaterialId = new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const));
-  const work = measureWork(orders, records, uid, period, categoryByMaterialId);
+  const work = measureWork(orders, records, uid, period, categoryByMaterialId, mdfClientsOf(rule));
   const live = computeSalaryBase(rule, work, periodKind);
 
   // Confirmed figure if there is one; otherwise the live estimate, which is only worth showing

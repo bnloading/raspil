@@ -1,7 +1,8 @@
 import { doc, serverTimestamp, Timestamp, updateDoc, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { MdfStage, MdfStageJob, Order, UserDoc } from "../types/domain";
-import { MDF_STAGES, MDF_STAGE_LABELS } from "../types/domain";
+import { MDF_STAGE_LABELS } from "../types/domain";
+import { mdfRouteFor, nextMdfStage } from "./mdfRoute";
 import { canEnterCuttingQueue } from "./statuses";
 import { syncWorkshopBoard } from "./workshopActivity";
 import { writeStatusHistory, notify, notifyManagers, logAudit } from "./orderStatus";
@@ -29,7 +30,7 @@ export async function enterMdfProduction(
   }
 
   const orderRef = doc(db, "orders", order.id);
-  const firstStage: MdfStage = MDF_STAGES[0];
+  const firstStage: MdfStage = mdfRouteFor(order)[0];
   await updateDoc(orderRef, {
     productionStatus: "mdf_production",
     priority: opts.queuePosition,
@@ -109,7 +110,9 @@ export async function completeMdfStage(db: Firestore, actor: Actor, order: Order
   };
 
   const orderRef = doc(db, "orders", order.id);
-  const nextStage = MDF_STAGES[MDF_STAGES.indexOf(stage) + 1];
+  // Along this order's own route — a film order goes from Шкурка to the vacuum press, a paint
+  // order to «Краска»; neither waits at the other's station (lib/mdfRoute.ts).
+  const nextStage = nextMdfStage(order, stage);
 
   if (nextStage) {
     await updateDoc(orderRef, { mdfStageJobs: nextStageJobs, mdfStage: nextStage });
@@ -124,7 +127,7 @@ export async function completeMdfStage(db: Firestore, actor: Actor, order: Order
     );
   } else {
     await updateDoc(orderRef, { mdfStageJobs: nextStageJobs, productionStatus: "ready", readyAt: serverTimestamp() });
-    await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "ready", "Вакуум аяқталды");
+    await writeStatusHistory(db, actor, order.id, "production", order.productionStatus, "ready", `${MDF_STAGE_LABELS[stage]} аяқталды`);
     await syncWorkshopBoard(db, { ...order, mdfStageJobs: nextStageJobs, productionStatus: "ready" });
     await notifyManagers(db, "МДФ дайын", `${order.orderNumber}: МДФ өндірісі толық аяқталды, заказ дайын`, order.id);
     await notify(db, order.customerId, "Заказыңыз дайын", `${order.orderNumber} толығымен дайын!`, order.id);

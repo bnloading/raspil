@@ -64,7 +64,8 @@ import { dayKey, formatDateDMY, startOfDayAlmaty } from "../../lib/dates";
 import { formatPhone } from "../../lib/phone";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { isAdmin, methodVisibleTo } from "../../lib/rbac";
-import type { MdfPatternTemplate, Order, Payment, PaymentMethodDef, UserDoc } from "../../types/domain";
+import { MDF_FINISHES, MDF_FINISH_LABELS } from "../../types/domain";
+import type { MdfFinish, MdfPatternTemplate, Order, Payment, PaymentMethodDef, UserDoc } from "../../types/domain";
 
 type Actor = { user: User; userData: UserDoc };
 type DateFilter = "all" | "today" | "week" | "month";
@@ -83,12 +84,12 @@ function shortOrderNumber(orderNumber: string): string {
   return orderNumber.match(/(\d+)$/)?.[1]?.replace(/^0+/, "") ?? orderNumber;
 }
 
-/** Paper-ledger order, as the ЛДСП journal runs: oldest first, the order number settling a tie. */
-function byLedgerOrder(a: Order, b: Order): number {
+/** Newest first, as the ЛДСП ledger now reads (the owner, 28.10): the order number settles a tie. */
+function newestFirst(a: Order, b: Order): number {
   const at = a.createdAt?.seconds ?? 0;
   const bt = b.createdAt?.seconds ?? 0;
-  if (at !== bt) return at - bt;
-  return a.orderNumber.localeCompare(b.orderNumber);
+  if (at !== bt) return bt - at;
+  return b.orderNumber.localeCompare(a.orderNumber);
 }
 
 /** Enter steps down a column and Shift+Enter up it, as in the ЛДСП ledger. */
@@ -186,7 +187,7 @@ export default function ManagerMdfJournal() {
   }, [newRowOpen]);
 
   const orders = useMemo(
-    () => allOrders.filter((o) => o.orderKind === "mdf_wrap" && o.productionStatus !== "cancelled").sort(byLedgerOrder),
+    () => allOrders.filter((o) => o.orderKind === "mdf_wrap" && o.productionStatus !== "cancelled").sort(newestFirst),
     [allOrders],
   );
   const customerDir = useMemo(() => mergeCustomerSources(customerDirectory(orders), accounts), [orders, accounts]);
@@ -244,7 +245,8 @@ export default function ManagerMdfJournal() {
     };
   }, [filtered, orders, paidOf]);
 
-  const pageView = pageWindow(filtered.length, pageSize, pinnedPage);
+  // Page 1 is the newest; a null pin — "wherever the newest rows are" — is that first page.
+  const pageView = pageWindow(filtered.length, pageSize, pinnedPage ?? 1);
   const safePage = pageView.page;
   const pageItems = pageView.to === 0 ? [] : filtered.slice(pageView.from - 1, pageView.to);
 
@@ -279,7 +281,7 @@ export default function ManagerMdfJournal() {
     try {
       await createMdfJournalOrder(db, actor, newRow);
       setNewRow(null);
-      setPinnedPage(null); // the newest rows are on the last page — show it
+      setPinnedPage(null); // the newest rows are on the first page — show it
       showToast("✅ Жаңа заказ қосылды");
     } catch (err: unknown) {
       showToast("Қате: " + (err as Error).message);
@@ -423,6 +425,7 @@ export default function ManagerMdfJournal() {
         "Клиент аты": o.customerName,
         Телефон: o.customerPhone,
         Узор: mdfPatternOf(o),
+        Түрі: MDF_FINISH_LABELS[o.mdfFinish ?? "film"],
         "м²": Math.round((o.mdfAreaM2 ?? 0) * 100) / 100,
         "м² бағасы": (o.mdfPricePerM2Tiyn ?? 0) / 100,
         "Пленка түсі": o.mdfFilmColor ?? "",
@@ -587,6 +590,19 @@ export default function ManagerMdfJournal() {
                   moveFocusVertically(el, e.shiftKey ? -1 : 1);
                 }}
               >
+                {/* The new row opens at the top, over the newest order. */}
+                {newRow && (
+                  <NewMdfJournalRow
+                    draft={newRow}
+                    setDraft={setNewRow}
+                    directory={customerDir}
+                    templates={templates}
+                    nameRef={newRowNameRef}
+                    saving={saving}
+                    onSave={commitNewRow}
+                    onCancel={cancelNewRow}
+                  />
+                )}
                 {loading || paymentsLoading ? (
                   <tr><td colSpan={COLUMN_COUNT} className="jt-empty">Жүктелуде…</td></tr>
                 ) : pageItems.length === 0 && !newRow ? (
@@ -611,18 +627,6 @@ export default function ManagerMdfJournal() {
                       onError={showToast}
                     />
                   ))
-                )}
-                {newRow && (
-                  <NewMdfJournalRow
-                    draft={newRow}
-                    setDraft={setNewRow}
-                    directory={customerDir}
-                    templates={templates}
-                    nameRef={newRowNameRef}
-                    saving={saving}
-                    onSave={commitNewRow}
-                    onCancel={cancelNewRow}
-                  />
                 )}
               </tbody>
             </table>
@@ -674,7 +678,7 @@ export default function ManagerMdfJournal() {
                 <button className="journal-page-btn" disabled={safePage <= 1} onClick={() => setPinnedPage(safePage - 1)} aria-label="Алдыңғы бет">‹</button>
                 <span className="journal-page-current">{safePage}</span>
                 <button className="journal-page-btn" disabled={safePage >= pageView.totalPages} onClick={() => setPinnedPage(safePage + 1)} aria-label="Келесі бет">›</button>
-                <button className="journal-page-btn" disabled={safePage >= pageView.totalPages} onClick={() => setPinnedPage(null)} aria-label="Соңғы бет">»</button>
+                <button className="journal-page-btn" disabled={safePage >= pageView.totalPages} onClick={() => setPinnedPage(pageView.totalPages)} aria-label="Соңғы бет">»</button>
               </div>
               <select className="journal-select" value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPinnedPage(null); }}>
@@ -726,6 +730,30 @@ export default function ManagerMdfJournal() {
 
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/**
+ * «Пленка / Краска» and its colour, under the «Узор» — which of the two decides the stations the
+ * order passes (lib/mdfRoute.ts): film goes to the vacuum press, paint to the paint shop.
+ */
+function FinishPicker({
+  finish, color, onFinish, onColor,
+}: {
+  finish: MdfFinish;
+  color: string;
+  onFinish: (finish: MdfFinish) => void;
+  onColor: (color: string) => void;
+}) {
+  return (
+    <div className="jt-mdf-finish">
+      <select className="jt-input" value={finish} aria-label="Пленка немесе Краска"
+        onChange={(e) => onFinish(e.target.value as MdfFinish)}>
+        {MDF_FINISHES.map((f) => <option key={f} value={f}>{MDF_FINISH_LABELS[f]}</option>)}
+      </select>
+      <input className="jt-input jt-who-phone" value={color} placeholder="түсі" aria-label="Түсі"
+        onChange={(e) => onColor(e.target.value)} />
+    </div>
   );
 }
 
@@ -869,8 +897,8 @@ function MdfJournalRow({
       <td className="jt-w-pattern">
         <input className="jt-input" list={PATTERN_LIST_ID} value={draft.patternName} placeholder="Узор"
           aria-label="Узор" onChange={(e) => patch(patternPatch(templates, e.target.value))} />
-        <input className="jt-input jt-who-phone" value={draft.filmColor} placeholder="пленка түсі"
-          aria-label="Пленка түсі" onChange={(e) => patch({ filmColor: e.target.value })} />
+        <FinishPicker finish={draft.finish} color={draft.filmColor}
+          onFinish={(finish) => patch({ finish })} onColor={(filmColor) => patch({ filmColor })} />
       </td>
 
       <td className="jt-w-area jt-num">
@@ -999,8 +1027,8 @@ function NewMdfJournalRow({
       <td className="jt-w-pattern">
         <input className="jt-input" list={PATTERN_LIST_ID} placeholder="Узор" value={draft.patternName}
           aria-label="Узор" onChange={(e) => patch(patternPatch(templates, e.target.value))} />
-        <input className="jt-input jt-who-phone" placeholder="пленка түсі" value={draft.filmColor}
-          aria-label="Пленка түсі" onChange={(e) => patch({ filmColor: e.target.value })} />
+        <FinishPicker finish={draft.finish} color={draft.filmColor}
+          onFinish={(finish) => patch({ finish })} onColor={(filmColor) => patch({ filmColor })} />
       </td>
 
       <td className="jt-w-area jt-num">
@@ -1078,7 +1106,9 @@ function MdfJournalCard({
             <IconLayers className="journal-card-fact-icon" />
             <span className="journal-card-fact-text">
               <b>{mdfPatternOf(order) || "Узор жазылмаған"}</b>
-              <small>{order.mdfFilmColor || "пленка —"}</small>
+              <small>
+                {MDF_FINISH_LABELS[order.mdfFinish ?? "film"]}{order.mdfFilmColor ? ` · ${order.mdfFilmColor}` : ""}
+              </small>
             </span>
           </span>
           <span className="journal-card-fact">
@@ -1203,10 +1233,23 @@ function MdfOrderSheet({
           <NumberField value={preview.totalTiyn / 100} min={0} ariaLabel="Жалпы сома"
             onChange={(v) => patch(mdfTotalOverride(draft, Math.round(v * 100)))} />
         </div>
-        <div className="form-group">
-          <label>Пленка түсі</label>
-          <input className="form-input" value={draft.filmColor} onChange={(e) => patch({ filmColor: e.target.value })} />
+        <div className="mdf-sheet-grid">
+          <div className="form-group">
+            <label>Түрі</label>
+            <select className="form-input" value={draft.finish} onChange={(e) => patch({ finish: e.target.value as MdfFinish })}>
+              {MDF_FINISHES.map((f) => <option key={f} value={f}>{MDF_FINISH_LABELS[f]}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>{draft.finish === "paint" ? "Краска түсі" : "Пленка түсі"}</label>
+            <input className="form-input" value={draft.filmColor} onChange={(e) => patch({ filmColor: e.target.value })} />
+          </div>
         </div>
+        {order.productionStatus === "mdf_production" && draft.finish !== (order.mdfFinish ?? "film") && (
+          <p className="form-hint">
+            Сақтағанда заказ {draft.finish === "paint" ? "Краскаға" : "Вакуумға"} ауысады — өз жолына.
+          </p>
+        )}
         <div className="form-group">
           <label>Күні</label>
           <input type="date" className="form-input" value={dayKey(draft.orderDate)}

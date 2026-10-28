@@ -571,8 +571,9 @@ export default function ManagerJournal() {
   );
 
   /**
-   * The row the settlement line is drawn above: the first order of the new books that follows one
-   * of the old, as the owner would rule it across the paper journal. Found over `filtered` rather
+   * The row the settlement line belongs to: the first order of the new books that follows one of
+   * the old, as the owner would rule it across the paper journal — the line is drawn under it, the
+   * ledger reading newest first. Found over `filtered` rather
    * than the page, so the line stays with №281 whichever page it lands on, and is not drawn at all
    * when nothing from the settled books is on screen to separate it from.
    */
@@ -590,10 +591,11 @@ export default function ManagerJournal() {
     : null;
 
   /**
-   * Each «расчет» ruled under its last order — "№281–№300 расчет істелді" (lib/settlements.ts).
-   * Keyed by the row it falls under, found over `filtered` like the line above, so it stays with
-   * that order whichever page it lands on: under the LAST row it covers, so a row whose Күні was
-   * moved and now sits lower down is still above the line it was settled in. `next` comes from the
+   * Each «расчет» ruled at its last order — "№281–№300 расчет істелді" (lib/settlements.ts), drawn
+   * over that row now the ledger reads newest first. Keyed by the row, found over the oldest-first
+   * `filtered` like the line above, so it stays with that order whichever page it lands on: at the
+   * LAST row it covers, so a row whose Күні was moved is still on the side of the line it was
+   * settled in. `next` comes from the
    * chain — the next settlement's first order, or where the next one will start (across New Year,
    * №1 rather than №501) — so a search or a chip that hides rows never makes it read wrong.
    */
@@ -663,10 +665,19 @@ export default function ManagerJournal() {
     [orders, openId],
   );
 
-  // Not named `window`: this component also asks the real one about the phone breakpoint.
-  const pageView = pageWindow(filtered.length, pageSize, pinnedPage);
+  /**
+   * The ledger as it is read: newest first, so the order just written down is at the top where the
+   * new row opens (the owner, 28.10: «жаңа заказ басында болсын»). `filtered` stays oldest-first —
+   * the settlement lines are found over it, in the order the books were kept — and only the view
+   * turns round; each line is drawn on the other side of its row to match.
+   */
+  const ledgerRows = useMemo(() => [...filtered].reverse(), [filtered]);
+
+  // Not named `window`: this component also asks the real one about the phone breakpoint. Page 1
+  // is the newest, and a null pin — "wherever the newest rows are" — is that first page.
+  const pageView = pageWindow(ledgerRows.length, pageSize, pinnedPage ?? 1);
   const { page: safePage, totalPages } = pageView;
-  const pageItems = pageView.to === 0 ? EMPTY_ORDERS : filtered.slice(pageView.from - 1, pageView.to);
+  const pageItems = pageView.to === 0 ? EMPTY_ORDERS : ledgerRows.slice(pageView.from - 1, pageView.to);
   /** In screen order, so a Shift-click range follows what the eye sees. */
   const pageIds = useMemo(() => pageItems.map((o) => o.id), [pageItems]);
 
@@ -1519,9 +1530,11 @@ export default function ManagerJournal() {
 
                 return (
                   <Fragment key={order.id}>
-                  {booksLine && order.id === booksLineBefore && (
-                    <div className="journal-card-books" role="separator"><BooksLine {...booksLine} /></div>
-                  )}
+                  {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
+                    <div key={settlement.id} className="journal-card-books" role="separator">
+                      <SettlementLine settlement={settlement} next={next} />
+                    </div>
+                  ))}
                   <div className={`journal-card is-${journalCutState(order)}`}>
                     <button className="journal-card-main" onClick={() => navigate(`/manager/order/${order.id}`)}>
                       <div className="journal-card-top">
@@ -1615,11 +1628,9 @@ export default function ManagerJournal() {
                       🗑 Жолды өшіру
                     </button>
                   </div>
-                  {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
-                    <div key={settlement.id} className="journal-card-books" role="separator">
-                      <SettlementLine settlement={settlement} next={next} />
-                    </div>
-                  ))}
+                  {booksLine && order.id === booksLineBefore && (
+                    <div className="journal-card-books" role="separator"><BooksLine {...booksLine} /></div>
+                  )}
                   </Fragment>
                 );
               })
@@ -1657,20 +1668,34 @@ export default function ManagerJournal() {
                   moveFocusVertically(el, e.shiftKey ? -1 : 1);
                 }}
               >
+                {/* The new row opens at the top, over the newest order. */}
+                {newRow && (
+                  <NewJournalRow
+                    draft={newRow}
+                    setDraft={setNewRow}
+                    directory={customerDir}
+                    materials={materials}
+                    pvcTypes={pvcTypes}
+                    nameRef={newRowNameRef}
+                    saving={saving}
+                    onSave={commitNewRow}
+                    onCancel={cancelNewRow}
+                  />
+                )}
                 {loading || paymentsLoading ? (
                   <tr><td colSpan={bodyColSpan} className="jt-empty">Жүктелуде…</td></tr>
                 ) : pageItems.length === 0 && !newRow ? (
                   <tr><td colSpan={bodyColSpan} className="jt-empty">Заказдар табылмады</td></tr>
                 ) : (
                   <>
-                  {/* The ledger runs oldest first and opens on the last page, so on a busy month
-                      everything before today sits above the window. Left to the pager alone that
-                      reads as "my old orders are gone" — so the table says how many there are and
-                      offers the two ways to reach them. */}
+                  {/* Newest first: on a later page the newer orders sit above the window and the
+                      older ones below it. Left to the pager alone that reads as "my orders are
+                      gone" — so the table says how many there are and offers the two ways to
+                      reach them. */}
                   {pageView.olderCount > 0 && (
                     <HiddenRowsNotice
                       colSpan={bodyColSpan}
-                      direction="older"
+                      direction="newer"
                       count={pageView.olderCount}
                       onStep={() => setPinnedPage(safePage - 1)}
                       onShowAll={() => { setPageSize(SHOW_ALL); setPinnedPage(null); }}
@@ -1678,9 +1703,11 @@ export default function ManagerJournal() {
                   )}
                   {pageItems.map((order) => (
                     <Fragment key={order.id}>
-                    {booksLine && order.id === booksLineBefore && (
-                      <tr className="jt-books"><td colSpan={bodyColSpan}><BooksLine {...booksLine} /></td></tr>
-                    )}
+                    {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
+                      <tr key={settlement.id} className="jt-books">
+                        <td colSpan={bodyColSpan}><SettlementLine settlement={settlement} next={next} /></td>
+                      </tr>
+                    ))}
                     <JournalRow
                       order={order}
                       hidden={activeHidden}
@@ -1708,37 +1735,21 @@ export default function ManagerJournal() {
                       onDelete={() => handleDeleteOrder(order)}
                       onError={showToast}
                     />
-                    {(settlementLinesAfter.get(order.id) ?? []).map(({ settlement, next }) => (
-                      <tr key={settlement.id} className="jt-books">
-                        <td colSpan={bodyColSpan}><SettlementLine settlement={settlement} next={next} /></td>
-                      </tr>
-                    ))}
+                    {booksLine && order.id === booksLineBefore && (
+                      <tr className="jt-books"><td colSpan={bodyColSpan}><BooksLine {...booksLine} /></td></tr>
+                    )}
                     </Fragment>
                   ))}
                   {pageView.newerCount > 0 && (
                     <HiddenRowsNotice
                       colSpan={bodyColSpan}
-                      direction="newer"
+                      direction="older"
                       count={pageView.newerCount}
                       onStep={() => setPinnedPage(safePage + 1)}
                       onShowAll={() => { setPageSize(SHOW_ALL); setPinnedPage(null); }}
                     />
                   )}
                   </>
-                )}
-
-                {newRow && (
-                  <NewJournalRow
-                    draft={newRow}
-                    setDraft={setNewRow}
-                    directory={customerDir}
-                    materials={materials}
-                    pvcTypes={pvcTypes}
-                    nameRef={newRowNameRef}
-                    saving={saving}
-                    onSave={commitNewRow}
-                    onCancel={cancelNewRow}
-                  />
                 )}
               </tbody>
             </table>
@@ -1803,7 +1814,7 @@ export default function ManagerJournal() {
               <button className="journal-page-btn" disabled={safePage <= 1} onClick={() => setPinnedPage(safePage - 1)} aria-label="Алдыңғы бет">‹</button>
               <span className="journal-page-current">{safePage}</span>
               <button className="journal-page-btn" disabled={safePage >= totalPages} onClick={() => setPinnedPage(safePage + 1)} aria-label="Келесі бет">›</button>
-              <button className="journal-page-btn" disabled={safePage >= totalPages} onClick={() => setPinnedPage(null)} aria-label="Соңғы бет">»</button>
+              <button className="journal-page-btn" disabled={safePage >= totalPages} onClick={() => setPinnedPage(totalPages)} aria-label="Соңғы бет">»</button>
             </div>
             <select
               className="journal-select"
@@ -1942,7 +1953,7 @@ function HiddenRowsNotice({
   colSpan, direction, count, onStep, onShowAll,
 }: {
   colSpan: number;
-  /** Which way the hidden rows lie: older is up the ledger, newer is down it. */
+  /** Which way the hidden rows lie: newest first, so newer is up the ledger and older down it. */
   direction: "older" | "newer";
   count: number;
   /** One page towards them. */
@@ -1954,10 +1965,10 @@ function HiddenRowsNotice({
     <tr className={`jt-more is-${direction}`}>
       <td colSpan={colSpan}>
         <span className="jt-more-text">
-          {direction === "older" ? "↑ Бұдан ескі" : "↓ Бұдан кейінгі"} <b>{count}</b> заказ жасырылған
+          {direction === "newer" ? "↑ Бұдан жаңа" : "↓ Бұдан ескі"} <b>{count}</b> заказ жасырылған
         </span>
         <button type="button" className="jt-more-btn" onClick={onStep}>
-          {direction === "older" ? "алдыңғы бет" : "келесі бет"}
+          {direction === "newer" ? "алдыңғы бет" : "келесі бет"}
         </button>
         <button type="button" className="jt-more-btn is-strong" onClick={onShowAll}>
           барлығын көрсету
@@ -1968,9 +1979,9 @@ function HiddenRowsNotice({
 }
 
 /**
- * Under a settlement's last order: "✓ №281–№300 расчет істелді · 05.10.2026 · ↓ келесі расчет
- * №301 заказдан басталады". `next` is where the next settlement starts — taken from the chain of
- * settlements, never from the row below, which a search or a moved Күні can make any order at all.
+ * Over a settlement's last order, newest first: "✓ №281–№300 расчет істелді · 05.10.2026 · ↑ келесі
+ * расчет №301 заказдан басталады". `next` is where the next settlement starts — taken from the
+ * chain of settlements, never from the row above, which a search or a moved Күні can make any order.
  */
 function SettlementLine({ settlement, next }: { settlement: Settlement; next: string | null }) {
   const from = shortOrderNumber(settlement.fromOrderNumber);
@@ -1981,16 +1992,17 @@ function SettlementLine({ settlement, next }: { settlement: Settlement; next: st
         ✓ <b className="jt-nowrap">№{from === to ? to : `${from}–№${to}`}</b> расчет істелді
       </span>
       <span className="jt-books-date">{formatDateDMY(new Date(`${settlement.date}T12:00:00+05:00`))}</span>
-      {next && <span className="jt-books-next">↓ келесі расчет №{shortOrderNumber(next)} заказдан басталады</span>}
+      {next && <span className="jt-books-next">↑ келесі расчет №{shortOrderNumber(next)} заказдан басталады</span>}
     </>
   );
 }
 
 /**
- * The settlement line — "№281 заказға дейін расчет істелді" — ruled across the ledger above the
- * first order of the new books, as the owner would draw it in the paper journal. Everything above
- * it has been counted and handed over; Касса counts from the row under it
- * (ApplicationSettings.cashStartOrderNumber, lib/cashbox.ts isBeforeRestart).
+ * The settlement line — "№281 заказға дейін расчет істелді" — ruled across the ledger between the
+ * old books and the new, as the owner would draw it in the paper journal. Newest first, it sits
+ * under the first order of the new books: everything below it has been counted and handed over,
+ * and Касса counts from the row above it (ApplicationSettings.cashStartOrderNumber,
+ * lib/cashbox.ts isBeforeRestart).
  */
 function BooksLine({ orderNumber, date }: { orderNumber: string; date: string | null }) {
   const n = shortOrderNumber(orderNumber);
@@ -1998,7 +2010,7 @@ function BooksLine({ orderNumber, date }: { orderNumber: string; date: string | 
     <>
       <span className="jt-books-text">✓ <b>№{n}</b> заказға дейін расчет істелді</span>
       {date && <span className="jt-books-date">{formatDateDMY(new Date(`${date}T12:00:00+05:00`))}</span>}
-      <span className="jt-books-next">↓ келесі расчет №{n} заказдан басталады</span>
+      <span className="jt-books-next">↑ келесі расчет №{n} заказдан басталады</span>
     </>
   );
 }

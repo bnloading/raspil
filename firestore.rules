@@ -590,9 +590,37 @@ service cloud.firestore {
     }
 
     match /salaryRules/{userId} {
-      allow get: if isAdmin() || (isSignedIn() && uid() == userId);
+      // Pay configuration is the Admin's — with one narrow exception: the МДФ manager keeps the МДФ
+      // stations' per-m² tariffs, and a client's own rate («Динкоға 2 000», the owner, 28.10), on
+      // the «МДФ тарифтері» page (src/pages/manager/ManagerMdfTariffs.tsx). Only for a ЧПУ /
+      // Шкурка / Краска / Вакуум worker, only those fields, and the pay mode may only go from
+      // unset/MANUAL to per-m²: nothing else about anyone's pay is the manager's to change.
+      function mdfManager() {
+        return isManager() && userDoc().get('department', 'ldsp') == 'mdf';
+      }
+      function mdfStationWorker() {
+        return get(/databases/$(database)/documents/users/$(userId)).data.role
+          in ['cnc', 'sanding', 'painting', 'vacuum'];
+      }
+      function tariffFields() {
+        return ['mode', 'perMdfM2Tiyn', 'perMdfM2ByClientTiyn', 'perPackagingOrderTiyn',
+          'updatedAt', 'updatedByUid', 'updatedByName'];
+      }
+      allow get: if isAdmin() || (isSignedIn() && uid() == userId) || (mdfManager() && mdfStationWorker());
       allow list: if isAdmin();
-      allow write: if isAdmin(); // pay configuration is Admin-only, per spec
+      allow create: if isAdmin() || (
+        mdfManager() && mdfStationWorker()
+        && request.resource.data.userId == userId
+        && request.resource.data.mode == 'PER_MDF_M2'
+        && request.resource.data.keys().hasOnly(tariffFields().concat(['userId']))
+      );
+      allow update: if isAdmin() || (
+        mdfManager() && mdfStationWorker()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(tariffFields())
+        && (request.resource.data.get('mode', 'MANUAL') == resource.data.get('mode', 'MANUAL')
+          || (resource.data.get('mode', 'MANUAL') == 'MANUAL' && request.resource.data.mode == 'PER_MDF_M2'))
+      );
+      allow delete: if isAdmin();
     }
 
     match /salaryEntries/{id} {
