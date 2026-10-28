@@ -1,4 +1,31 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap");
+/*
+ * Medeo — the medeo-font package (DNF, SIL OFL): Medeo Sans for every word, Medeo Mono for every
+ * figure (the owner, 28.10: «сандарды mono, текстерді sans»). "Medeo Digits" is Medeo Mono cut down
+ * by unicode-range to 0–9 and put first in --font-sans, so a digit anywhere — a sum in a ledger
+ * cell, №558 in a sentence, an amount being typed — is set in Mono while the words around it stay
+ * in Sans, and lines up under the digits above it. No rule that shows a number has to opt in.
+ * Bundled with the app rather than fetched from a font CDN, so a slow connection never shows the
+ * fallback first.
+ */
+@import "medeo-font/sans.css";
+@import "medeo-font/mono.css";
+
+@font-face {
+  font-family: "Medeo Digits";
+  src: url("../node_modules/medeo-font/dist/fonts/medeo-mono/MedeoMonoVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
+@font-face {
+  font-family: "Medeo Digits";
+  src: url("../node_modules/medeo-font/dist/fonts/medeo-mono/MedeoMonoVariable-Italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
 
 /* ── Leaderboard ── */
 .leaderboard-list {
@@ -125,6 +152,11 @@
    Breakpoints: <768px mobile (bottom nav) · 768-1023px tablet (bottom nav, 2-col)
    · >=1024px desktop (sidebar+topbar) · >=1440px wide (5-up stat row) ── */
 :root {
+  /* Type: words in Medeo Sans, figures in Medeo Mono (see "Medeo Digits" at the top). */
+  --font-sans: "Medeo Digits", "Medeo Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "Medeo Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
   /* Core surfaces */
   --bg: #f5f6fa;
   --card: #ffffff;
@@ -228,6 +260,21 @@
   box-sizing: border-box;
 }
 
+/* Browsers give form controls their own system font. Every control here reads in the page's —
+   Medeo, digits in Mono — whether or not its class remembered to say font: inherit. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+}
+
 /*
  * One focus ring for the whole app.
  *
@@ -279,12 +326,7 @@ html {
 }
 
 body {
-  font-family:
-    "Inter",
-    "Manrope",
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -3751,10 +3793,7 @@ body {
   border-radius: 999px;
   background: #ffffff;
   color: #6b6f78;
-  font:
-    700 12px/1 "Inter",
-    "Manrope",
-    sans-serif;
+  font: 700 12px/1 var(--font-sans);
   white-space: nowrap;
 }
 
