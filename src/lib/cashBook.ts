@@ -1,4 +1,4 @@
-import type { Expense, Order, Payment, PaymentMethodDef } from "../types/domain";
+import type { Expense, Order, Payment, PaymentMethodDef, RentPayment } from "../types/domain";
 import { accountForExpense, accountForMethod } from "./cashbox";
 import { dayKey } from "./dates";
 import { paymentNote } from "./payments";
@@ -49,11 +49,15 @@ export function cashBookEntries({
   expenses,
   orders,
   methods,
+  other = [],
 }: {
   payments: readonly Payment[];
   expenses: readonly Expense[];
   orders: readonly Order[];
   methods: readonly PaymentMethodDef[];
+  /** This line's money in with no order behind it — «Сырттан кірген ақша» and rent — so every
+   *  tenge the Касса counts in the drawer has its line here too. */
+  other?: readonly RentPayment[];
 }): CashBookEntry[] {
   const orderById = new Map(orders.map((o) => [o.id, o]));
   const methodById = new Map(methods.map((m) => [m.id, m]));
@@ -77,6 +81,20 @@ export function cashBookEntries({
       note: paymentNote(p) ?? "",
       byName: p.recordedByName,
       orderId: order.id,
+    });
+  }
+
+  for (const r of other) {
+    if (accountForMethod(methodById.get(r.methodId) ?? { id: r.methodId }) !== "cash") continue;
+    entries.push({
+      kind: "in",
+      id: r.id,
+      day: r.date,
+      atMs: r.createdAt ? r.createdAt.seconds * 1000 : 0,
+      amountTiyn: r.amountTiyn,
+      title: r.kind === "outside" ? "Сырттан кірген ақша" : `Аренда · ${r.payerName}`,
+      note: r.comment?.trim() ?? "",
+      byName: r.createdByName,
     });
   }
 

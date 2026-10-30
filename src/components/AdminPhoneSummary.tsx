@@ -70,6 +70,7 @@ export function AdminPhoneSummary({
             openingTiyn={openingBalanceTiyn[acc.account] ?? 0}
             inTiyn={acc.inTiyn}
             rentTiyn={acc.rentTiyn ?? 0}
+            outsideTiyn={acc.outsideTiyn ?? 0}
             outTiyn={acc.outTiyn}
             adjustTiyn={acc.adjustTiyn}
             detail={acc.byMethod.length > 1
@@ -84,6 +85,7 @@ export function AdminPhoneSummary({
           openingTiyn={totalOpening}
           inTiyn={cashbox.totalInTiyn}
           rentTiyn={cashbox.totalRentTiyn ?? 0}
+          outsideTiyn={cashbox.totalOutsideTiyn ?? 0}
           outTiyn={cashbox.totalOutTiyn}
           adjustTiyn={cashbox.totalAdjustTiyn}
         />
@@ -107,6 +109,7 @@ function MoneyRow({
   openingTiyn,
   inTiyn,
   rentTiyn,
+  outsideTiyn,
   outTiyn,
   adjustTiyn,
   detail,
@@ -118,6 +121,8 @@ function MoneyRow({
   inTiyn: number;
   /** Rent received into the account (Аренда page) — a column only when there is any. */
   rentTiyn: number;
+  /** Money from outside the journal («Сырттан», Касса page) — a column only when there is any. */
+  outsideTiyn: number;
   outTiyn: number;
   /** Dated corrections ("Банкпен теңестіру") — a column only when there are any. */
   adjustTiyn: number;
@@ -144,6 +149,12 @@ function MoneyRow({
           <div>
             <dt>+ Аренда</dt>
             <dd className="is-in">{formatMoney(rentTiyn)}</dd>
+          </div>
+        )}
+        {outsideTiyn > 0 && (
+          <div>
+            <dt>+ Сырттан</dt>
+            <dd className="is-in">{formatMoney(outsideTiyn)}</dd>
           </div>
         )}
         <div>

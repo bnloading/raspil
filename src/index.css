@@ -9621,6 +9621,19 @@ body {
 .mdf-client-head .form-input { flex: 1 1 auto; min-width: 0; }
 .mdf-client-rates { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .mdf-client-rate { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--text-secondary); }
+/* «Сырттан кірген ақша» on Касса — one line per entry: day, what it was, the sum. */
+.cashbox-outside { list-style: none; margin: 12px 0 0; padding: 0; }
+.cashbox-outside li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+.cashbox-outside-day { flex: 0 0 auto; }
+.cashbox-outside-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cashbox-outside-text small { color: var(--text-light); }
+.cashbox-outside strong { flex: 0 0 auto; color: var(--success); white-space: nowrap; }
 /* The МДФ phone sheet: area and rate side by side. */
 .mdf-sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* What people wrote on the money — mostly the cash note, "💬 30000" — under «Төленді», the figure

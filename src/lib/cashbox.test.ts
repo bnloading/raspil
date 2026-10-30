@@ -490,3 +490,35 @@ describe("cashAccountLabels — each line names its own pots", () => {
     expect(cashAccountLabels("ldsp")).toEqual({ deposit: "Нұр", pay: "Kaspi / Pay", cash: "Қолма-қол" });
   });
 });
+
+describe("computeCashbox — money from outside the journal («Сырттан кірген ақша»)", () => {
+  const methods: PaymentMethodDef[] = [
+    { id: "cash", name: "Нал", active: true, isMixed: false, account: "cash" },
+    { id: "nur", name: "Нұр", active: true, isMixed: false, account: "deposit" },
+  ];
+  const entry = (over: Record<string, unknown>) => ({ amountTiyn: 5000000, methodId: "cash", date: "2026-10-30", ...over });
+
+  it("adds it to the pot it landed in, as its own line beside rent", () => {
+    const summary = computeCashbox({
+      payments: [], expenses: [], methods, period: null,
+      rent: [entry({ kind: "outside" }), entry({ methodId: "nur", amountTiyn: 15000000 })],
+    });
+    const cash = summary.accounts.find((a) => a.account === "cash")!;
+    const deposit = summary.accounts.find((a) => a.account === "deposit")!;
+    expect(cash.outsideTiyn).toBe(5000000);
+    expect(cash.rentTiyn).toBe(0);
+    expect(cash.balanceTiyn).toBe(5000000);
+    expect(deposit.rentTiyn).toBe(15000000);
+    expect(summary.totalOutsideTiyn).toBe(5000000);
+    expect(summary.totalRentTiyn).toBe(15000000);
+    expect(summary.totalBalanceTiyn).toBe(20000000);
+  });
+
+  it("leaves out an entry dated before the restart, as it does rent", () => {
+    const summary = computeCashbox({
+      payments: [], expenses: [], methods, period: null, startDate: "2026-10-01",
+      rent: [entry({ kind: "outside", date: "2026-09-30" })],
+    });
+    expect(summary.totalOutsideTiyn).toBe(0);
+  });
+});

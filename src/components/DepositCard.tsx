@@ -61,6 +61,13 @@ export function DepositCard({
             <dd className="is-in">{formatMoney(now.rentTiyn ?? 0)}</dd>
           </div>
         )}
+        {/* Money from outside the journal («Сырттан», Касса page) — the sum needs it too. */}
+        {(now.outsideTiyn ?? 0) > 0 && (
+          <div>
+            <dt>+ Сырттан</dt>
+            <dd className="is-in">{formatMoney(now.outsideTiyn ?? 0)}</dd>
+          </div>
+        )}
         <div>
           <dt>− Шықты</dt>
           <dd className={now.outTiyn > 0 ? "is-out" : undefined}>{formatMoney(now.outTiyn)}</dd>
@@ -76,7 +83,8 @@ export function DepositCard({
       {!monthIsEverything && (
         <p className="aps-detail">
           {monthLabel(monthKey)}: түсті {formatMoney(month.inTiyn)}
-          {(month.rentTiyn ?? 0) > 0 ? ` · аренда ${formatMoney(month.rentTiyn ?? 0)}` : ""} · шықты {formatMoney(month.outTiyn)}
+          {(month.rentTiyn ?? 0) > 0 ? ` · аренда ${formatMoney(month.rentTiyn ?? 0)}` : ""}
+          {(month.outsideTiyn ?? 0) > 0 ? ` · сырттан ${formatMoney(month.outsideTiyn ?? 0)}` : ""} · шықты {formatMoney(month.outTiyn)}
         </p>
       )}
     </section>

@@ -114,8 +114,11 @@ export interface AccountSummary {
   /** Rent received into this pot in the period ("Аренда") — not order money, so not
    *  in `inTiyn`. Absent on summaries built by hand (tests/mobile-design-preview.tsx): read as 0. */
   rentTiyn?: number;
-  /** in + rent − out ± corrections (+ opening, all-time only). Negative is real and is shown: you
-   *  can spend a drawer past what came in that month. */
+  /** Money that came into this pot outside the journal («Сырттан кірген ақша») — like rent, not
+   *  order money. Absent on summaries built by hand: read as 0. */
+  outsideTiyn?: number;
+  /** in + rent + outside − out ± corrections (+ opening, all-time only). Negative is real and is
+   *  shown: you can spend a drawer past what came in that month. */
   balanceTiyn: number;
   /** The split behind `inTiyn`, biggest first — "Нұр 195 200 · Kaspi 42 480". */
   byMethod: MethodTotal[];
@@ -144,6 +147,8 @@ export interface CashboxSummary {
   totalAdjustTiyn: number;
   /** See AccountSummary.rentTiyn. */
   totalRentTiyn?: number;
+  /** See AccountSummary.outsideTiyn. */
+  totalOutsideTiyn?: number;
   totalBalanceTiyn: number;
   /** Payments on pre-restart orders, oldest payment first — shown, never counted (see `orders`). */
   excludedOldOrders: ExcludedPayment[];
@@ -158,6 +163,7 @@ function emptyAccount(account: CashAccount): AccountSummary {
     outTiyn: 0,
     adjustTiyn: 0,
     rentTiyn: 0,
+    outsideTiyn: 0,
     balanceTiyn: 0,
     byMethod: [],
     expenseCount: 0,
@@ -235,9 +241,10 @@ export function computeCashbox({
   /** This line's dated corrections (ApplicationSettings.cashAdjustments), filtered by date like an
    *  expense: nothing before `startDate`, and only the chosen month's when `period` is set. */
   adjustments?: readonly CashAdjustment[];
-  /** This line's rent received ("Аренда") — the Admin and the Manager can read it; anyone else
-   *  passes none. Into the pot of its method like a payment, dated by its own day like an expense. */
-  rent?: readonly Pick<RentPayment, "amountTiyn" | "methodId" | "date">[];
+  /** This line's rent received ("Аренда") and money from outside the journal ("Сырттан", the
+   *  `kind: "outside"` entries) — the Admin and the Manager can read them; anyone else passes none.
+   *  Into the pot of its method like a payment, dated by its own day like an expense. */
+  rent?: readonly Pick<RentPayment, "amountTiyn" | "methodId" | "date" | "kind">[];
 }): CashboxSummary {
   const methodById = new Map(methods.map((m) => [m.id, m]));
   const orderById = new Map((orders ?? []).map((o) => [o.id, o]));
@@ -318,7 +325,8 @@ export function computeCashbox({
     if (startDate && r.date < startDate) continue;
     if (period !== null && !r.date.startsWith(period)) continue;
     const summary = summaries.get(accountForMethod(methodById.get(r.methodId) ?? { id: r.methodId }))!;
-    summary.rentTiyn = (summary.rentTiyn ?? 0) + r.amountTiyn;
+    if (r.kind === "outside") summary.outsideTiyn = (summary.outsideTiyn ?? 0) + r.amountTiyn;
+    else summary.rentTiyn = (summary.rentTiyn ?? 0) + r.amountTiyn;
   }
 
   const accounts = CASH_ACCOUNTS.map((account) => {
@@ -326,7 +334,8 @@ export function computeCashbox({
     const opening = period === null ? (openingBalanceTiyn[account] ?? 0) : 0;
     return {
       ...summary,
-      balanceTiyn: summary.inTiyn + (summary.rentTiyn ?? 0) - summary.outTiyn + summary.adjustTiyn + opening,
+      balanceTiyn: summary.inTiyn + (summary.rentTiyn ?? 0) + (summary.outsideTiyn ?? 0) - summary.outTiyn
+        + summary.adjustTiyn + opening,
       byMethod: [...byMethod.get(account)!.values()].sort(
         (a, b) => b.amountTiyn - a.amountTiyn,
       ),
@@ -340,6 +349,7 @@ export function computeCashbox({
     totalOutTiyn: accounts.reduce((s, a) => s + a.outTiyn, 0),
     totalAdjustTiyn: accounts.reduce((s, a) => s + a.adjustTiyn, 0),
     totalRentTiyn: accounts.reduce((s, a) => s + (a.rentTiyn ?? 0), 0),
+    totalOutsideTiyn: accounts.reduce((s, a) => s + (a.outsideTiyn ?? 0), 0),
     totalBalanceTiyn: accounts.reduce((s, a) => s + a.balanceTiyn, 0),
     excludedOldOrders: excludedOldOrders.sort((a, b) => a.paymentDay.localeCompare(b.paymentDay)),
     adjustments: counted,

@@ -49,7 +49,8 @@ export default function AdminRent() {
   const accountOf = (r: RentPayment): CashAccount => accountForMethod(methodById.get(r.methodId) ?? { id: r.methodId });
 
   const rows = useMemo(
-    () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),
+    // Rent only — money from outside the journal is on the Касса page, under «Сырттан».
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === department && r.kind !== "outside"),
     [rentPayments, department],
   );
   const startDate = settings.cashStartDate ?? null;

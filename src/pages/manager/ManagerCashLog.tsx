@@ -11,6 +11,7 @@ import { useAllOrders } from "../../hooks/useOrders";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useExpenses } from "../../hooks/useExpenses";
 import { useDepartmentCashbox } from "../../hooks/useDepartmentCashbox";
+import { useRentPayments } from "../../hooks/useRentPayments";
 import { accountForMethod } from "../../lib/cashbox";
 import { cashBookDays, cashBookEntries } from "../../lib/cashBook";
 import { netPaidTiyn } from "../../lib/journal";
@@ -50,6 +51,7 @@ export default function ManagerCashLog() {
   const { orders: allOrders, loading: ordersLoading } = useAllOrders();
   const { payments, byOrder, loading: paymentsLoading } = useAllPayments();
   const { expenses: allExpenses } = useExpenses();
+  const { rentPayments } = useRentPayments();
   const cash = useDepartmentCashbox({ orders: allOrders, department });
   const [methods, setMethods] = useState<PaymentMethodDef[]>([]);
   const [showAll, setShowAll] = useState(false);
@@ -68,9 +70,13 @@ export default function ManagerCashLog() {
     () => allExpenses.filter((e) => (e.department ?? "ldsp") === department),
     [allExpenses, department],
   );
+  const other = useMemo(
+    () => rentPayments.filter((r) => (r.department ?? "ldsp") === department),
+    [rentPayments, department],
+  );
   const days = useMemo(
-    () => cashBookDays(cashBookEntries({ payments, expenses, orders, methods })),
-    [payments, expenses, orders, methods],
+    () => cashBookDays(cashBookEntries({ payments, expenses, orders, methods, other })),
+    [payments, expenses, orders, methods, other],
   );
   const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
 

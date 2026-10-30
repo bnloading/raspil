@@ -16,6 +16,7 @@ import { useRentPayments } from "../../hooks/useRentPayments";
 import { useMaterials } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
 import { addExpense, deleteExpense, expenseDefaultDate, expensesByWeek, payWorkerFromCashbox, type ExpenseWeek } from "../../lib/expenses";
+import { addOutsideIncome, deleteRentPayment } from "../../lib/rent";
 import { advancePeriodKey } from "../../lib/advances";
 import { periodLabel, shiftPeriod } from "../../lib/salaryPeriod";
 import { useStaff } from "../../hooks/useStaff";
@@ -46,7 +47,7 @@ import {
   settlementsInOrder,
   type SettlementInput,
 } from "../../lib/settlements";
-import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef, Settlement, UserRole } from "../../types/domain";
+import type { CashAccount, CashAdjustment, Department, Expense, PaymentMethodDef, RentPayment, Settlement, UserRole } from "../../types/domain";
 import type { CashboxSummary } from "../../lib/cashbox";
 
 /**
@@ -322,6 +323,17 @@ export default function ManagerCashbox() {
             <SettlementPanel department={myDepartment} input={settlementInput} onToast={showToast} />
           )}
 
+          <OutsideIncomeSection
+            entries={rent.filter((r) => r.kind === "outside")}
+            period={effectivePeriod}
+            methods={methods.filter((m) => m.active !== false && !m.isMixed && methodVisibleTo(m, myDepartment))}
+            department={myDepartment}
+            defaultDate={expenseDefaultDate(effectivePeriod)}
+            cashStartDate={cashStartDate}
+            canDelete={(r) => isAdmin || r.createdByUid === user?.uid}
+            onToast={showToast}
+          />
+
           <ExpenseForm
             defaultDate={expenseDefaultDate(effectivePeriod)}
             cashStartDate={cashStartDate}
@@ -430,6 +442,153 @@ export default function ManagerCashbox() {
 
       <Toast message={message} visible={visible} />
     </AppShell>
+  );
+}
+
+/**
+ * «Сырттан кірген ақша» — money that came in outside the journal (the owner, 30.10): a sum, the
+ * pot it landed in, the day, and a comment saying what it was — required, since with no order
+ * behind it the comment is the only record of where the money came from. Counted on the Касса
+ * as its own «+ Сырттан» line (lib/cashbox.ts), and listed here for the period on screen.
+ */
+function OutsideIncomeSection({
+  entries,
+  period,
+  methods,
+  department,
+  defaultDate,
+  cashStartDate,
+  canDelete,
+  onToast,
+}: {
+  /** This line's outside-money entries, every period. */
+  entries: RentPayment[];
+  /** YYYY-MM on screen, or null for all time. */
+  period: string | null;
+  /** This line's single-method options — the method decides the pot. */
+  methods: PaymentMethodDef[];
+  department: Department;
+  defaultDate: string;
+  /** The accounting restart — an entry dated before it is saved but never counted on Касса. */
+  cashStartDate: string | null;
+  canDelete: (entry: RentPayment) => boolean;
+  onToast: (message: string) => void;
+}) {
+  const { labels: accountLabels } = useCashAccountLabels();
+  const { user, userData } = useAuth();
+  const [amountTenge, setAmountTenge] = useState(0);
+  const [methodId, setMethodId] = useState("");
+  const [date, setDate] = useState(defaultDate);
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Cash by default — money handed over outside the journal is most often cash in hand.
+  const method = methods.find((m) => m.id === methodId)
+    ?? methods.find((m) => accountForMethod(m) === "cash")
+    ?? methods[0];
+  const beforeStart = !!cashStartDate && date < cashStartDate;
+  const shown = entries
+    .filter((r) => period === null || r.date.startsWith(period))
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+  const totalTiyn = shown.reduce((s, r) => s + r.amountTiyn, 0);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || !userData) return;
+    const amountTiyn = Math.round(amountTenge * 100);
+    if (amountTiyn <= 0 || !method) {
+      onToast("Сомасын және қайда түскенін толтырыңыз");
+      return;
+    }
+    if (!comment.trim()) {
+      onToast("Түсініктеме жазыңыз — ақша неден, кімнен түсті");
+      return;
+    }
+    setSaving(true);
+    try {
+      await addOutsideIncome(db, { user, userData }, {
+        amountTiyn,
+        methodId: method.id,
+        methodName: method.name,
+        date,
+        comment: comment.trim(),
+        department,
+      });
+      onToast(`✅ Сырттан ${formatMoney(amountTiyn)} жазылды — ${accountLabels[accountForMethod(method)]}`);
+      setAmountTenge(0);
+      setComment("");
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+    setSaving(false);
+  };
+
+  const remove = async (entry: RentPayment) => {
+    if (!user || !userData) return;
+    if (!confirm(`${formatMoney(entry.amountTiyn)} — ${entry.comment ?? ""}\n\nБұл жазбаны өшіресіз бе?`)) return;
+    try {
+      await deleteRentPayment(db, { user, userData }, entry);
+      onToast("🗑 Өшірілді");
+    } catch (err: unknown) {
+      onToast("Қате: " + (err as Error).message);
+    }
+  };
+
+  return (
+    <section className="panel-card">
+      <div className="panel-head">
+        <h3>Сырттан кірген ақша</h3>
+        {shown.length > 0 && <span className="wh-sub">{shown.length} жазба · {formatMoney(totalTiyn)}</span>}
+      </div>
+      <form className="cashbox-form" onSubmit={submit}>
+        <label className="cashbox-field">
+          <span>Сомасы (₸)</span>
+          <NumberField value={amountTenge} min={0} onChange={setAmountTenge} ariaLabel="Сырттан кірген ақша" />
+        </label>
+        <label className="cashbox-field">
+          <span>Қайда түсті</span>
+          <select className="form-input" value={method?.id ?? ""} onChange={(e) => setMethodId(e.target.value)}>
+            {methods.map((m) => (
+              <option key={m.id} value={m.id}>{m.name} — {accountLabels[accountForMethod(m)]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="cashbox-field">
+          <span>Күні</span>
+          <input type="date" className="form-input" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label className="cashbox-field is-wide">
+          <span>Түсініктеме</span>
+          <input className="form-input" placeholder="Неден, кімнен түсті" value={comment} required
+            onChange={(e) => setComment(e.target.value)} />
+        </label>
+        {beforeStart && (
+          <p className="cashbox-warn is-wide">
+            ⚠️ Бұл күн есеп басталатын күннен ({dmy(cashStartDate!)}) бұрын — жазба сақталады, бірақ
+            Кассаға кірмейді.
+          </p>
+        )}
+        <button type="submit" className="btn btn-primary cashbox-submit" disabled={saving}>
+          {saving ? "Сақталуда…" : "💵 Кірісті жазу"}
+        </button>
+      </form>
+      {shown.length > 0 && (
+        <ul className="cashbox-outside">
+          {shown.map((r) => (
+            <li key={r.id}>
+              <span className="wh-sub cashbox-outside-day">{dmy(r.date)}</span>
+              <span className="cashbox-outside-text">
+                {r.comment || "—"}
+                <small> · {r.methodName} · {r.createdByName}</small>
+              </span>
+              <strong className="is-in">+{formatMoney(r.amountTiyn)}</strong>
+              {canDelete(r) && (
+                <button type="button" className="jt-icon-btn" aria-label="Өшіру" title="Өшіру" onClick={() => remove(r)}>✕</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -864,6 +1023,9 @@ export function CashboxAccounts({
         {(cashbox.totalRentTiyn ?? 0) > 0 && (
           <span>+ Аренда <strong className="is-in">{formatMoney(cashbox.totalRentTiyn ?? 0)}</strong></span>
         )}
+        {(cashbox.totalOutsideTiyn ?? 0) > 0 && (
+          <span>+ Сырттан <strong className="is-in">{formatMoney(cashbox.totalOutsideTiyn ?? 0)}</strong></span>
+        )}
         <span>− Шықты <strong className="is-out">{formatMoney(cashbox.totalOutTiyn)}</strong></span>
         {cashbox.totalAdjustTiyn !== 0 && <span>± Түзету <strong>{signed(cashbox.totalAdjustTiyn)}</strong></span>}
       </div>
@@ -901,6 +1063,13 @@ export function CashboxAccounts({
                 <div>
                   <dt>+ Аренда</dt>
                   <dd className="is-in">{formatMoney(acc.rentTiyn ?? 0)}</dd>
+                </div>
+              )}
+              {/* Money that came into this account outside the journal («Сырттан кірген ақша»). */}
+              {(acc.outsideTiyn ?? 0) > 0 && (
+                <div>
+                  <dt>+ Сырттан</dt>
+                  <dd className="is-in">{formatMoney(acc.outsideTiyn ?? 0)}</dd>
                 </div>
               )}
               <div>

@@ -332,6 +332,13 @@ export interface RentPayment {
   comment?: string;
   /** Which line's Касса it counts in — see UserDoc.department. Unset means "ldsp". */
   department?: Department;
+  /**
+   * "outside" — money that came in outside the journal, «Сырттан кірген ақша», written on the
+   * Касса / Шығын page with what it was (the owner, 30.10). Kept beside rent because it is the
+   * same thing to the Касса — money into a pot with no order behind it — but shown as its own
+   * «+ Сырттан» line, and never on the Аренда page. Unset is rent.
+   */
+  kind?: "rent" | "outside";
   createdByUid: string;
   createdByName: string;
   createdAt?: Timestamp;

@@ -73,6 +73,23 @@ describe("cashBookEntries — the МДФ line's «Қолма-қол»", () => {
   });
 });
 
+describe("cashBookEntries — money in with no order behind it", () => {
+  it("lists cash from outside the journal with what it was, and leaves out what went to an account", () => {
+    const entries = cashBookEntries({
+      payments: [], expenses: [], orders, methods,
+      other: [
+        { id: "out-1", kind: "outside", payerName: "Сырттан кірген ақша", amountTiyn: T(50000), methodId: "cash", methodName: "Нал",
+          date: "2026-10-30", comment: "Ербақыт берді", createdByUid: "u", createdByName: "Ахжол" },
+        { id: "out-2", kind: "outside", payerName: "Сырттан кірген ақша", amountTiyn: T(9000), methodId: "akhzhol", methodName: "Ахжол",
+          date: "2026-10-30", comment: "аударым", createdByUid: "u", createdByName: "Ахжол" },
+      ],
+    });
+    expect(entries).toEqual([
+      expect.objectContaining({ id: "out-1", kind: "in", title: "Сырттан кірген ақша", note: "Ербақыт берді", amountTiyn: T(50000) }),
+    ]);
+  });
+});
+
 describe("cashBookDays", () => {
   it("folds the book into days with what came in and went out on each", () => {
     const entries = cashBookEntries({
