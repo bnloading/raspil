@@ -21,7 +21,7 @@ import { effectiveSalaryRule } from "../../lib/salaryPolicy";
 import { formatMoney } from "../../lib/money";
 import { ROLE_LABELS, departmentOf } from "../../lib/rbac";
 import { useAdvances } from "../../hooks/useAdvances";
-import { summariseAdvances } from "../../lib/advances";
+import { summariseAdvancesWithCarry } from "../../lib/advanceCarry";
 import {
   SALARY_MODE_LABELS,
   SALARY_STATUS_LABELS,
@@ -121,9 +121,13 @@ export default function AdminSalary() {
   const adjustmentTotal = (uid: string) =>
     adjustments.filter((a) => a.userId === uid && a.periodKey === period).reduce((s, a) => s + a.amountTiyn, 0);
 
-  /** What this worker has drawn against the selected month, and what is left of it. */
+  /**
+   * What this worker has drawn against the selected period, and what is left of it — the carry from
+   * earlier periods included: advances taken past a period's pay come off the next one's
+   * (lib/advanceCarry.ts — the owner, 02.11: «350-ден асқанын осы айға жаз»).
+   */
   const advanceFor = (uid: string, earnedTiyn: number) =>
-    summariseAdvances({ advances, userId: uid, periodKey: period, earnedTiyn });
+    summariseAdvancesWithCarry({ advances, entries, userId: uid, periodKey: period, earnedTiyn });
 
   const totals = useMemo(() => {
     const periodEntries = entries.filter((e) => e.periodKey === period);
@@ -133,8 +137,8 @@ export default function AdminSalary() {
       // What still has to leave the till this payday: earned less what has already gone out as
       // advances, per worker, so one overdrawn worker cannot subtract from somebody else's pay.
       toHandOut: periodEntries.reduce(
-        (s, e) => s + summariseAdvances({
-          advances, userId: e.userId, periodKey: period, earnedTiyn: e.finalTiyn,
+        (s, e) => s + summariseAdvancesWithCarry({
+          advances, entries, userId: e.userId, periodKey: period, earnedTiyn: e.finalTiyn,
         }).remainingTiyn,
         0,
       ),
@@ -265,7 +269,8 @@ export default function AdminSalary() {
       const owed = formatMoney(adv.remainingTiyn);
       const detail = adv.totalTiyn > 0
         ? `${member.name}: қолға ${owed} төленді деп белгілейсіз бе?\n\n` +
-          `Айлық ${formatMoney(entry.finalTiyn)} − аванс ${formatMoney(adv.totalTiyn)}`
+          `Айлық ${formatMoney(entry.finalTiyn)} − аванс ${formatMoney(adv.totalTiyn)}` +
+          (adv.carriedInTiyn > 0 ? ` (оның ішінде өткен кезеңнен ${formatMoney(adv.carriedInTiyn)})` : "")
         : `${member.name}: ${owed} төленді деп белгілейсіз бе?`;
       if (!confirm(detail)) return;
     }
@@ -382,6 +387,9 @@ export default function AdminSalary() {
                     <strong className={adv.totalTiyn > 0 ? "salary-advance" : undefined}>
                       {adv.totalTiyn > 0 ? `− ${formatMoney(adv.totalTiyn)}` : formatMoney(0)}
                     </strong>
+                    {adv.carriedInTiyn > 0 && (
+                      <span className="salary-carry">өткен кезеңнен {formatMoney(adv.carriedInTiyn)}</span>
+                    )}
                   </div>
                   <div>
                     <span className="worker-field-label">Қолға тиеді</span>
@@ -407,7 +415,8 @@ export default function AdminSalary() {
               {entry && adv.overdrawn && (
                 <p className="salary-overdrawn">
                   ⚠️ Алынған аванс ({formatMoney(adv.totalTiyn)}) айлықтан асып тұр — қолға берілетін
-                  сома жоқ.
+                  сома жоқ. Артығы {formatMoney(adv.carriedOutTiyn)} келесі {kind === "week" ? "аптаның" : "айдың"} айлығынан
+                  ұсталады.
                 </p>
               )}
 

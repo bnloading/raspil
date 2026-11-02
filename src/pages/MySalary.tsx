@@ -6,7 +6,7 @@ import { useSalaryEntries, useSalaryAdjustments, useSalaryRule, useAttendance } 
 import { useCutterOrders, usePvcOrders, useMdfOrders } from "../hooks/useOrders";
 import { useMaterials } from "../hooks/useMaterials";
 import { useAdvances } from "../hooks/useAdvances";
-import { summariseAdvances } from "../lib/advances";
+import { summariseAdvancesWithCarry } from "../lib/advanceCarry";
 import { measureWork, computeFinalSalary, computeSalaryBase, cutCounts, decidedEntry, mdfClientsOf, pieceRateLines } from "../lib/salary";
 import { currentPeriodKey, periodLabel, salaryPeriodKind, shiftPeriod } from "../lib/salaryPeriod";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
@@ -97,8 +97,11 @@ export default function MySalary() {
   const finalTiyn = entry?.finalTiyn ?? liveFinalTiyn;
   const isEstimate = !entry;
 
-  const advanceInfo = summariseAdvances({
+  // The carry from earlier periods included: advances taken past a month's pay come off the
+  // next month's (lib/advanceCarry.ts — the owner, 02.11).
+  const advanceInfo = summariseAdvancesWithCarry({
     advances,
+    entries,
     userId: user?.uid ?? "",
     periodKey: period,
     earnedTiyn: finalTiyn,
@@ -117,6 +120,16 @@ export default function MySalary() {
       amountTiyn: a.amountTiyn,
       date: a.paidAt,
     }));
+    // What came over from the period before, as the first line of this one.
+    if (advanceInfo.carriedInTiyn > 0) {
+      rows.push({
+        key: "carried-in",
+        dateSeconds: 0,
+        label: "Өткен кезеңнен ауысқан аванс",
+        amountTiyn: advanceInfo.carriedInTiyn,
+        date: undefined,
+      });
+    }
     if (entry?.status === "paid" && entry.paidAt) {
       rows.push({
         key: "final",
@@ -171,8 +184,16 @@ export default function MySalary() {
               <div className="is-green"><span>Алынғаны</span><strong>{formatMoney(advanceInfo.totalTiyn)}</strong></div>
               <div className="is-blue"><span>Алуға қалды</span><strong>{formatMoney(advanceInfo.remainingTiyn)}</strong></div>
             </div>
+            {advanceInfo.carriedInTiyn > 0 && (
+              <div className="salary-carry">
+                Алынғанның ішінде өткен кезеңнен ауысқаны: {formatMoney(advanceInfo.carriedInTiyn)}
+              </div>
+            )}
             {advanceInfo.overdrawn && (
-              <div className="salary-overdrawn">Алынған аванс айлықтан асып тұр — менеджерге хабарласыңыз</div>
+              <div className="salary-overdrawn">
+                Алынған аванс айлықтан {formatMoney(advanceInfo.carriedOutTiyn)} асып тұр — ол келесі
+                {periodKind === "week" ? " аптаның" : " айдың"} айлығынан ұсталады
+              </div>
             )}
           </section>
 
@@ -222,7 +243,7 @@ export default function MySalary() {
                   <div key={p.key} className="data-row">
                     <div className="data-row-main">
                       <strong>{formatMoney(p.amountTiyn)}</strong>
-                      <span>{p.date ? formatDateTimeDMY(p.date) : ""} · {p.label}</span>
+                      <span>{p.date ? `${formatDateTimeDMY(p.date)} · ` : ""}{p.label}</span>
                     </div>
                     <span className="jt-pill jt-tone-green">Төленді</span>
                   </div>

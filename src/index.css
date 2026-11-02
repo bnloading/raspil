@@ -9634,6 +9634,8 @@ body {
 .cashbox-outside-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .cashbox-outside-text small { color: var(--text-light); }
 .cashbox-outside strong { flex: 0 0 auto; color: var(--success); white-space: nowrap; }
+/* An advance carried from the period before (lib/advanceCarry.ts), under the advance figure. */
+.salary-carry { display: block; font-size: 0.78rem; color: var(--text-secondary); }
 /* The МДФ phone sheet: area and rate side by side. */
 .mdf-sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* What people wrote on the money — mostly the cash note, "💬 30000" — under «Төленді», the figure

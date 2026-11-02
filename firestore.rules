@@ -602,8 +602,10 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/users/$(userId)).data.role
           in ['cnc', 'sanding', 'painting', 'vacuum'];
       }
+      // policyVersion goes with the rates: without it lib/salaryPolicy.ts lays the 11.09 policy
+      // rates back over what was saved, and the manager's figure would not be the one paid.
       function tariffFields() {
-        return ['mode', 'perMdfM2Tiyn', 'perMdfM2ByClientTiyn', 'perPackagingOrderTiyn',
+        return ['mode', 'perMdfM2Tiyn', 'perMdfM2ByClientTiyn', 'perPackagingOrderTiyn', 'policyVersion',
           'updatedAt', 'updatedByUid', 'updatedByName'];
       }
       allow get: if isAdmin() || (isSignedIn() && uid() == userId) || (mdfManager() && mdfStationWorker());

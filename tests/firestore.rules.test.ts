@@ -1314,7 +1314,8 @@ describe("the МДФ manager keeps the МДФ stations' per-m² tariffs, and not
     const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
     await assertSucceeds(getDoc(doc(db, "salaryRules", CNC_UID)));
     await assertSucceeds(updateDoc(doc(db, "salaryRules", CNC_UID), {
-      perMdfM2Tiyn: 110000, perMdfM2ByClientTiyn: { Динко: 90000 }, updatedByUid: MDF_MANAGER_UID, updatedByName: "Ахжол",
+      perMdfM2Tiyn: 110000, perMdfM2ByClientTiyn: { Динко: 90000 }, policyVersion: "2026-09-11",
+      updatedByUid: MDF_MANAGER_UID, updatedByName: "Ахжол",
     }));
   });
 
@@ -1322,6 +1323,7 @@ describe("the МДФ manager keeps the МДФ stations' per-m² tariffs, and not
     const db = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
     await assertSucceeds(setDoc(doc(db, "salaryRules", VACUUM_UID), {
       userId: VACUUM_UID, mode: "PER_MDF_M2", perMdfM2Tiyn: 220000, perMdfM2ByClientTiyn: { Динко: 200000 },
+      perPackagingOrderTiyn: 225000, policyVersion: "2026-09-11",
     }));
     await assertFails(setDoc(doc(db, "salaryRules", SANDING_UID), {
       userId: SANDING_UID, mode: "FIXED_MONTHLY", fixedMonthlyTiyn: 99900000,

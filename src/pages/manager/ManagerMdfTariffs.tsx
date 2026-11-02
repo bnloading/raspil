@@ -10,6 +10,7 @@ import { useStaff, type StaffMember } from "../../hooks/useStaff";
 import { logAudit } from "../../lib/audit";
 import { formatMoney } from "../../lib/money";
 import { ROLE_TO_MDF_STAGE } from "../../lib/rbac";
+import { effectiveSalaryRule, SALARY_POLICY_VERSION } from "../../lib/salaryPolicy";
 import { MDF_STAGES, MDF_STAGE_LABELS } from "../../types/domain";
 import type { MdfStage, SalaryRule } from "../../types/domain";
 
@@ -39,6 +40,11 @@ const tiyn = (tenge: number) => Math.round(tenge * 100);
  * edits, so there is one rate and both pages show it. firestore.rules lets the МДФ manager change
  * only these fields, only for a ЧПУ / Шкурка / Краска / Вакуум worker. A client's rate applies to
  * every order whose customer's name contains the client's name (lib/salary.ts mdfClientOf).
+ *
+ * What it shows is the rate actually paid — lib/salaryPolicy.ts effectiveSalaryRule — not the
+ * stored document: a rule saved before the 11.09 pay policy is overridden by it, which is how
+ * Аманжол's stored 2 200 ₸ was being paid as 2 000 (seen 02.11). Saving writes the policy version
+ * with the rates, so what is typed here is what is paid from then on.
  */
 export default function ManagerMdfTariffs() {
   const { user, userData } = useAuth();
@@ -68,16 +74,18 @@ export default function ManagerMdfTariffs() {
         if (cancelled) return;
         const loaded = new Map(pairs);
         setRules(loaded);
+        // The rates in force, the 11.09 policy applied — what the drafts start from and save against.
+        const paid = new Map(workers.map((w) => [w.id, effectiveSalaryRule(w.id, w, loaded.get(w.id) ?? undefined)]));
         setDrafts(Object.fromEntries(workers.map((w) => [w.id, {
-          rateTenge: tenge(loaded.get(w.id)?.perMdfM2Tiyn),
-          packagingTenge: tenge(loaded.get(w.id)?.perPackagingOrderTiyn),
+          rateTenge: tenge(paid.get(w.id)?.perMdfM2Tiyn),
+          packagingTenge: tenge(paid.get(w.id)?.perPackagingOrderTiyn),
         }])));
         // Every client any station has a rate for, each with its rate per worker.
-        const names = [...new Set(workers.flatMap((w) => Object.keys(loaded.get(w.id)?.perMdfM2ByClientTiyn ?? {})))];
+        const names = [...new Set(workers.flatMap((w) => Object.keys(paid.get(w.id)?.perMdfM2ByClientTiyn ?? {})))];
         setClients(names.map((name) => ({
           key: crypto.randomUUID(),
           name,
-          ratesTenge: Object.fromEntries(workers.map((w) => [w.id, tenge(loaded.get(w.id)?.perMdfM2ByClientTiyn?.[name])])),
+          ratesTenge: Object.fromEntries(workers.map((w) => [w.id, tenge(paid.get(w.id)?.perMdfM2ByClientTiyn?.[name])])),
         })));
       })
       .catch((err: unknown) => {
@@ -126,16 +134,24 @@ export default function ManagerMdfTariffs() {
     try {
       for (const w of workers) {
         const before = rules.get(w.id) ?? null;
+        // Compared with what is paid now, not with the stored document (see the comment above).
+        const paid = effectiveSalaryRule(w.id, w, before ?? undefined);
         const next = nextFor(w.id);
         const stamp = { updatedAt: serverTimestamp(), updatedByUid: user.uid, updatedByName: userData.name };
-        const sameClients = JSON.stringify(before?.perMdfM2ByClientTiyn ?? {}) === JSON.stringify(next.perMdfM2ByClientTiyn);
-        const patch: Record<string, unknown> = {};
-        if ((before?.perMdfM2Tiyn ?? 0) !== next.perMdfM2Tiyn) patch.perMdfM2Tiyn = next.perMdfM2Tiyn;
-        if (stageOf(w) === "vacuum" && (before?.perPackagingOrderTiyn ?? 0) !== next.perPackagingOrderTiyn) {
-          patch.perPackagingOrderTiyn = next.perPackagingOrderTiyn;
-        }
-        if (!sameClients) patch.perMdfM2ByClientTiyn = next.perMdfM2ByClientTiyn;
-        if (Object.keys(patch).length === 0) continue;
+        const sameRate = (paid?.perMdfM2Tiyn ?? 0) === next.perMdfM2Tiyn;
+        const samePackaging = stageOf(w) !== "vacuum" || (paid?.perPackagingOrderTiyn ?? 0) === next.perPackagingOrderTiyn;
+        const sameClients = JSON.stringify(paid?.perMdfM2ByClientTiyn ?? {}) === JSON.stringify(next.perMdfM2ByClientTiyn);
+        if (sameRate && samePackaging && sameClients) continue;
+        // The whole per-m² set, with the policy version, so the rule saved is the rule paid: a rule
+        // without it would have the 11.09 policy rates laid over it again (effectiveSalaryRule).
+        const patch: Record<string, unknown> = {
+          perMdfM2Tiyn: next.perMdfM2Tiyn,
+          perMdfM2ByClientTiyn: next.perMdfM2ByClientTiyn,
+          ...(stageOf(w) === "vacuum" || paid?.perPackagingOrderTiyn !== undefined
+            ? { perPackagingOrderTiyn: stageOf(w) === "vacuum" ? next.perPackagingOrderTiyn : paid?.perPackagingOrderTiyn ?? 0 }
+            : {}),
+          policyVersion: SALARY_POLICY_VERSION,
+        };
         if (!before) {
           await setDoc(doc(db, "salaryRules", w.id), { userId: w.id, mode: "PER_MDF_M2", ...patch, ...stamp });
         } else {
@@ -205,7 +221,7 @@ export default function ManagerMdfTariffs() {
                 </thead>
                 <tbody>
                   {workers.map((w) => {
-                    const mode = rules?.get(w.id)?.mode;
+                    const mode = effectiveSalaryRule(w.id, w, rules?.get(w.id) ?? undefined)?.mode;
                     const off = mode && mode !== "MANUAL" && mode !== "PER_MDF_M2" && mode !== "MIXED";
                     return (
                       <tr key={w.id}>
