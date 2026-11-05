@@ -7,6 +7,9 @@ import { formatMdfArea } from "../lib/mdfJournal";
 import { formatDateDMY, formatDateTimeDMY } from "../lib/dates";
 import { PRODUCTION_STATUS_LABELS } from "../lib/statuses";
 import { formatPhone } from "../lib/phone";
+import { netPaidTiyn } from "../lib/journal";
+import { customerOrderCode } from "../lib/orderCode";
+import { CustomerOrderBreakdown } from "./CustomerOrderBreakdown";
 
 const GRAIN_LABELS: Record<string, string> = { vertical: "Тік", horizontal: "Көлденең", any: "Маңызды емес" };
 
@@ -18,6 +21,7 @@ export function OrderView({
   showCustomerInfo = true,
   showFinancials = true,
   showQueueInfo = true,
+  audience = "staff",
   actions,
 }: {
   order: Order;
@@ -29,13 +33,23 @@ export function OrderView({
   /** The customer order-detail page shows its own queue-position header (CustomerStatusCard) —
    *  set false there so "Кезектегі орны"/"Дайын болу мерзімі" isn't repeated. */
   showQueueInfo?: boolean;
+  /**
+   * "customer" — the customer's own order page: what the order is made of line by line, and
+   * none of the shop's own notes. A journal order used to show the customer only its first
+   * material and an empty «Бөлшектер (0)» table, the ХДФ charge was missing from the sum, and
+   * every payment carried the cashier's name and the cash note («Ерболға берілді») while the
+   * status history carried the staff's working comments («қарызға жіберілді — қалдық …»).
+   */
+  audience?: "staff" | "customer";
   actions?: ReactNode;
 }) {
+  const forCustomer = audience === "customer";
+  const livePayments = payments.filter((p) => !p.reversed);
   return (
     <div className="order-view print-area">
       <div className="order-view-header">
         <div>
-          <h2>{order.orderNumber}</h2>
+          <h2>{forCustomer ? customerOrderCode(order.orderNumber) : order.orderNumber}</h2>
           {order.createdAt && <span className="order-view-date">Құрылды: {formatDateDMY(order.createdAt)}</span>}
         </div>
         <div className="order-view-badges">
@@ -100,15 +114,20 @@ export function OrderView({
         </section>
       )}
 
-      {order.orderKind === "mdf_wrap" ? (
+      {order.orderKind === "mdf_wrap" && forCustomer && !(order.mdfPanels && order.mdfPanels.length > 0) ? (
+        // The customer's «Құрамы» below already reads «Модерн · Пленка · Капучино · 13.34 м²».
+        null
+      ) : order.orderKind === "mdf_wrap" ? (
         // A МДФ order has no material catalogue line at all — a panel breakdown (when measured
         // that way, see types/domain.ts's MdfPanel) or just an area, plus a wrap film colour.
         <section className="order-view-section">
-          <h3>МДФ</h3>
-          <p>
-            {MDF_FINISH_LABELS[order.mdfFinish ?? "film"]} · {order.mdfFilmColor || "түсі көрсетілмеген"} · {formatMdfArea(order.mdfAreaM2)}
-            {order.mdfPatternName ? ` · Узор: ${order.mdfPatternName}` : ""}
-          </p>
+          <h3>{forCustomer ? "Панельдер" : "МДФ"}</h3>
+          {!forCustomer && (
+            <p>
+              {MDF_FINISH_LABELS[order.mdfFinish ?? "film"]} · {order.mdfFilmColor || "түсі көрсетілмеген"} · {formatMdfArea(order.mdfAreaM2)}
+              {order.mdfPatternName ? ` · Узор: ${order.mdfPatternName}` : ""}
+            </p>
+          )}
           {order.mdfPanels && order.mdfPanels.length > 0 && (
             <div className="parts-table-wrap">
               <table className="parts-table order-view-parts-table">
@@ -134,6 +153,40 @@ export function OrderView({
             </div>
           )}
         </section>
+      ) : forCustomer ? (
+        <>
+          <section className="order-view-section">
+            <h3>Құрамы</h3>
+            <CustomerOrderBreakdown order={order} paidTiyn={netPaidTiyn(payments)} showMoney={showFinancials} />
+          </section>
+          {parts.length > 0 && (
+            <section className="order-view-section">
+              <h3>Бөлшектер ({parts.length})</h3>
+              <div className="parts-table-wrap">
+                <table className="parts-table order-view-parts-table">
+                  <thead>
+                    <tr>
+                      <th>Атауы</th>
+                      <th>Өлшемі</th>
+                      <th>Саны</th>
+                      <th>ПВХ жиектер</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parts.map((p) => (
+                      <tr key={p.id}>
+                        <td>{p.name}</td>
+                        <td>{p.lengthMm}×{p.widthMm} мм</td>
+                        <td>{p.qty}</td>
+                        <td>{EDGE_KEYS.filter((e) => p.edges[e]?.pvc).join(", ") || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </>
       ) : (
         <>
           <section className="order-view-section">
@@ -191,7 +244,14 @@ export function OrderView({
         </>
       )}
 
-      {showFinancials && (
+      {forCustomer && order.orderKind === "mdf_wrap" && (
+        <section className="order-view-section">
+          <h3>Құрамы</h3>
+          <CustomerOrderBreakdown order={order} paidTiyn={netPaidTiyn(payments)} showMoney={showFinancials} />
+        </section>
+      )}
+
+      {showFinancials && !forCustomer && (
         <section className="order-view-section">
           <h3>Қаржы</h3>
           <div className="confirm-summary">
@@ -205,6 +265,9 @@ export function OrderView({
                 <div className="confirm-row"><span>Материал</span><strong>{formatMoney(order.materialCostTiyn)}</strong></div>
                 <div className="confirm-row"><span>Кесу</span><strong>{formatMoney(order.cuttingCostTiyn)}</strong></div>
                 <div className="confirm-row"><span>ПВХ</span><strong>{formatMoney(order.pvcCostTiyn)}</strong></div>
+                {(order.hdfCostTiyn ?? 0) > 0 && (
+                  <div className="confirm-row"><span>ХДФ</span><strong>{formatMoney(order.hdfCostTiyn)}</strong></div>
+                )}
               </>
             )}
             {order.extraServicesTiyn > 0 && (
@@ -223,7 +286,23 @@ export function OrderView({
         </section>
       )}
 
-      {showFinancials && payments.length > 0 && (
+      {showFinancials && forCustomer && livePayments.length > 0 && (
+        <section className="order-view-section no-print">
+          <h3>Төлемдер</h3>
+          <div className="data-list">
+            {livePayments.map((p) => (
+              <div key={p.id} className="data-row">
+                <div className="data-row-main">
+                  <strong>{formatMoney(p.amountTiyn)}</strong>
+                  <span>{p.paymentDate ? formatDateTimeDMY(p.paymentDate) : ""}{p.methodName ? ` · ${p.methodName}` : ""}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {showFinancials && !forCustomer && payments.length > 0 && (
         <section className="order-view-section no-print">
           <h3>Төлемдер</h3>
           <div className="data-list">
@@ -248,7 +327,9 @@ export function OrderView({
         </section>
       )}
 
-      {statusHistory.length > 0 && (
+      {/* The shop's own working trail — who moved it and why — is not the customer's to read;
+          their page shows the stages on CustomerStatusCard instead. */}
+      {!forCustomer && statusHistory.length > 0 && (
         <section className="order-view-section no-print">
           <h3>Статус тарихы</h3>
           <div className="status-timeline">

@@ -13,10 +13,12 @@ interface Stage {
   completionStatus: ProductionStatus;
 }
 
+// The \u00AD soft hyphens: a phone card gives six stages ~50px a label, and «Қабылданды» ran into
+// «Төленді». A long label now breaks onto a second line at the hyphen, and only when it has to.
 const BASE_STAGES: Stage[] = [
-  { key: "accepted", label: "Қабылданды", completionStatus: "manager_review" },
-  { key: "paid", label: "Төленді", completionStatus: "paid" },
-  { key: "queued", label: "Кезекте", completionStatus: "cutting_queue" },
+  { key: "accepted", label: "Қабыл\u00ADданды", completionStatus: "manager_review" },
+  { key: "paid", label: "Төлен\u00ADді", completionStatus: "paid" },
+  { key: "queued", label: "Кезек\u00ADте", completionStatus: "cutting_queue" },
   { key: "cutting", label: "Распил", completionStatus: "cutting_completed" },
 ];
 const PVC_STAGE: Stage = { key: "pvc", label: "ПВХ", completionStatus: "pvc_completed" };
@@ -26,9 +28,9 @@ const READY_STAGE: Stage = { key: "ready", label: "Дайын", completionStatus
 // mdf_production's own position in PRODUCTION_STATUS_ORDER (between paid and ready) is all this
 // index-based done/active check needs; which station exactly is shown elsewhere (getCustomerStageLabel).
 const MDF_BASE_STAGES: Stage[] = [
-  { key: "accepted", label: "Қабылданды", completionStatus: "manager_review" },
-  { key: "paid", label: "Төленді", completionStatus: "paid" },
-  { key: "mdf", label: "Өндірісте", completionStatus: "mdf_production" },
+  { key: "accepted", label: "Қабыл\u00ADданды", completionStatus: "manager_review" },
+  { key: "paid", label: "Төлен\u00ADді", completionStatus: "paid" },
+  { key: "mdf", label: "Өндіріс\u00ADте", completionStatus: "mdf_production" },
 ];
 
 type StageState = "done" | "active" | "pending";

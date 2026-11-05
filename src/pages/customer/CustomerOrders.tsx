@@ -1,22 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
 import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
-import { PaymentStatusBadge } from "../../components/StatusBadge";
-import { CustomerProductionProgress } from "../../components/CustomerProductionProgress";
+import { CustomerOrderCard } from "../../components/CustomerOrderCard";
 import { WorkshopActivityBoard } from "../../components/WorkshopActivityBoard";
-import { getCustomerStageLabel, getCustomerStageTone } from "../../components/CustomerStatusCard";
-import { IconLayers, IconOrders, IconPvc } from "../../components/layout/icons";
 import { useCustomerOrders } from "../../hooks/useOrders";
+import { useCustomerDebts } from "../../hooks/useCustomerDebts";
 import { useToast } from "../../hooks";
 import { formatMoney } from "../../lib/money";
-import { formatMdfArea } from "../../lib/mdfJournal";
-import { customerOrderCode } from "../../lib/orderCode";
-import { dayKey, formatDateDMY, formatDayMonth } from "../../lib/dates";
-import { orderTiles } from "../../lib/orderTiles";
+import { dayKey, formatDateDMY } from "../../lib/dates";
 import { isCancellable } from "../../lib/statuses";
 import type { Order } from "../../types/domain";
 
@@ -33,6 +28,10 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   ready: "Дайын",
   debt: "Қарыз",
 };
+
+function isBucket(value: string | null): value is Bucket {
+  return value !== null && value in BUCKET_LABELS;
+}
 
 /**
  * "Бүгін / Кеше / Күн таңдау" — a customer who orders often wants to jump straight to what they
@@ -66,31 +65,21 @@ function inDatePeriod(
   return !!customDate && day === customDate;
 }
 
-function inBucket(order: Order, bucket: Bucket): boolean {
+function inBucket(order: Order, bucket: Bucket, debtOf: (o: Order) => number): boolean {
   switch (bucket) {
     case "active":
       // "ready" belongs to Дайын, not Жұмыста — the work on it is finished even though the
       // customer has not collected it yet, so counting it in both would overstate the workload.
       return !["draft", "ready", "delivered", "cancelled"].includes(order.productionStatus);
     case "ready":
-      return order.productionStatus === "ready" || order.productionStatus === "delivered";
+      // Waiting to be collected — the same count the home page shows under «Дайын», so tapping
+      // it opens exactly those. Orders already handed over are under «Барлығы».
+      return order.productionStatus === "ready";
     case "debt":
-      return order.debtTiyn > 0 && order.productionStatus !== "cancelled";
+      return debtOf(order) > 0;
     default:
       return true;
   }
-}
-
-/**
- * The stage, in the customer's words, with the queue position when there is one.
- *
- * "Распил кезегінде" on its own leaves the obvious question unanswered, and the position is the
- * whole reason a customer opens this page while they are waiting.
- */
-function stageLine(order: Order): string {
-  const label = getCustomerStageLabel(order.productionStatus, order.pvcMetersTotal > 0, order.mdfStage);
-  const queued = order.productionStatus === "cutting_queue" || order.productionStatus === "pvc_queue";
-  return queued ? `${label} · №${(order.priority ?? 0) + 1}` : label;
 }
 
 /** Which half of the page is showing: this customer's own orders, or the shop's live board. */
@@ -99,46 +88,45 @@ type Tab = "mine" | "shop";
 export default function CustomerOrders() {
   const { user, userData } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { orders, loading } = useCustomerOrders(user?.uid);
+  const { debtOf, totals } = useCustomerDebts(orders);
   const { message, visible, showToast } = useToast();
   const [search, setSearch] = useState("");
-  const [bucket, setBucket] = useState<Bucket>("all");
+  // The home page's counts open this list already filtered (/orders?bucket=ready).
+  const [bucket, setBucket] = useState<Bucket>(() => {
+    const asked = params.get("bucket");
+    return isBucket(asked) ? asked : "all";
+  });
   const [datePeriod, setDatePeriod] = useState<DatePeriod>("all");
   const [customDate, setCustomDate] = useState("");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const [tab, setTab] = useState<Tab>("mine");
 
-  // Computed once per render rather than per order — dayKey() does real Intl formatting work.
-  const todayKey = dayKey(Date.now());
-  const yesterdayKey = dayKey(Date.now() - 86_400_000);
+  // Read once, when the page opens — the clock is not something to call on every render.
+  const [{ todayKey, yesterdayKey }] = useState(() => ({
+    todayKey: dayKey(Date.now()),
+    yesterdayKey: dayKey(Date.now() - 86_400_000),
+  }));
 
   const counts = useMemo(
     () => ({
       all: orders.length,
-      active: orders.filter((o) => inBucket(o, "active")).length,
-      ready: orders.filter((o) => inBucket(o, "ready")).length,
-      debt: orders.filter((o) => inBucket(o, "debt")).length,
+      active: orders.filter((o) => inBucket(o, "active", debtOf)).length,
+      ready: orders.filter((o) => inBucket(o, "ready", debtOf)).length,
+      debt: orders.filter((o) => inBucket(o, "debt", debtOf)).length,
     }),
-    [orders],
-  );
-
-  // The customer's own outstanding balance — never the shop's total.
-  const myDebt = useMemo(
-    () =>
-      orders
-        .filter((o) => o.productionStatus !== "cancelled")
-        .reduce((s, o) => s + Math.max(0, o.debtTiyn), 0),
-    [orders],
+    [orders, debtOf],
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders.filter((o) =>
-      inBucket(o, bucket) &&
+      inBucket(o, bucket, debtOf) &&
       inDatePeriod(o, datePeriod, todayKey, yesterdayKey, customDate) &&
       (!q || o.orderNumber.toLowerCase().includes(q)));
-  }, [orders, bucket, datePeriod, todayKey, yesterdayKey, customDate, search]);
+  }, [orders, bucket, debtOf, datePeriod, todayKey, yesterdayKey, customDate, search]);
 
   // Any filter change can strand the reader on a page number that no longer has that many pages —
   // back to the first page whenever what's being shown changes under them.
@@ -175,6 +163,22 @@ export default function CustomerOrders() {
 
   if (!user || !userData) return <Spinner />;
 
+  /** A count that is also its filter: tapping it shows those orders — and tapping again, all. */
+  const kpi = (b: Exclude<Bucket, "debt">, icon: string, tone: string) => (
+    <button
+      type="button"
+      className={`kpi-card${bucket === b ? " is-active" : ""}`}
+      aria-pressed={bucket === b}
+      onClick={() => setBucket(bucket === b && b !== "all" ? "all" : b)}
+    >
+      <div className="kpi-text">
+        <div className="kpi-label">{BUCKET_LABELS[b]}</div>
+        <div className="kpi-value">{counts[b]}</div>
+      </div>
+      <span className={`kpi-icon ${tone}`}>{icon}</span>
+    </button>
+  );
+
   return (
     <AppShell
       title="Заказдарым"
@@ -205,40 +209,22 @@ export default function CustomerOrders() {
       ) : (
       <>
       <div className="kpi-row">
-        <div className="kpi-card">
-          <div className="kpi-text">
-            <div className="kpi-label">Барлығы</div>
-            <div className="kpi-value">{counts.all}</div>
-          </div>
-          <span className="kpi-icon is-indigo">📋</span>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-text">
-            <div className="kpi-label">Жұмыста</div>
-            <div className="kpi-value">{counts.active}</div>
-          </div>
-          <span className="kpi-icon is-blue">⚙</span>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-text">
-            <div className="kpi-label">Дайын</div>
-            <div className="kpi-value">{counts.ready}</div>
-          </div>
-          <span className="kpi-icon is-green">✓</span>
-        </div>
-        <div className="kpi-card">
+        {kpi("all", "📋", "is-indigo")}
+        {kpi("active", "⚙", "is-blue")}
+        {kpi("ready", "✓", "is-green")}
+        {/* The money opens the «Қарыз» page — each owing order with its lines and payments. */}
+        <Link to="/debt" className="kpi-card">
           <div className="kpi-text">
             <div className="kpi-label">Қарыз</div>
-            <div className={`kpi-value${myDebt > 0 ? " is-danger" : ""}`}>{formatMoney(myDebt)}</div>
+            <div className={`kpi-value${totals.debtTiyn > 0 ? " is-danger" : ""}`}>{formatMoney(totals.debtTiyn)}</div>
           </div>
           <span className="kpi-icon is-red">💼</span>
-        </div>
+        </Link>
       </div>
 
       {/* A customer who orders often has today's brand-new order buried under last month's — this
           scopes the list to "when" before (or together with) the status buckets below scope it to
-          "what state". Plain pills, no counts — the KPI row above already has the numbers, and
-          repeating them here on every pill was clutter the owner's mockup doesn't carry either. */}
+          "what state". Plain pills, no counts — the KPI row above already has the numbers. */}
       <div className="status-filter-row is-compact">
         {(Object.keys(DATE_PERIOD_LABELS) as DatePeriod[]).map((p) => (
           <button
@@ -292,110 +278,42 @@ export default function CustomerOrders() {
             <div className="icon">📭</div>
             <p>Заказ табылмады</p>
             <p className="empty-state-hint">
-              {bucket === "all" && datePeriod === "all"
-                ? "Жаңа заказ беру үшін төмендегі ➕ батырмасын басыңыз."
+              {orders.length === 0
+                ? "Цехта сіздің телефон нөміріңізбен жазылған заказдар осында өзі шығады. Онлайн тапсырыс беру үшін ➕ батырмасын басыңыз."
                 : "Бұл сүзгіге сай заказ жоқ — «Барлығы» дегенді таңдап көріңіз."}
             </p>
           </div>
         ) : (
           <div className="ocards">
             {paged.map((o) => {
-              const tiles = orderTiles(o);
+              const canCancel = isCancellable(o.productionStatus);
+              const isDraft = o.productionStatus === "draft";
               return (
-              <div key={o.id} className="ocard is-static corder-card">
-                {/* The whole summary is one link; the action buttons live outside it, since a
-                    button nested inside an anchor is neither valid nor reliably clickable. */}
-                <Link to={`/order/${o.id}`} className="ocard-link">
-                  <div className="corder-head">
-                    <span className="otable-num">
-                      {customerOrderCode(o.orderNumber)}
-                      {o.orderKind === "mdf_wrap" && <span className="jt-pill jt-tone-muted"> МДФ</span>}
-                    </span>
-                    {/* Day and month right beside the code: scanning a list of orders, "which one
-                        is this" and "when" are the same question, and a relative "2 сағат бұрын"
-                        down in the footer never answered the second one. */}
-                    {(o.updatedAt ?? o.createdAt) && (
-                      <span className="corder-date">{formatDayMonth((o.updatedAt ?? o.createdAt)!)}</span>
-                    )}
-                    <span className="corder-name">{o.customerName}</span>
-                    <span className={`corder-stage is-${getCustomerStageTone(o.productionStatus)}`}>
-                      {stageLine(o)}
-                    </span>
-                  </div>
-
-                  {o.orderKind === "mdf_wrap" ? (
-                    <div className="corder-tiles">
-                      <span className="corder-tile">
-                        <IconLayers className="corder-tile-icon" />
-                        <b>{formatMdfArea(o.mdfAreaM2)}</b>
-                        <small>{o.mdfFilmColor || "пленка көрсетілмеген"}</small>
-                      </span>
-                    </div>
-                  ) : (
-                    // Sheets, edging and ХДФ as three figures rather than one run-on line: they are
-                    // counted separately in the shop, and ХДФ takes no edging at all.
-                    <div className="corder-tiles">
-                      <span className="corder-tile">
-                        <IconOrders className="corder-tile-icon" />
-                        <b>{tiles.sheets}</b>
-                        <small>лист</small>
-                      </span>
-                      <span className="corder-tile">
-                        <IconPvc className="corder-tile-icon" />
-                        <b>{tiles.pvcMeters} м</b>
-                        <small>ПВХ</small>
-                      </span>
-                      <span className="corder-tile">
-                        <IconLayers className="corder-tile-icon" />
-                        <b>{tiles.hdfSheets}</b>
-                        <small>ХДФ</small>
-                      </span>
-                    </div>
+                <CustomerOrderCard
+                  key={o.id}
+                  order={o}
+                  debtTiyn={debtOf(o)}
+                  actions={(canCancel || isDraft) && (
+                    <>
+                      <button type="button" className="btn btn-outline btn-sm"
+                        onClick={() => navigate(`/order/new?duplicate=${o.id}`)}>
+                        ⧉ Қайталау
+                      </button>
+                      {isDraft && (
+                        <button type="button" className="btn btn-outline btn-sm"
+                          onClick={() => navigate(`/order/new?edit=${o.id}`)}>
+                          ✎ Жалғастыру
+                        </button>
+                      )}
+                      {canCancel && (
+                        <button type="button" className="btn btn-danger-outline btn-sm"
+                          onClick={() => handleCancel(o.id)}>
+                          ✕ Бас тарту
+                        </button>
+                      )}
+                    </>
                   )}
-
-                  <CustomerProductionProgress order={o} />
-
-                  <div className="corder-foot">
-                    {/* The same timestamp now reads as a date up in the header, so repeating it
-                        here as "2 сағат бұрын" would only say it twice. */}
-                    <span className="corder-money">
-                      {formatMoney(o.totalTiyn)}
-                      <PaymentStatusBadge status={o.paymentStatus} />
-                    </span>
-                  </div>
-                  <span className="ocard-chev" aria-hidden="true">›</span>
-                </Link>
-
-                {(isCancellable(o.productionStatus) || o.productionStatus === "draft") && (
-                  <div className="track-card-actions">
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => navigate(`/order/new?duplicate=${o.id}`)}
-                    >
-                      ⧉ Қайталау
-                    </button>
-                    {o.productionStatus === "draft" && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => navigate(`/order/new?edit=${o.id}`)}
-                      >
-                        ✎ Жалғастыру
-                      </button>
-                    )}
-                    {isCancellable(o.productionStatus) && (
-                      <button
-                        type="button"
-                        className="btn btn-danger-outline btn-sm"
-                        onClick={() => handleCancel(o.id)}
-                      >
-                        ✕ Бас тарту
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                />
               );
             })}
           </div>

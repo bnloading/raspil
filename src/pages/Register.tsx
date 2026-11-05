@@ -108,7 +108,8 @@ export default function Register() {
             <label>Телефон нөмірі</label>
             <PhoneInput value={phone} onChange={setPhone} required />
             <p className="form-hint">
-              Email жазбасаңыз, сайтқа осы нөмір арқылы кіресіз.
+              Цехта заказ берген нөміріңізді жазыңыз — сол нөмірмен жазылған заказдарыңыз бен
+              қарызыңыз аккаунтыңызда өзі шығады. Email жазбасаңыз, сайтқа осы нөмір арқылы кіресіз.
             </p>
           </div>
           <div className="form-group">

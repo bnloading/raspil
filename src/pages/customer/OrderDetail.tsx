@@ -51,17 +51,19 @@ export default function OrderDetail() {
         <div>
           <CustomerStatusCard order={order} />
           <div style={{ marginTop: 20 }}>
-            {/* Highlights this order's own row on the shared board. */}
-            <WorkshopActivityBoard myOrders={[order]} />
-          </div>
-          <div style={{ marginTop: 20 }}>
             <OrderView
               order={order}
               parts={parts}
               statusHistory={statusHistory}
               payments={payments}
               showQueueInfo={false}
+              audience="customer"
+              showFinancials={order.pricePublished !== false}
             />
+          </div>
+          <div className="no-print" style={{ marginTop: 20 }}>
+            {/* Highlights this order's own row on the shared board. */}
+            <WorkshopActivityBoard myOrders={[order]} />
           </div>
         </div>
 

@@ -3,6 +3,7 @@ import { MDF_STAGE_LABELS } from "../types/domain";
 import { CustomerProductionProgress } from "./CustomerProductionProgress";
 import { CustomerOrderMetrics } from "./CustomerOrderMetrics";
 import { formatRelativeDateTime } from "../lib/dates";
+import { customerOrderCode } from "../lib/orderCode";
 
 /**
  * Maps the full 16-value internal ProductionStatus down to the small set of customer-facing
@@ -98,7 +99,7 @@ export function CustomerStatusCard({ order }: CustomerStatusCardProps) {
   return (
     <div className="panel-card customer-status-hero-card">
       <div className="customer-status-header-row">
-        <span className="customer-status-order-number">{order.orderNumber}</span>
+        <span className="customer-status-order-number">{customerOrderCode(order.orderNumber)}</span>
         <span className="corder-name">{order.customerName}</span>
         <span
           className={`customer-status-pill ${

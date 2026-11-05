@@ -21,6 +21,7 @@ import {
 } from "../../components/JournalShared";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
+import { useCustomerAutoLink } from "../../hooks/useCustomerAutoLink";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import {
@@ -128,6 +129,8 @@ export default function ManagerMdfJournal() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { orders: allOrders, loading } = useAllOrders();
+  // A customer who registers after their orders were typed finds them in «Заказдарым» (05.11).
+  useCustomerAutoLink(allOrders);
   const { byOrder: paymentsByOrder, loading: paymentsLoading } = useAllPayments();
   const { settings } = useAppSettings();
   const templates = useMemo(() => mdfPatternTemplates(settings), [settings]);

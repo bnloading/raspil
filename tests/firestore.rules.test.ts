@@ -183,6 +183,18 @@ describe("customer isolation", () => {
     await assertFails(getDoc(doc(db, "payments", "payment-1")));
   });
 
+  // The customer's home, «Заказдарым» and «Қарыз» work the debt out from these payments
+  // (hooks/useCustomerDebts.ts) — one `in` query over the customer's own order ids.
+  it("customer A CAN list the payments on their own orders by order id", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertSucceeds(getDocs(query(collection(db, "payments"), where("orderId", "in", [ORDER_A_ID, "order-cutting-queue"]))));
+  });
+
+  it("customer B CANNOT list customer A's payments by naming A's order", async () => {
+    const db = testEnv.authenticatedContext(CUSTOMER_B_UID).firestore();
+    await assertFails(getDocs(query(collection(db, "payments"), where("orderId", "in", [ORDER_A_ID]))));
+  });
+
   it("unauthenticated read is rejected", async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, "orders", ORDER_A_ID)));

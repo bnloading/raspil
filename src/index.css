@@ -1095,6 +1095,8 @@ tr.blocked td:first-child {
 }
 .order-view-badges {
   display: flex;
+  /* Two long badges («МДФ өндірісінде», «Жартылай төленді») ran past a 320px screen. */
+  flex-wrap: wrap;
   gap: 6px;
 }
 .order-view-actions {
@@ -5460,10 +5462,17 @@ body {
   color: #fff;
 }
 .order-stepper-label {
+  max-width: 100%;
+  padding: 0 1px;
   font-size: 0.68rem;
   font-weight: 600;
+  line-height: 1.2;
   color: var(--text-light);
   text-align: center;
+  /* Breaks at the label's soft hyphen first (OrderProgressStepper), anywhere as a last resort —
+     never across into the next stage's label. */
+  hyphens: manual;
+  overflow-wrap: anywhere;
 }
 .order-stepper-label.is-active {
   color: var(--warning);
@@ -6692,66 +6701,296 @@ body {
   border-top: 1px solid var(--border);
 }
 
-/* Customer debt ("Қарыз") */
-.customer-debt-card {
+/* ── Клиент: басты бет, «Қарыз», заказдың құрамы (05.11) ───────────────── */
+
+/* The debt, first and large — the one figure a customer opens the app for. Dark when something is
+   owed (a bank card, not an alarm), green when nothing is. On the home page it is the link to the
+   «Қарыз» page; on that page it is the head. */
+.cust-hero {
+  display: grid;
+  gap: 4px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+}
+.cust-hero.is-owing {
+  background: radial-gradient(130% 150% at 100% 0%, #31407f 0%, #1a2240 45%, #131a2c 100%);
+  color: #fff;
+}
+.cust-hero.is-clear {
+  background: linear-gradient(135deg, var(--emerald-light) 0%, #f0fdf7 100%);
+  border: 1px solid #a7f3d0;
+  color: var(--emerald);
+  box-shadow: none;
+}
+a.cust-hero:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+a.cust-hero:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 2px; }
+.cust-hero-label { font-size: 0.82rem; font-weight: 600; opacity: 0.78; }
+.cust-hero-amount {
+  font-size: clamp(1.75rem, 8vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.cust-hero.is-clear .cust-hero-amount { font-size: 1.35rem; }
+.cust-hero-split { font-size: 0.84rem; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.cust-hero-link { margin-top: 10px; font-size: 0.84rem; font-weight: 700; opacity: 0.92; }
+.cust-hero-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+.cust-hero.is-clear .cust-hero-facts { border-top-color: #a7f3d0; }
+.cust-hero-facts div { min-width: 0; }
+.cust-hero-facts dt { font-size: 0.72rem; opacity: 0.75; }
+.cust-hero-facts dd {
+  margin: 2px 0 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Three counts, each a door to its own list (/orders?bucket=…). */
+.cust-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.cust-stat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition);
+}
+.cust-stat strong { font-size: 1.5rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cust-stat span { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.cust-stat:hover { border-color: var(--primary-light); }
+.cust-stat:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 2px; }
+.cust-stat.is-ready { background: var(--emerald-light); border-color: #a7f3d0; }
+.cust-stat.is-ready strong { color: var(--emerald); }
+
+.cust-section { margin-bottom: 22px; }
+.cust-section-title {
   display: flex;
   align-items: center;
+  gap: 8px;
+  margin: 0 2px 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.cust-section-title span {
+  min-width: 22px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.cust-section.is-ready .cust-section-title span { background: var(--emerald-light); color: var(--emerald); }
+.cust-section.is-ready .corder-card { border-color: #a7f3d0; }
+/* The cards show at every width here, as on «Заказдарым» — not only as the phone half of a table;
+   two abreast once a desktop has the room, rather than one card stretched across 1100px. */
+.cust-section .ocards { display: grid; }
+@media (min-width: 1100px) {
+  .cust-section .ocards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.cust-more {
+  display: block;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-decoration: none;
+}
+.cust-more:hover { background: var(--primary-soft); }
+
+/* Says what would put something here, so an empty page is an explanation rather than a dead end. */
+.cust-empty {
+  padding: 26px 18px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--card);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+.cust-empty .icon { font-size: 34px; margin-bottom: 6px; }
+.cust-empty p { max-width: 42ch; margin: 4px auto 0; font-size: 0.9rem; line-height: 1.55; }
+.cust-empty strong { color: var(--text); }
+.cust-empty.is-welcome { margin-bottom: 20px; border-style: solid; box-shadow: var(--shadow); }
+.cust-phone { color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* «Заказ бойынша қарыз»: one row per owing order, opening in place on its lines and payments. */
+.cust-debt-row {
+  margin-bottom: 8px;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.cust-debt-row.is-open { border-color: var(--primary-light); }
+.cust-debt-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cust-debt-head:focus-visible { outline: 3px solid var(--primary-light); outline-offset: -3px; }
+.cust-debt-id { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; }
+.cust-debt-id small { width: 100%; font-size: 0.75rem; color: var(--text-light); }
+.cust-debt-sum { display: grid; justify-items: end; text-align: right; }
+.cust-debt-sum strong { color: var(--danger); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cust-debt-sum small { font-size: 0.72rem; color: var(--text-light); white-space: nowrap; }
+.cust-debt-chevron { font-size: 0.9rem; color: var(--text-light); }
+.cust-debt-body {
+  display: grid;
   gap: 12px;
-  margin-bottom: 16px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--jt-tint-subrow);
+}
+.cust-debt-body .btn { justify-self: start; }
+
+.cust-pay-list { list-style: none; margin: 0; padding: 0; }
+.cust-pay-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+.cust-pay-list li:last-child { border-bottom: 0; }
+.cust-pay-list li span { min-width: 0; color: var(--text-secondary); }
+.cust-pay-list li small { display: block; font-size: 0.74rem; color: var(--text-light); }
+.cust-pay-list li strong { color: var(--emerald); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cust-pay-list.is-history {
+  padding: 4px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+/* What an order is made of (CustomerOrderBreakdown): each line at its price, then the sums. */
+.cob { display: grid; gap: 10px; }
+.cob-lines { list-style: none; margin: 0; padding: 0; }
+.cob-lines li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.88rem;
+}
+.cob-lines li:last-child { border-bottom: 0; }
+.cob-lines strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cob-title { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.cob-title small {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums;
+}
+.cob-lines li.is-extra .cob-title { font-weight: 500; color: var(--text-secondary); }
+.cob-lines li.is-discount strong { color: var(--emerald); }
+.cob-totals {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.cob-totals div { display: flex; justify-content: space-between; gap: 12px; font-size: 0.88rem; }
+.cob-totals dt { color: var(--text-secondary); }
+.cob-totals dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cob-totals .is-paid dd { color: var(--emerald); }
+.cob-totals .is-debt,
+.cob-totals .is-over,
+.cob-totals .is-clear { padding-top: 6px; border-top: 1px solid var(--border); font-size: 0.96rem; }
+.cob-totals .is-debt dd { color: var(--danger); font-weight: 800; }
+.cob-totals .is-over dd { color: var(--info); }
+.cob-totals .is-clear dd { color: var(--emerald); }
+.cob-pending { margin: 0; font-size: 0.84rem; font-style: italic; color: var(--text-secondary); }
+
+/* The order card's foot: what is still owed on it, from the payments. */
+.corder-owed,
+.corder-paid {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.corder-owed { background: var(--danger-light); color: var(--danger); }
+.corder-paid { background: var(--emerald-light); color: var(--emerald); }
+.corder-money.is-pending { font-weight: 600; color: var(--text-secondary); }
+
+.cust-drafts { display: grid; gap: 8px; }
+.cust-draft {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
   text-decoration: none;
   color: inherit;
 }
-.customer-debt-label {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-.customer-debt-amount {
-  font-size: 1.15rem;
-  font-weight: 800;
-  color: var(--warning);
-}
-.customer-debt-link {
-  margin-left: auto;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--primary);
-}
-.customer-debt-hero {
-  text-align: center;
-  margin-bottom: 16px;
-}
-.customer-debt-total {
-  font-size: 2.2rem;
-  font-weight: 800;
-  padding: 8px 0 14px;
-}
-.customer-debt-total.is-owing { color: var(--warning); }
-.customer-debt-total.is-clear { color: var(--success); }
-.customer-debt-breakdown {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.customer-debt-breakdown span {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--text-secondary);
-}
-.customer-debt-breakdown strong {
-  display: block;
-  margin-top: 3px;
-  font-size: 0.95rem;
-}
-.debt-card { cursor: default; }
+.cust-draft span { font-size: 0.85rem; font-weight: 700; color: var(--primary); }
 
-.customer-optional-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+.cust-actions { display: grid; gap: 8px; margin: 18px 0 8px; }
+@media (min-width: 640px) {
+  .cust-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-.customer-optional-actions .btn { flex: 1 1 200px; }
+
+/* «Заказдарым»: a count is also its filter, and «Қарыз» opens the debt page. */
+button.kpi-card { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+a.kpi-card { text-decoration: none; color: inherit; }
+button.kpi-card:hover,
+a.kpi-card:hover { border-color: var(--primary-light); }
+.kpi-card.is-active { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow); }
+
+.debt-card { cursor: default; }
 
 /* WorkshopActivityBoard — the public, anonymized "Цех жұмысы" board */
 .workshop-board-live {
@@ -6761,15 +7000,22 @@ body {
 }
 .workshop-board-counts {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* minmax(0, 1fr), not 1fr: a bare 1fr took its minimum from «Распилде», and on a 320px phone the
+     four tiles ran 4px past the screen, so the whole page scrolled sideways. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
 .workshop-count {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px;
   text-align: center;
+}
+@media (max-width: 380px) {
+  .workshop-board-counts { gap: 6px; }
+  .workshop-count { padding: 8px 4px; }
 }
 .workshop-count b {
   display: block;
@@ -10080,7 +10326,7 @@ body {
     font-variant-numeric: tabular-nums;
   }
   .kpi-icon { width: 28px; height: 28px; }
-  .rdash-big, .customer-debt-total {
+  .rdash-big {
     font-size: clamp(1.2rem, 5vw, 1.6rem);
     line-height: 1.3;
     overflow-wrap: anywhere;

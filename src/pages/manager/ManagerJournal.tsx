@@ -7,6 +7,7 @@ import { Spinner, Toast } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { useToast } from "../../hooks";
 import { useAllOrders } from "../../hooks/useOrders";
+import { useCustomerAutoLink } from "../../hooks/useCustomerAutoLink";
 import { useAllPayments } from "../../hooks/usePayments";
 import { useAppSettings } from "../../hooks/useAppSettings";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
@@ -258,6 +259,8 @@ export default function ManagerJournal() {
   const myDepartment = userData ? departmentOf(userData) : "ldsp";
   const navigate = useNavigate();
   const { orders, loading } = useAllOrders();
+  // A customer who registers after their orders were typed finds them in «Заказдарым» (05.11).
+  useCustomerAutoLink(orders);
   const { payments, loading: paymentsLoading } = useAllPayments();
   const { materials } = useMaterials(false);
   // Active colours only: the journal is where new work is priced, and a retired roll should not be
