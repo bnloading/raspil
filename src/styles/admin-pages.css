@@ -437,6 +437,69 @@
 .srh-meta { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .srh-note { font-size: 0.82rem; color: var(--text); overflow-wrap: anywhere; }
 .srh-more { justify-self: start; }
+/* A material's name in the history opens its «Тарих». */
+.srh-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: var(--primary-dark);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* «Тарих» (MaterialLedgerModal): every movement of one material, a day to a heading. A cut names
+   the customer's order and says how the sheets were cut — green on the saw, blue on it now,
+   grey waiting, violet handed over whole. */
+.mlg { max-width: 560px; }
+.mlg h2 { margin: 0 0 6px; }
+.mlg-summary { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 12px; font-size: 0.86rem; color: var(--text-secondary); }
+.mlg-summary b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mlg .is-in { color: var(--emerald); }
+.mlg .is-out { color: var(--danger); }
+/* Wrapped, not scrolled: «Түзету» hidden past the edge of a phone is a filter nobody finds. */
+.mlg-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.mlg-filter {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mlg-filter.is-active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.mlg-empty { margin: 8px 0 16px; color: var(--text-secondary); }
+.mlg-days { display: grid; gap: 12px; margin-bottom: 12px; }
+.mlg-day-head { padding-bottom: 4px; border-bottom: 1px solid var(--border); font-size: 0.82rem; font-weight: 700; color: var(--text); }
+.mlg-list { margin: 0; padding: 0; list-style: none; }
+.mlg-row { display: grid; gap: 2px; padding: 9px 0 9px 10px; border-bottom: 1px dashed var(--border); border-left: 3px solid var(--border-strong); }
+.mlg-row:last-child { border-bottom: 0; }
+.mlg-row.is-receipt { border-left-color: var(--emerald); }
+.mlg-row.is-cut { border-left-color: var(--primary); }
+.mlg-row.is-return { border-left-color: var(--warning); }
+.mlg-row.is-correction { border-left-color: var(--text-light); }
+.mlg-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.mlg-title { min-width: 0; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.mlg-title small { font-weight: 500; color: var(--text-secondary); }
+.mlg-order { color: var(--primary-dark); text-decoration: underline; text-underline-offset: 3px; }
+.mlg-top strong { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mlg-cut { font-size: 0.82rem; font-weight: 700; }
+.mlg-cut.is-done { color: var(--emerald); }
+.mlg-cut.is-cutting { color: var(--info); }
+.mlg-cut.is-queued { color: var(--text-secondary); }
+.mlg-cut.is-without { color: #6d28d9; }
+.mlg-cut.is-off { color: #92400e; }
+.mlg-meta { font-size: 0.78rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mlg-warn { font-size: 0.78rem; font-weight: 600; color: #92400e; }
+.mlg-note { font-size: 0.8rem; color: var(--text); overflow-wrap: anywhere; }
 
 /* With a correction column the flow is four figures — two by two, as on Касса. */
 .aps-flow:has(> div:nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -19,7 +19,16 @@ function dayLabel(day: string, today: string, yesterday: string): string {
  * шығар, көрсетіп тұратын істе қоймаға»). Each «+ Қабылдау» was already in the ledger, but only
  * one material at a time behind «Тарих»; here every delivery is in one list, a day to a heading.
  */
-export function StockReceiptHistory({ receipts, loading }: { receipts: readonly StockReceipt[]; loading: boolean }) {
+export function StockReceiptHistory({
+  receipts,
+  loading,
+  onOpen,
+}: {
+  receipts: readonly StockReceipt[];
+  loading: boolean;
+  /** Opens that material's «Тарих» — every cut beside the receipts. */
+  onOpen?: (materialId: string) => void;
+}) {
   const [materialId, setMaterialId] = useState("");
   const [daysShown, setDaysShown] = useState(DAYS_STEP);
   // Read once, when the page opens — the clock is not something to call on every render.
@@ -85,7 +94,13 @@ export function StockReceiptHistory({ receipts, loading }: { receipts: readonly 
                 {d.receipts.map((r) => (
                   <li key={r.id}>
                     <div className="srh-row-top">
-                      <span className="srh-name">{r.materialName}</span>
+                      {onOpen ? (
+                        <button type="button" className="srh-name srh-open" onClick={() => onOpen(r.materialId)}>
+                          {r.materialName}
+                        </button>
+                      ) : (
+                        <span className="srh-name">{r.materialName}</span>
+                      )}
                       <strong className="srh-qty">+{r.qty} лист</strong>
                     </div>
                     <div className="srh-meta">

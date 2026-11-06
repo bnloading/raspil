@@ -11,7 +11,6 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-  where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useAuth } from "../../AuthContext";
@@ -23,12 +22,12 @@ import { useAllInventoryMovements } from "../../hooks/useReports";
 import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
 import { DEFAULT_RECEIPT_COMMENT, stockReceipts } from "../../lib/stockReceipts";
 import { StockReceiptHistory } from "../../components/StockReceiptHistory";
+import { MaterialLedgerModal } from "../../components/MaterialLedgerModal";
 import { stockStatus, lowStockCount } from "../../lib/stockStatus";
 import { pvcStockStatus } from "../../lib/pvcStock";
 import { RowMenu } from "../../components/RowMenu";
 import { MaterialThumb } from "../../components/MaterialThumb";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
-import { formatDateTimeDMY } from "../../lib/dates";
 import { logAudit } from "../../lib/audit";
 import { canManageWarehouse, departmentOf } from "../../lib/rbac";
 import { recordInventoryMovement } from "../../lib/warehouse";
@@ -179,7 +178,16 @@ export default function AdminMaterials() {
           showToast={showToast}
         />
       )}
-      {tab === "materials" && <StockReceiptHistory receipts={receipts} loading={movementsLoading} />}
+      {tab === "materials" && (
+        <StockReceiptHistory
+          receipts={receipts}
+          loading={movementsLoading}
+          onOpen={(id) => {
+            const m = materials.find((x) => x.id === id);
+            if (m) setLedgerFor(m);
+          }}
+        />
+      )}
       {tab === "pvc" && !isMdf && (
         <PvcTab pvcTypes={pvcTypes} loading={pvcLoading} canEdit={canEdit} onEdit={setEditingPvc} showToast={showToast} />
       )}
@@ -196,7 +204,13 @@ export default function AdminMaterials() {
       {editingPvc && (
         <PvcModal pvcType={editingPvc === "new" ? null : editingPvc} onClose={() => setEditingPvc(null)} showToast={showToast} />
       )}
-      {ledgerFor && <LedgerModal material={ledgerFor} onClose={() => setLedgerFor(null)} />}
+      {/* Looked up live, so «Қоймада қазір» in it moves with a receipt or a cut while it is open. */}
+      {ledgerFor && (
+        <MaterialLedgerModal
+          material={materials.find((m) => m.id === ledgerFor.id) ?? ledgerFor}
+          onClose={() => setLedgerFor(null)}
+        />
+      )}
 
       <Toast message={message} visible={visible} />
     </AppShell>
@@ -387,7 +401,6 @@ export function MaterialsTab({
                       {canEdit ? (
                         <RowMenu
                           items={[
-                            { label: "Тарих", onClick: () => onLedger(m) },
                             { label: "Түзету · баға", onClick: () => setCorrectingId(m.id) },
                             { label: "Өзгерту · атын жөндеу", onClick: () => onEdit(m) },
                             { label: m.active ? "Жасыру" : "Қайта қосу", onClick: () => handleToggleActive(m) },
@@ -396,6 +409,9 @@ export function MaterialsTab({
                         >
                           <button className="btn btn-outline btn-sm" onClick={() => setReceivingId(m.id)}>
                             + Қабылдау
+                          </button>
+                          <button className="btn btn-outline btn-sm" onClick={() => onLedger(m)}>
+                            Тарих
                           </button>
                         </RowMenu>
                       ) : (
@@ -926,78 +942,6 @@ function MaterialModal({
       </div>
     </div>
   );
-}
-
-function LedgerModal({ material, onClose }: { material: Material; onClose: () => void }) {
-  const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const q = query(
-      collection(db, "inventoryMovements"),
-      where("materialId", "==", material.id),
-      orderBy("createdAt", "desc"),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const list: InventoryMovement[] = [];
-      snap.forEach((d) => list.push({ id: d.id, ...(d.data() as Omit<InventoryMovement, "id">) }));
-      setMovements(list);
-      setLoading(false);
-    });
-    return unsub;
-  }, [material.id]);
-
-  return (
-    <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-handle" />
-        <h2>📜 {material.name} — қозғалыс тарихы</h2>
-        {loading ? (
-          <Spinner />
-        ) : movements.length === 0 ? (
-          <p>Қозғалыс жоқ</p>
-        ) : (
-          <div className="data-list" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-            {movements.map((m) => (
-              <div key={m.id} className="data-row">
-                <div className="data-row-main">
-                  <strong>{m.withoutCutting ? "Распилсіз берілді" : movementTypeLabel(m.type)}</strong>
-                  <span>
-                    {m.qty > 0 ? "+" : ""}
-                    {m.qty} лист · қалдық {m.balanceBefore} → {m.balanceAfter}
-                  </span>
-                  {m.comment && <span>{m.comment}</span>}
-                  <span>
-                    {m.userName} · {m.createdAt ? formatDateTimeDMY(m.createdAt) : ""}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="modal-actions">
-          <button type="button" className="btn btn-outline" onClick={onClose}>
-            Жабу
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function movementTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    initial: "Бастапқы қалдық",
-    receipt: "Қабылдау",
-    reservation: "Брондау",
-    reservation_release: "Бронь босату",
-    cutting_consumption: "Кесу кезінде есептен шығару",
-    return: "Қайтару",
-    manual_correction: "Қолмен түзету",
-    write_off: "Есептен шығару",
-    reversal: "Кері қайтару",
-  };
-  return labels[type] || type;
 }
 
 function PvcTab({
