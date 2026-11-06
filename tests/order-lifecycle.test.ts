@@ -15,6 +15,7 @@ import {
   completePvcLine,
   markDelivered,
   cancelOrder,
+  takeFromStockWithoutCutting,
 } from "../src/lib/orderStatus";
 import { jobsOf, allCuttingDone, allPvcDone } from "../src/lib/orderLines";
 import { canEnterCuttingQueue } from "../src/lib/statuses";
@@ -141,6 +142,15 @@ async function readMaterialQty(): Promise<number> {
   let qty = -1;
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const snap = await getDoc(doc(ctx.firestore(), "materials", MATERIAL_ID));
+    qty = (snap.data() as { qtyOnHand: number }).qtyOnHand;
+  });
+  return qty;
+}
+
+async function readQty(materialId: string): Promise<number> {
+  let qty = -1;
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const snap = await getDoc(doc(ctx.firestore(), "materials", materialId));
     qty = (snap.data() as { qtyOnHand: number }).qtyOnHand;
   });
   return qty;
@@ -470,6 +480,63 @@ describe("журнал → төлем → распил → ПВХ → дайын
     // A correction is not a re-cut: the record still says who finished it, and when.
     expect(job.cuttingByName).toBe("Распилшик");
     expect(job.cuttingCompletedAt?.isEqual(cutAt!)).toBe(true);
+  });
+
+  it("a распилсіз order corrected afterwards takes the difference off the rack (№533: 4 → 5)", async () => {
+    const draft = journalDraft();
+    draft.lines[0].sheetQty = 4;
+    const orderId = await createJournalOrder(asManager(), manager, draft, catalog);
+    let order = await readOrder(asManager(), orderId);
+    await takeFromStockWithoutCutting(asManager(), manager, order, { owedTiyn: order.totalTiyn });
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - 4);
+
+    order = await readOrder(asManager(), orderId);
+    const more = draftFromOrder(order);
+    more.lines[0].sheetQty = 5;
+    await saveJournalRow(asManager(), manager, order, more, catalog);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - 5);
+    order = await readOrder(asManager(), orderId);
+    expect(order.lineJobs?.[0].consumedQty).toBe(5);
+
+    // …and back down again, the sheet goes back.
+    const less = draftFromOrder(order);
+    less.lines[0].sheetQty = 3;
+    await saveJournalRow(asManager(), manager, order, less, catalog);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - 3);
+    const moves = await getDocs(query(collection(asManager(), "inventoryMovements"), where("orderId", "==", orderId)));
+    expect(moves.docs.reduce((s, d) => s + (d.data() as { qty: number }).qty, 0)).toBe(-3);
+  });
+
+  it("changing a queued line's material gives its sheets back, and the cut takes them from the new one", async () => {
+    const OTHER = "mat-kash";
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "materials", OTHER), {
+        name: "ЛДСП Кашемир", article: "", color: "", thicknessMm: 16, sheetLengthMm: 2750, sheetWidthMm: 1830,
+        sellingPriceTiyn: SHEET_PRICE, qtyOnHand: 20, reservedQty: 0, minStock: 2, active: true, stockTracked: true,
+      });
+    });
+    const withOther = { ...catalog, materials: new Map([...catalog.materials, [OTHER, { ...material, id: OTHER, name: "ЛДСП Кашемир" }]]) };
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), withOther);
+    let order = await readOrder(asManager(), orderId);
+    await recordPayment(asManager(), manager, { orderId, amountTiyn: order.totalTiyn, methodId: "nur", methodName: "Нұр" });
+    order = await readOrder(asManager(), orderId);
+    await enterCuttingQueue(asManager(), manager, order, { isAdmin: false, queuePosition: 1 });
+    expect(await readQty(MATERIAL_ID)).toBe(START_SHEETS_ON_HAND - SHEETS);
+
+    // Ақ was typed, Кашемир was meant: changed while the order waits for the saw.
+    order = await readOrder(asManager(), orderId);
+    const draft = draftFromOrder(order);
+    draft.lines[0].materialId = OTHER;
+    draft.lines[0].materialName = "ЛДСП Кашемир";
+    await saveJournalRow(asManager(), manager, order, draft, withOther);
+    expect(await readQty(MATERIAL_ID)).toBe(START_SHEETS_ON_HAND); // Ақ got its 6 back
+    expect(await readQty(OTHER)).toBe(20); // Кашемир is charged when it is cut
+
+    const seen = (await cutterQueue()).find((o) => o.id === orderId)!;
+    await startCuttingLine(asCutter(), cutter, seen, 0, 30);
+    await completeCuttingLine(asCutter(), cutter, await readOrder(asCutter(), orderId), 0, SHEETS);
+    expect(await readQty(OTHER)).toBe(20 - SHEETS);
+    expect(await readQty(MATERIAL_ID)).toBe(START_SHEETS_ON_HAND);
   });
 
   it("striking a row off before распил leaves the rack untouched", async () => {

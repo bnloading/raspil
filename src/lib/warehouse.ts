@@ -10,6 +10,7 @@ import type { User } from "firebase/auth";
 import type { InventoryMovementType, Order, OrderLineJob, UserDoc } from "../types/domain";
 import { allCuttingDone, buildLineJobs, jobAt, jobsOf, patchJob, totalConfirmedSheets, orderNeedsPvc } from "./orderLines";
 import { canEnterCuttingQueue } from "./statuses";
+import { planUncutSettlement } from "./uncutSettlement";
 
 type Actor = { user: User; userData: UserDoc };
 
@@ -298,6 +299,78 @@ export async function returnLinesToWarehouse(
       lineJobs: nextJobs,
       cuttingConsumedQty: nextJobs.reduce((sum, job) => sum + (job.consumedQty ?? 0), 0),
     });
+  });
+}
+
+/**
+ * Settles the rack for the lines not cut yet, after a journal edit to an order whose sheets were
+ * already taken (lib/uncutSettlement.ts): what a changed or deleted line held goes back to its
+ * material, and an order handed over whole takes or gives back a corrected count at once.
+ *
+ * `before` is the order's lines as they stood before the edit; the order itself is re-read here as
+ * the edit left it, so the whole settlement — movements, balances, what each line now holds — is
+ * one transaction. A line the saw cut is never touched (resettleCorrectedCuts settles those).
+ */
+export async function settleUncutLines(
+  db: Firestore,
+  actor: Actor,
+  params: { orderId: string; before: OrderLineJob[] },
+): Promise<void> {
+  const orderRef = doc(db, "orders", params.orderId);
+  await runTransaction(db, async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists()) return;
+    const order = orderSnap.data() as Order;
+    // Nothing was taken yet (the queue will take what the row says), or the order is struck off
+    // (cancelOrder settles that), or there is no stored snapshot of the lines to settle against.
+    if (!order.cuttingConsumedAt || order.productionStatus === "cancelled" || !order.lineJobs?.length) return;
+    const after = order.lineJobs;
+
+    // Firestore requires every read before the first write.
+    const ids = new Set([...params.before, ...after].map((j) => j.materialId).filter(Boolean));
+    const materials = new Map<string, { name: string; qtyOnHand: number; tracked: boolean }>();
+    for (const id of ids) {
+      const snap = await tx.get(doc(db, "materials", id));
+      if (!snap.exists()) continue;
+      const data = snap.data() as { name: string; qtyOnHand: number; stockTracked?: boolean };
+      materials.set(id, { name: data.name, qtyOnHand: data.qtyOnHand, tracked: isStockTracked(data) });
+    }
+
+    const plan = planUncutSettlement(params.before, after, {
+      withoutCutting: !!order.withoutCutting,
+      tracked: (id) => materials.get(id)?.tracked ?? false,
+    });
+    for (const [materialId, qty] of plan.deltas) {
+      const material = materials.get(materialId);
+      if (!material?.tracked) continue; // a board the warehouse does not count, or one since deleted
+      const balanceBefore = material.qtyOnHand;
+      const balanceAfter = balanceBefore - qty;
+      tx.update(doc(db, "materials", materialId), { qtyOnHand: balanceAfter });
+      tx.set(doc(collection(db, "inventoryMovements")), {
+        materialId,
+        type: qty > 0 ? "cutting_consumption" : "return",
+        qty: -qty,
+        orderId: params.orderId,
+        userId: actor.user.uid,
+        userName: actor.userData.name,
+        comment: qty > 0
+          ? `${order.orderNumber}: журналда түзетілді — тағы ${qty} лист алынды`
+          : `${order.orderNumber}: журналда түзетілді — ${-qty} лист қоймаға қайтарылды`,
+        ...(order.withoutCutting && qty > 0 ? { withoutCutting: true } : {}),
+        balanceBefore,
+        balanceAfter,
+        createdAt: serverTimestamp(),
+      });
+      material.qtyOnHand = balanceAfter;
+    }
+
+    const moved = plan.jobs.some((j, i) => (j.consumedQty ?? 0) !== (after[i]?.consumedQty ?? 0));
+    if (plan.deltas.size > 0 || moved) {
+      tx.update(orderRef, {
+        lineJobs: plan.jobs,
+        cuttingConsumedQty: plan.jobs.reduce((sum, job) => sum + (job.consumedQty ?? 0), 0),
+      });
+    }
   });
 }
 

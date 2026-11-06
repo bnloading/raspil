@@ -4,7 +4,7 @@ import { computeJournalRowTotals, computeLineTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
 import { syncLineJobs } from "./orderLines";
-import { consumeLineForCutting } from "./warehouse";
+import { consumeLineForCutting, settleUncutLines } from "./warehouse";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
 import type { Material, Order, OrderMaterialLine, PvcType, PvcUsage, UserDoc } from "../types/domain";
@@ -413,6 +413,12 @@ export async function saveJournalRow(
   });
 
   await resettleCorrectedCuts(db, actor, order, draft);
+  // …and the lines not cut yet: a changed material or a deleted line gives its sheets back, and an
+  // order handed over whole («распилсіз») takes a corrected count at once (lib/uncutSettlement.ts).
+  // Swallowed for the same reason as above: the edit itself is already saved.
+  if (lineJobs && order.cuttingConsumedAt) {
+    await settleUncutLines(db, actor, { orderId: order.id, before: order.lineJobs ?? [] }).catch(() => {});
+  }
 }
 
 /**
