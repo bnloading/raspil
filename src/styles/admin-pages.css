@@ -407,6 +407,14 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Касса's head (ManagerCashbox CutMonthPanel): the month's sheets the saw really cut, four apart. */
+.cutm { margin-bottom: 16px; }
+.cutm-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin: 0 2px 8px; }
+.cutm-head h2 { margin: 0; font-size: 1rem; font-weight: 800; color: var(--text); }
+.cutm-head span { font-size: 0.82rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cutm .cutm-row { margin-bottom: 8px; }
+.cutm-week { margin: 0 2px; font-size: 0.84rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
 /* «Қабылдау тарихы» (StockReceiptHistory) under the Қойма table: every delivery, a day to a
    heading — what came, how many, who took it and what the rack held before and after. */
 .srh { display: grid; gap: 12px; margin-top: 16px; }

@@ -29,10 +29,11 @@ import {
   accountForMethod,
 } from "../../lib/cashbox";
 import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
+import { monthRange, sheetsCutBetween, type CutKinds } from "../../lib/cutStats";
 import { availableMonths } from "../../lib/finance";
 import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { logAudit } from "../../lib/audit";
-import { dayKey, formatDateDMY, monthLabel } from "../../lib/dates";
+import { dayKey, formatDateDMY, monthKey, monthLabel, startOfWeekAlmaty } from "../../lib/dates";
 import { exportCsv, exportXlsx } from "../../lib/exportTable";
 import { DEPARTMENT_LABELS, departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac";
 import { shortOrderNumber } from "../../lib/orderCode";
@@ -156,6 +157,24 @@ export default function ManagerCashbox() {
   const cashStartOrderNumber = settings.cashStartOrderNumber ?? null;
   // The picker's all-time option, named for what it is once the books have restarted.
   const sinceLabel = cashStartDate ? `${dmy(cashStartDate)}-дан бері` : "Барлық уақыт";
+  // What the ЛДСП saw really cut in the month being read — the month picked above, or this one —
+  // лист, ХДФ, столешница and МДФ apart (the owner, 06.11). From the cuts the cutters confirmed,
+  // not the sheets taken off the rack when an order was queued (lib/cutStats.ts).
+  const [now] = useState(() => new Date());
+  const cutMonth = effectivePeriod ?? monthKey(now);
+  const categoryByMaterialId = useMemo(
+    () => new Map(allMaterials.filter((m) => m.category).map((m) => [m.id, m.category!])),
+    [allMaterials],
+  );
+  const cutInMonth = useMemo(() => {
+    const [from, to] = monthRange(cutMonth);
+    return sheetsCutBetween(orders, categoryByMaterialId, from, to);
+  }, [orders, categoryByMaterialId, cutMonth]);
+  const cutThisWeek = useMemo(
+    () => sheetsCutBetween(orders, categoryByMaterialId, startOfWeekAlmaty(now)),
+    [orders, categoryByMaterialId, now],
+  );
+
   // Counted from the same day the money is: sheets cut before the restart belong to the old books.
   const sheetsCut = useMemo(
     () => computeSheetsCutByPeriod(movements, new Date(), deptMaterialIds, cashStartDate),
@@ -294,22 +313,30 @@ export default function ManagerCashbox() {
         <Spinner />
       ) : (
         <>
-          <div className="kpi-row">
-            <div className="kpi-card">
-              <div className="kpi-text">
-                <div className="kpi-label">Осы аптада нақты кесілген</div>
-                <div className="kpi-value">{sheetsCut.week} лист</div>
+          {myDepartment === "ldsp" ? (
+            <CutMonthPanel
+              monthTitle={monthLabel(cutMonth)}
+              cut={cutInMonth}
+              week={cutMonth === monthKey(now) ? cutThisWeek : null}
+            />
+          ) : (
+            <div className="kpi-row">
+              <div className="kpi-card">
+                <div className="kpi-text">
+                  <div className="kpi-label">Осы аптада нақты кесілген</div>
+                  <div className="kpi-value">{sheetsCut.week} лист</div>
+                </div>
+                <span className="kpi-icon is-indigo">🪚</span>
               </div>
-              <span className="kpi-icon is-indigo">🪚</span>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-text">
-                <div className="kpi-label">Осы айда нақты кесілген</div>
-                <div className="kpi-value">{sheetsCut.month} лист</div>
+              <div className="kpi-card">
+                <div className="kpi-text">
+                  <div className="kpi-label">Осы айда нақты кесілген</div>
+                  <div className="kpi-value">{sheetsCut.month} лист</div>
+                </div>
+                <span className="kpi-icon is-green">🪚</span>
               </div>
-              <span className="kpi-icon is-green">🪚</span>
             </div>
-          </div>
+          )}
 
           <CashboxAccounts cashbox={cashbox} cashboxNow={cashboxNow} openingBalanceTiyn={openingBalanceTiyn} period={effectivePeriod}
             startDate={cashStartDate}
@@ -1613,3 +1640,42 @@ function ReconcileEditor({
 
 /** "2026-09-22" → "22.09.2026" */
 const dmy = (day: string) => formatDateDMY(new Date(`${day}T12:00:00+05:00`));
+
+/**
+ * «Қараша 2026 — нақты кесілді»: the month's sheets the saw cut, four apart — лист, ХДФ,
+ * столешница, МДФ — at the top of Касса (the owner, 06.11), with this week's under it while the
+ * month is the current one.
+ */
+export function CutMonthPanel({ monthTitle, cut, week }: { monthTitle: string; cut: CutKinds; week: CutKinds | null }) {
+  const total = cut.ldsp + cut.mdf + cut.hdf + cut.countertop;
+  const tiles: { label: string; value: number; icon: string; tone: string }[] = [
+    { label: "Лист", value: cut.ldsp, icon: "🪚", tone: "is-indigo" },
+    { label: "ХДФ", value: cut.hdf, icon: "📄", tone: "is-blue" },
+    { label: "Столешница", value: cut.countertop, icon: "▭", tone: "is-green" },
+    { label: "МДФ", value: cut.mdf, icon: "🪵", tone: "is-red" },
+  ];
+  const weekParts = week
+    // No-break spaces inside each figure, so a wrap falls after a «·», never between «6» and «МДФ».
+    ? [`${week.ldsp}\u00a0лист`, `${week.hdf}\u00a0ХДФ`, `${week.countertop}\u00a0столеш`, `${week.mdf}\u00a0МДФ`].join(" · ")
+    : "";
+  return (
+    <section className="cutm" aria-labelledby="cutm-title">
+      <div className="cutm-head">
+        <h2 id="cutm-title">{monthTitle} — нақты кесілді</h2>
+        <span>{cut.orders} заказ · барлығы {total}</span>
+      </div>
+      <div className="kpi-row cutm-row">
+        {tiles.map((t) => (
+          <div key={t.label} className="kpi-card">
+            <div className="kpi-text">
+              <div className="kpi-label">{t.label}</div>
+              <div className="kpi-value">{t.value}</div>
+            </div>
+            <span className={`kpi-icon ${t.tone}`}>{t.icon}</span>
+          </div>
+        ))}
+      </div>
+      {week && <p className="cutm-week">Осы аптада: {weekParts}</p>}
+    </section>
+  );
+}
