@@ -407,5 +407,36 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* «Қабылдау тарихы» (StockReceiptHistory) under the Қойма table: every delivery, a day to a
+   heading — what came, how many, who took it and what the rack held before and after. */
+.srh { display: grid; gap: 12px; margin-top: 16px; }
+.srh-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; }
+.srh-head h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text); }
+.srh-totals { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; color: var(--text-secondary); }
+.srh-totals b { color: var(--emerald); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.srh-filter { max-width: 320px; }
+.srh-empty { margin: 0; font-size: 0.88rem; color: var(--text-secondary); }
+.srh-days { display: grid; gap: 14px; }
+.srh-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+.srh-day-head strong { color: var(--text); }
+.srh-day-head span { font-weight: 800; color: var(--emerald); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.srh-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.srh-list li { display: grid; gap: 2px; padding: 9px 0; border-bottom: 1px dashed var(--border); }
+.srh-list li:last-child { border-bottom: 0; }
+.srh-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.srh-name { min-width: 0; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.srh-qty { color: var(--emerald); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.srh-meta { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.srh-note { font-size: 0.82rem; color: var(--text); overflow-wrap: anywhere; }
+.srh-more { justify-self: start; }
+
 /* With a correction column the flow is four figures — two by two, as on Касса. */
 .aps-flow:has(> div:nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }

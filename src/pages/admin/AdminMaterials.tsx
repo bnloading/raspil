@@ -21,6 +21,8 @@ import { useToast } from "../../hooks";
 import { useMaterials, usePvcTypes } from "../../hooks/useMaterials";
 import { useAllInventoryMovements } from "../../hooks/useReports";
 import { computeSheetsCutByPeriod } from "../../lib/dashboardStats";
+import { DEFAULT_RECEIPT_COMMENT, stockReceipts } from "../../lib/stockReceipts";
+import { StockReceiptHistory } from "../../components/StockReceiptHistory";
 import { stockStatus, lowStockCount } from "../../lib/stockStatus";
 import { pvcStockStatus } from "../../lib/pvcStock";
 import { RowMenu } from "../../components/RowMenu";
@@ -56,7 +58,9 @@ export default function AdminMaterials() {
     [allMaterials, isMdf],
   );
   const { pvcTypes, loading: pvcLoading } = usePvcTypes(false);
-  const { movements } = useAllInventoryMovements();
+  const { movements, loading: movementsLoading } = useAllInventoryMovements();
+  // Every «+ Қабылдау» on this line's materials, for «Қабылдау тарихы» under the table.
+  const receipts = useMemo(() => stockReceipts(movements, materials), [movements, materials]);
   const [ledgerFor, setLedgerFor] = useState<Material | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<Material | "new" | null>(null);
   const [editingPvc, setEditingPvc] = useState<PvcType | "new" | null>(null);
@@ -175,6 +179,7 @@ export default function AdminMaterials() {
           showToast={showToast}
         />
       )}
+      {tab === "materials" && <StockReceiptHistory receipts={receipts} loading={movementsLoading} />}
       {tab === "pvc" && !isMdf && (
         <PvcTab pvcTypes={pvcTypes} loading={pvcLoading} canEdit={canEdit} onEdit={setEditingPvc} showToast={showToast} />
       )}
@@ -292,14 +297,15 @@ export function MaterialsTab({
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const receiving = receivingId ? materials.find((m) => m.id === receivingId) ?? null : null;
 
-  const receiveSheets = async (material: Material, qty: number): Promise<boolean> => {
+  const receiveSheets = async (material: Material, qty: number, note: string): Promise<boolean> => {
     if (!auth.user || !auth.userData) return false;
     try {
       await recordInventoryMovement(db, { user: auth.user, userData: auth.userData }, {
         materialId: material.id,
         type: "receipt",
         qty,
-        comment: "Жеткізушіден қабылданды",
+        // Who brought it, the delivery note — read back on «Қабылдау тарихы».
+        comment: note.trim() || DEFAULT_RECEIPT_COMMENT,
       });
       showToast(`✅ +${qty} лист қабылданды`);
       return true;
@@ -421,7 +427,8 @@ export function MaterialsTab({
           unit="лист"
           onHand={receiving.qtyOnHand}
           decimals={false}
-          onReceive={(qty) => receiveSheets(receiving, qty)}
+          withNote
+          onReceive={(qty, note) => receiveSheets(receiving, qty, note)}
           onClose={() => setReceivingId(null)}
         />
       )}
@@ -614,6 +621,7 @@ function ReceiveModal({
   unit,
   onHand,
   decimals,
+  withNote = false,
   onReceive,
   onClose,
 }: {
@@ -622,10 +630,13 @@ function ReceiveModal({
   onHand: number;
   /** Metres can be fractional; sheets are whole. */
   decimals: boolean;
-  onReceive: (qty: number) => Promise<boolean>;
+  /** Sheets: a line on how it came — kept in the ledger and read on «Қабылдау тарихы». */
+  withNote?: boolean;
+  onReceive: (qty: number, note: string) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const keyboard = useKeyboardInset();
 
@@ -637,7 +648,7 @@ function ReceiveModal({
     e.preventDefault();
     if (!valid || saving) return;
     setSaving(true);
-    const done = await onReceive(qty);
+    const done = await onReceive(qty, note);
     setSaving(false);
     if (done) onClose();
   };
@@ -667,6 +678,21 @@ function ReceiveModal({
               {valid ? ` → қабылдаған соң ${fmt(Math.round((onHand + qty) * 100) / 100)} ${unit}` : ""}
             </p>
           </div>
+          {withNote && (
+            <div className="form-group">
+              <label htmlFor="receive-note">Қалай келді? (міндетті емес)</label>
+              <input
+                id="receive-note"
+                type="text"
+                className="form-input"
+                value={note}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Мысалы: Эггер, накладная №512"
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
+          )}
           <div className="modal-actions">
             <button type="button" className="btn btn-outline" onClick={onClose}>
               Болдырмау
