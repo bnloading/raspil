@@ -196,6 +196,22 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isManager() && resource.data.createdByUid == uid());
     }
 
+    match /cashReceipts/{id} {
+      // «Нал ақша алдым» — cash an Admin took in hand (Ербол), written on the phone home and
+      // checked against the journal's cash payments by the customer's name (src/lib/cashReceipts.ts).
+      // Not money of its own — the journal already counted it — so nothing reads it but the Admin.
+      // Written under one's own name with a positive whole-tiyn sum; deleted to correct a typo.
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.createdByUid == uid()
+        && request.resource.data.amountTiyn is int
+        && request.resource.data.amountTiyn > 0
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     match /birthdays/{userId} {
       // The shop-wide "whose birthday is it today" alert (AppShell) needs every signed-in user to
       // read every other user's entry — /users itself is tightly role-scoped and carries a phone

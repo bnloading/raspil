@@ -345,6 +345,31 @@ export interface RentPayment {
 }
 
 /**
+ * «Нал ақша алдым» — cash an Admin took in hand (Ербол, from the counter or straight from the
+ * customer), written on the phone home with the customer it came from (the owner, 06.11). It is
+ * not money of its own: the journal already counted that cash when it was taken, so this never
+ * reaches Касса or a debt. It is the other half of the journal's «Ерболға берілді» — the check
+ * that the cash written there reached him, matched to the journal's cash payments by the
+ * customer's name (lib/cashReceipts.ts). Admin-only in firestore.rules.
+ */
+export interface CashReceipt {
+  id: string;
+  /** As picked from the journal's own customers, or typed. */
+  customerName: string;
+  /** Set when the name was picked from the journal's customers and they have one — a second key
+   *  to the same person when their name is spelled two ways in the journal. */
+  customerPhone?: string;
+  amountTiyn: number;
+  date: string; // YYYY-MM-DD in Asia/Almaty, the day the cash was taken
+  comment?: string;
+  /** Which line's journal it is checked against — see UserDoc.department. Unset means "ldsp". */
+  department?: Department;
+  createdByUid: string;
+  createdByName: string;
+  createdAt?: Timestamp;
+}
+
+/**
  * The single master workflow-stage field (spec: "INTERNAL ORDER STATUSES"). Deliberately includes
  * payment-shaped stages (waiting_payment/partially_paid/paid) alongside pure production stages —
  * this is the *workflow position*, kept in sync with (but not a replacement for) the independent

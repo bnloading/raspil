@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { formatMoney } from "../lib/money";
 import { formatDateDMY } from "../lib/dates";
@@ -23,6 +24,7 @@ export function AdminPhoneSummary({
   openingBalanceTiyn,
   sheetsCut,
   startDate,
+  children,
 }: {
   /** Null when the purchase prices cannot be read (firestore.rules keeps them Admin-only) —
    *  there is no honest profit without them. */
@@ -34,6 +36,8 @@ export function AdminPhoneSummary({
   sheetsCut: { week: number; month: number } | null;
   /** ApplicationSettings.cashStartDate — the money figures count from it. */
   startDate: string | null;
+  /** Under the money: «Нал ақша алдым» (CashReceivedCard), which needs the page's own orders. */
+  children?: ReactNode;
 }) {
   const { labels: accountLabels } = useCashAccountLabels();
   const since = startDate ? `${formatDateDMY(new Date(`${startDate}T12:00:00+05:00`))} бастап` : "Барлық уақыт";
@@ -90,6 +94,8 @@ export function AdminPhoneSummary({
           adjustTiyn={cashbox.totalAdjustTiyn}
         />
       </section>
+
+      {children}
 
       <nav className="aps-links" aria-label="Толығырақ">
         <Link to="/manager/cashbox" className="btn btn-outline">Касса және шығындар</Link>

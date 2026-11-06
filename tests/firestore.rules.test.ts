@@ -836,6 +836,46 @@ describe("rent entries (Аренда) are written by the Admin and the Manager",
   });
 });
 
+/**
+ * «Нал ақша алдым» — cash an Admin took in hand, checked against the journal. Not money of its own,
+ * so only the Admin reads or writes it, under their own name, and corrects it by deleting.
+ */
+describe("cash receipts (Нал ақша алдым) are the Admin's alone", () => {
+  const receipt = (uid: string, over: Record<string, unknown> = {}) => ({
+    customerName: "Мейрам", amountTiyn: 5000000, date: "2026-11-06", comment: "", department: "ldsp",
+    createdByUid: uid, createdByName: "Ербол", ...over,
+  });
+
+  it("admin can write one under their own name, read it and delete it, but not edit it", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "cashReceipts", "cr-1"), receipt(ADMIN_UID)));
+    await assertSucceeds(getDoc(doc(db, "cashReceipts", "cr-1")));
+    await assertSucceeds(getDocs(collection(db, "cashReceipts")));
+    await assertFails(updateDoc(doc(db, "cashReceipts", "cr-1"), { amountTiyn: 1 }));
+    await assertSucceeds(deleteDoc(doc(db, "cashReceipts", "cr-1")));
+  });
+
+  it("admin cannot write one under someone else's name, with no customer, or with no money", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-2"), receipt(MANAGER_UID)));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-3"), receipt(ADMIN_UID, { customerName: "" })));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-4"), receipt(ADMIN_UID, { amountTiyn: 0 })));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-5"), receipt(ADMIN_UID, { amountTiyn: 12.5 })));
+  });
+
+  it("a manager, a worker and a customer can neither read nor write it", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "cashReceipts", "cr-1"), receipt(ADMIN_UID));
+    });
+    for (const uid of [MANAGER_UID, CUTTER_UID, CUSTOMER_A_UID]) {
+      const db = testEnv.authenticatedContext(uid).firestore();
+      await assertFails(getDoc(doc(db, "cashReceipts", "cr-1")));
+      await assertFails(setDoc(doc(db, "cashReceipts", `cr-${uid}`), receipt(uid)));
+      await assertFails(deleteDoc(doc(db, "cashReceipts", "cr-1")));
+    }
+  });
+});
+
 describe("PVC worker cannot touch warehouse", () => {
   it("PVC worker cannot create an inventory movement", async () => {
     const db = testEnv.authenticatedContext(PVC_UID).firestore();

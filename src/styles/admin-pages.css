@@ -172,6 +172,78 @@
   cursor: pointer;
 }
 
+/* «Нал ақша алдым» (CashReceivedCard) — cash the Admin took, each entry over the journal's answer.
+   Green — the journal has it; amber — another sum, or none at all: something to ask about. */
+.aps-recv { display: grid; gap: 10px; }
+.aps-recv-lead { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.aps-recv .btn { min-height: 46px; padding: 10px 14px; font-size: 14px; }
+.aps-recv .btn-sm { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.aps-recv .btn-outline { color: var(--primary-dark); border-color: var(--primary-dark); background: var(--card); }
+.aps-recv .btn-outline:hover { color: #fff; background: var(--primary-dark); }
+.aps-recv-form { display: grid; gap: 4px; padding: 12px; border-radius: 12px; background: #f5f6fa; scroll-margin-top: 72px; }
+.aps-recv-form .form-group { margin-bottom: 8px; }
+/* Side by side only where the date field has room for «06.11.2026» and its picker icon. */
+.aps-recv-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 10px; }
+.aps-recv-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
+.aps-recv-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 8px; font-size: 12px; color: var(--text-secondary); }
+.aps-recv-hint.is-empty { display: block; color: #7c3d06; }
+.aps-recv-chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.aps-recv-chip:hover { border-color: var(--primary-dark); color: var(--primary-dark); }
+.aps-recv-status { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.aps-recv-sum { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.aps-recv-sum b { color: var(--text); font-variant-numeric: tabular-nums; }
+.aps-recv-sum .is-warn { color: #92400e; font-weight: 700; }
+.aps-recv-list,
+.aps-recv-unclaimed ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.aps-recv-row,
+.aps-recv-unclaimed li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: 10px;
+}
+.aps-recv-row.is-ok { border-left-color: var(--aps-in); }
+.aps-recv-row.is-diff,
+.aps-recv-row.is-none { border-left-color: var(--warning); background: #fffbeb; }
+.aps-recv-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.aps-recv-name { min-width: 0; font-size: 14px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.aps-recv-top strong { font-size: 15px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.aps-recv-meta { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.aps-recv-check { font-size: 12px; font-weight: 600; color: #92400e; }
+.aps-recv-row.is-ok .aps-recv-check { color: var(--aps-in); }
+.aps-recv-del {
+  justify-self: start;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.aps-recv-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.aps-recv-unclaimed { border-top: 1px solid var(--border); padding-top: 10px; }
+.aps-recv-unclaimed summary { min-height: 32px; font-size: 13px; color: var(--text); cursor: pointer; }
+.aps-recv-unclaimed summary b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.aps-recv-unclaimed ul { margin-top: 8px; }
+.aps-recv-unclaimed li .btn { justify-self: start; margin-top: 4px; }
+
 /* ── Таза пайда page (AdminProfit) ─────────────────────────────────────────── */
 .prf-tabs { display: flex; gap: 8px; scroll-margin-top: 80px; }
 .prf-tabs button {
