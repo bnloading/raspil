@@ -7,7 +7,6 @@ import { Spinner } from "../../components";
 import { AppShell } from "../../components/layout/AppShell";
 import { AttendanceTodayCard } from "../../components/AttendanceTodayCard";
 import { AdminPhoneSummary } from "../../components/AdminPhoneSummary";
-import { CashReceivedCard } from "../../components/CashReceivedCard";
 import { DonutChart } from "../../components/charts/DonutChart";
 import { LineChart } from "../../components/charts/LineChart";
 import { ProductionStatusBadge } from "../../components/StatusBadge";
@@ -180,11 +179,7 @@ export default function AdminHome() {
           openingBalanceTiyn={openingBalanceTiyn}
           sheetsCut={isLdsp ? sheetsCut : null}
           startDate={cashStartDate}
-        >
-          {/* «Нал ақша алдым» — cash taken in hand, checked against this line's journal by the
-              customer's name (the owner, 06.11). */}
-          <CashReceivedCard orders={orders} payments={payments} methods={methods ?? []} department={myDepartment} />
-        </AdminPhoneSummary>
+        />
       ) : (
         <>
           <div className="stat-grid">

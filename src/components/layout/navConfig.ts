@@ -69,6 +69,9 @@ function adminNav(department: Department): NavItem[] {
   return byDepartment(
     [
       { key: "admin-home", label: "Басты бет", short: "Басты", path: "/admin", icon: IconHome, group: "main", mobile: true },
+      // Second on the phone bar (the owner, 07.11: «Нал ақша алдым mobile view-ден шықпай тұр,
+      // navbar-ға қос») — it used to sit at the foot of the phone home, and was missed there.
+      { key: "admin-cash-received", label: "Нал ақша алдым", short: "Нал алдым", path: "/admin/cash-received", icon: IconCash, group: "main", mobile: true },
       // In the phone bar where Заказдар used to be, at the owner's request, and under its full name:
       // it is the owner's own figure and the only place the wholesale prices behind it are set.
       { key: "admin-profit", label: "Таза пайда", path: "/admin/profit", icon: IconProfit, group: "main", mobile: true },
@@ -86,7 +89,8 @@ function adminNav(department: Department): NavItem[] {
       { key: "admin-mdf-journal", label: "МДФ журналы", short: "Журнал", path: "/manager/mdf-journal", icon: IconOrders, group: "main" },
       { key: "admin-materials", label: "Қойма", short: "Қойма", path: "/admin/materials", icon: IconWarehouse, group: "main", mobile: true },
       { key: "admin-payments", label: "Төлемдер", path: "/admin/reports", icon: IconReports, group: "main" },
-      { key: "admin-reports", label: "Есептер", short: "Есеп", path: "/admin/reports", icon: IconReports, group: "main", mobile: true },
+      // Off the phone bar since 07.11, for «Нал алдым» — the bar holds six; the phone home links here.
+      { key: "admin-reports", label: "Есептер", short: "Есеп", path: "/admin/reports", icon: IconReports, group: "main" },
       // On the phone bottom bar: an owner checking in from outside the shop wants the debt ledger
       // more than anything below it in this list.
       { key: "admin-debt", label: "Қарыз", short: "Қарыз", path: "/manager/debt", icon: IconReports, group: "main", mobile: true },

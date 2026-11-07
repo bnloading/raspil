@@ -19,6 +19,7 @@ const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMaterials = lazy(() => import("./pages/admin/AdminMaterials"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminProfit = lazy(() => import("./pages/admin/AdminProfit"));
+const AdminCashReceived = lazy(() => import("./pages/admin/AdminCashReceived"));
 const AdminRent = lazy(() => import("./pages/admin/AdminRent"));
 const ManagerAdvances = lazy(() => import("./pages/manager/ManagerAdvances"));
 const ManagerCashLog = lazy(() => import("./pages/manager/ManagerCashLog"));
@@ -190,6 +191,16 @@ export default function App() {
               element={
                 <RouteGuard roles={["admin", "manager"]}>
                   <AdminMdfHome />
+                </RouteGuard>
+              }
+            />
+            <Route
+              path="/admin/cash-received"
+              element={
+                // «Нал ақша алдым» — the Admin's own note of cash taken in hand; cashReceipts is
+                // Admin-only in firestore.rules.
+                <RouteGuard roles={["admin"]}>
+                  <AdminCashReceived />
                 </RouteGuard>
               }
             />

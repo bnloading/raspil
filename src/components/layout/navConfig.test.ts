@@ -32,6 +32,15 @@ describe("navConfig — the two lines keep to their own pages", () => {
     }
   });
 
+  it("puts «Нал алдым» second on the admin's phone bar, on both lines (the owner, 07.11)", () => {
+    for (const department of ["ldsp", "mdf"] as const) {
+      const bar = phoneBar("admin", department);
+      expect(bar).toHaveLength(6);
+      expect(bar.slice(0, 2)).toEqual(["Басты", "Нал алдым"]);
+      expect(bar).toEqual(expect.arrayContaining(["Қарыз", "Келу", "Қойма"]));
+    }
+  });
+
   it("gives the МДФ admin the МДФ journal, the cash book and the tariffs", () => {
     expect(keys("admin", "mdf")).toEqual(expect.arrayContaining(["admin-mdf-journal", "admin-cash", "admin-mdf-tariffs"]));
   });

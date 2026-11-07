@@ -36,7 +36,7 @@ export function AdminPhoneSummary({
   sheetsCut: { week: number; month: number } | null;
   /** ApplicationSettings.cashStartDate — the money figures count from it. */
   startDate: string | null;
-  /** Under the money: «Нал ақша алдым» (CashReceivedCard), which needs the page's own orders. */
+  /** Anything the page adds under the money. */
   children?: ReactNode;
 }) {
   const { labels: accountLabels } = useCashAccountLabels();
@@ -102,6 +102,8 @@ export function AdminPhoneSummary({
         {/* Заказдар left the phone bar for Таза пайда, and a phone has no side menu — this is the
             way to the orders from here. */}
         <Link to="/admin/orders" className="btn btn-outline">Заказдар</Link>
+        {/* Есептер gave its place on the phone bar to «Нал алдым» (07.11). */}
+        <Link to="/admin/reports" className="btn btn-outline">Есептер</Link>
       </nav>
     </div>
   );
