@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
+import { cashReceiptErrorText } from "../lib/cashReceiptsWrite";
 import type { CashReceipt } from "../types/domain";
 
 /**
@@ -36,7 +37,7 @@ export function useCashReceipts() {
         setLoading(false);
       },
       (err) => {
-        setError(err.message);
+        setError(cashReceiptErrorText(err));
         setLoading(false);
       },
     );

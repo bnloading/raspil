@@ -1,18 +1,33 @@
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import type { CashReceipt, Department, UserDoc } from "../types/domain";
+import type { CashReceipt, CashReceiptKind, Department, UserDoc } from "../types/domain";
 import { logAudit } from "./audit";
 
 type Actor = { user: User; userData: UserDoc };
 
 /**
- * Records «Нал ақша алдым» — "Мейрам, 50 000 ₸, 03.11" — under the Admin writing it. Nothing else
- * moves: the cash was counted on Касса when the journal took it (lib/cashReceipts.ts).
+ * A failed read or write in words the Admin can act on. «Missing or insufficient permissions» on
+ * his phone meant nothing to him (07.11: «нал толтырылмай тұр») — it was firestore.rules not yet
+ * deployed with the cashReceipts block.
+ */
+export function cashReceiptErrorText(err: unknown): string {
+  const e = err as { code?: string; message?: string } | null;
+  if (e?.code === "permission-denied" || /insufficient permissions/i.test(e?.message ?? "")) {
+    return "рұқсат жоқ — Firestore ережелері әлі жаңартылмаған (firebase deploy --only firestore:rules)";
+  }
+  return e?.message ?? String(err);
+}
+
+/**
+ * Records «Нал ақша алдым» — "Мейрам, 50 000 ₸, 03.11", or "Обнал, Ақжол, 100 000 ₸" — under the
+ * Admin writing it. Nothing else moves: a customer's cash was counted on Касса when the journal
+ * took it, обнал when Касса booked the transfer (lib/cashReceipts.ts).
  */
 export async function addCashReceipt(
   db: Firestore,
   actor: Actor,
   data: {
+    kind: CashReceiptKind;
     customerName: string;
     customerPhone: string;
     amountTiyn: number;
@@ -21,10 +36,12 @@ export async function addCashReceipt(
     department: Department;
   },
 ): Promise<string> {
+  const obnal = data.kind === "obnal";
   const entry = {
+    kind: data.kind,
     customerName: data.customerName.trim(),
     // Only kept when there is one — an empty string would read as "this customer has no phone".
-    ...(data.customerPhone.trim() ? { customerPhone: data.customerPhone.trim() } : {}),
+    ...(!obnal && data.customerPhone.trim() ? { customerPhone: data.customerPhone.trim() } : {}),
     amountTiyn: data.amountTiyn,
     date: data.date,
     comment: data.comment.trim(),
@@ -48,6 +65,7 @@ export async function deleteCashReceipt(db: Firestore, actor: Actor, receipt: Ca
     entityType: "cashReceipt",
     entityId: receipt.id,
     before: {
+      kind: receipt.kind ?? "customer",
       customerName: receipt.customerName,
       amountTiyn: receipt.amountTiyn,
       date: receipt.date,

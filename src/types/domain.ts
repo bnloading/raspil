@@ -352,9 +352,19 @@ export interface RentPayment {
  * that the cash written there reached him, matched to the journal's cash payments by the
  * customer's name (lib/cashReceipts.ts). Admin-only in firestore.rules.
  */
+/**
+ * Where cash in the Admin's hand came from (the owner, 07.11). customer — a customer's cash payment,
+ * checked against the journal by name. obnal — «обнал»: someone cashed a transfer out and handed
+ * over the cash (Касса books the transfer as an «Обнал» expense), so no journal row stands for it.
+ */
+export type CashReceiptKind = "customer" | "obnal";
+
 export interface CashReceipt {
   id: string;
-  /** As picked from the journal's own customers, or typed. */
+  /** Unset reads as "customer". */
+  kind?: CashReceiptKind;
+  /** As picked from the journal's own customers, or typed. For обнал, who handed the cash over —
+   *  may be empty. */
   customerName: string;
   /** Set when the name was picked from the journal's customers and they have one — a second key
    *  to the same person when their name is spelled two ways in the journal. */

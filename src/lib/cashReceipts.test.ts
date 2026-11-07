@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { Timestamp } from "firebase/firestore";
 import type { CashReceipt, Order, Payment, PaymentMethodDef } from "../types/domain";
-import { checkCashReceipts, journalCash, nameKey, nearbyCash, sameCustomer, type JournalCash } from "./cashReceipts";
+import { checkCashReceipts, isObnal, journalCash, nameKey, nearbyCash, sameCustomer, type JournalCash } from "./cashReceipts";
+import { cashReceiptErrorText } from "./cashReceiptsWrite";
 
 const at = (iso: string) => ({ seconds: Math.floor(new Date(iso).getTime() / 1000), nanoseconds: 0 }) as unknown as Timestamp;
 const T = (tenge: number) => tenge * 100;
@@ -109,9 +110,37 @@ describe("checkCashReceipts", () => {
     expect(checkCashReceipts([receipt({})], [early, close]).checks[0].payments).toEqual([close]);
   });
 
+  it("never checks «обнал» against the journal, and leaves the journal's cash to the customer's own entry", () => {
+    // Same name and sum as a customer's payment — still not taken: обнал is no customer's cash.
+    const j = cash({});
+    const obnal = receipt({ kind: "obnal", customerName: "Мейрам", date: "2026-11-03" });
+    const own = receipt({ date: "2026-11-04", createdAt: at("2026-11-04T18:00:00+05:00") });
+    const { checks, unclaimed } = checkCashReceipts([obnal, own], [j]);
+    expect(checks.map((c) => [c.receipt.id, c.status])).toEqual([[own.id, "ok"], [obnal.id, "obnal"]]);
+    expect(checks[1]).toMatchObject({ payments: [], journalTiyn: 0 });
+    expect(unclaimed).toEqual([]);
+    expect(isObnal(obnal)).toBe(true);
+    expect(isObnal(own)).toBe(false);
+  });
+
+  it("an «обнал» entry with no name is still listed, and its day still starts the unclaimed list", () => {
+    const after = cash({ customerName: "Дархан", day: "2026-11-04" });
+    const { checks, unclaimed } = checkCashReceipts([receipt({ kind: "obnal", customerName: "" })], [after]);
+    expect(checks[0].status).toBe("obnal");
+    expect(unclaimed).toEqual([after]);
+  });
+
   it("lists as unclaimed only the journal's cash from the first entry's day on", () => {
     const before = cash({ customerName: "Дархан", day: "2026-11-01" }), after = cash({ customerName: "Дархан", day: "2026-11-04" });
     expect(checkCashReceipts([receipt({})], [cash({}), before, after]).unclaimed).toEqual([after]);
     expect(checkCashReceipts([], [before, after]).unclaimed).toEqual([]);
+  });
+});
+
+describe("cashReceiptErrorText", () => {
+  it("says in words that the rules are not deployed when Firestore refuses", () => {
+    expect(cashReceiptErrorText({ code: "permission-denied", message: "Missing or insufficient permissions." }))
+      .toMatch(/Firestore ережелері әлі жаңартылмаған/);
+    expect(cashReceiptErrorText(new Error("network down"))).toBe("network down");
   });
 });

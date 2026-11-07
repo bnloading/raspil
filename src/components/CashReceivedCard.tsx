@@ -6,10 +6,10 @@ import { CustomerNameInput } from "./CustomerNameInput";
 import { NumberField } from "./NumberField";
 import { customerDirectory } from "../lib/customerSuggest";
 import { checkCashReceipts, journalCash, nearbyCash, LOOKBACK_DAYS, type JournalCash, type ReceiptCheck } from "../lib/cashReceipts";
-import { addCashReceipt, deleteCashReceipt } from "../lib/cashReceiptsWrite";
+import { addCashReceipt, cashReceiptErrorText, deleteCashReceipt } from "../lib/cashReceiptsWrite";
 import { formatMoney } from "../lib/money";
 import { dayKey, formatDateDMY } from "../lib/dates";
-import type { CashReceipt, Department, Order, Payment, PaymentMethodDef } from "../types/domain";
+import type { CashReceipt, CashReceiptKind, Department, Order, Payment, PaymentMethodDef } from "../types/domain";
 
 /** How many days the list opens on; older entries are one tap away. */
 const DAYS_SHOWN = 30;
@@ -28,8 +28,15 @@ function numbers(list: readonly JournalCash[]): string {
   return [...new Set(list.map((j) => `№${shortNumber(j.orderNumber)}`))].join(", ");
 }
 
+/** An entry's heading: the customer, or «Обнал · Ақжол». */
+function entryTitle(r: Pick<CashReceipt, "kind" | "customerName">): string {
+  if (r.kind !== "obnal") return r.customerName;
+  return r.customerName.trim() ? `Обнал · ${r.customerName.trim()}` : "Обнал";
+}
+
 /** What the form writes — the writer, the line and the time are added by the caller. */
 export interface CashReceiptDraft {
+  kind: CashReceiptKind;
   customerName: string;
   customerPhone: string;
   amountTiyn: number;
@@ -114,6 +121,8 @@ export function CashReceivedView({
 
   const today = dayKey(new Date());
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<CashReceiptKind>("customer");
+  const obnal = kind === "obnal";
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [amountTenge, setAmountTenge] = useState(0);
@@ -131,18 +140,20 @@ export function CashReceivedView({
     [checks],
   );
   const hint = useMemo(
-    () => (name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, cash, matched).slice(0, 4) : []),
-    [name, phone, date, today, cash, matched],
+    () => (!obnal && name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, cash, matched).slice(0, 4) : []),
+    [obnal, name, phone, date, today, cash, matched],
   );
 
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - DAYS_SHOWN * 86_400_000).toISOString().slice(0, 10);
   const recent = checks.filter((c) => c.receipt.date >= since);
   const shown = showAll ? checks : recent;
   const recentTiyn = recent.reduce((s, c) => s + c.receipt.amountTiyn, 0);
-  const toCheck = recent.filter((c) => c.status !== "ok").length;
+  const obnalTiyn = recent.filter((c) => c.status === "obnal").reduce((s, c) => s + c.receipt.amountTiyn, 0);
+  const toCheck = recent.filter((c) => c.status === "diff" || c.status === "none").length;
   const unclaimedTiyn = unclaimed.reduce((s, j) => s + j.amountTiyn, 0);
 
   const reset = () => {
+    setKind("customer");
     setName("");
     setPhone("");
     setAmountTenge(0);
@@ -151,6 +162,7 @@ export function CashReceivedView({
   };
 
   const startFrom = (j: JournalCash) => {
+    setKind("customer");
     setName(j.customerName);
     setPhone(j.customerPhone);
     setAmountTenge(j.amountTiyn / 100);
@@ -166,17 +178,17 @@ export function CashReceivedView({
     e.preventDefault();
     if (!onAdd) return;
     const amountTiyn = Math.round(amountTenge * 100);
-    if (!name.trim()) return setStatus("Клиенттің атын жазыңыз");
+    if (!obnal && !name.trim()) return setStatus("Клиенттің атын жазыңыз");
     if (amountTiyn <= 0) return setStatus("Соманы жазыңыз");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return setStatus("Күнін тексеріңіз");
     setSaving(true);
     try {
-      await onAdd({ customerName: name, customerPhone: phone, amountTiyn, date, comment });
-      setStatus(`✅ Жазылды: ${name.trim()} — ${formatMoney(amountTiyn)}`);
+      await onAdd({ kind, customerName: name, customerPhone: obnal ? "" : phone, amountTiyn, date, comment });
+      setStatus(`✅ Жазылды: ${entryTitle({ kind, customerName: name })} — ${formatMoney(amountTiyn)}`);
       reset();
       setOpen(false);
     } catch (err: unknown) {
-      setStatus("Қате: " + (err as Error).message);
+      setStatus("Сақталмады: " + cashReceiptErrorText(err));
     }
     setSaving(false);
   };
@@ -185,9 +197,9 @@ export function CashReceivedView({
     if (!onDelete) return;
     try {
       await onDelete(c.receipt);
-      setStatus(`Өшірілді: ${c.receipt.customerName} — ${formatMoney(c.receipt.amountTiyn)}`);
+      setStatus(`Өшірілді: ${entryTitle(c.receipt)} — ${formatMoney(c.receipt.amountTiyn)}`);
     } catch (err: unknown) {
-      setStatus("Қате: " + (err as Error).message);
+      setStatus("Өшірілмеді: " + cashReceiptErrorText(err));
     }
     setConfirmId(null);
   };
@@ -200,7 +212,7 @@ export function CashReceivedView({
       </div>
       <p className="aps-recv-lead">
         Алған налыңызды клиентімен жазыңыз — журналдағы сол клиенттің нал төлемімен салыстырылады.
-        Кассаға екінші рет қосылмайды.
+        Обналды «Обнал» деп белгілеңіз — ол журналмен салыстырылмайды. Кассаға екінші рет қосылмайды.
       </p>
 
       {error && (
@@ -209,23 +221,44 @@ export function CashReceivedView({
 
       {open ? (
         <form id="aps-recv-form" className="aps-recv-form" onSubmit={submit}>
-          <div className="form-group">
-            <label>Кімнен (клиент)</label>
-            <CustomerNameInput
-              value={name}
-              directory={directory}
-              placeholder="Журналдағы аты"
-              ariaLabel="Клиенттің аты"
-              onChange={(v) => {
-                setName(v);
-                setPhone("");
-              }}
-              onPick={(c) => {
-                setName(c.name);
-                setPhone(c.phone);
-              }}
-            />
+          {/* Обнал is cash for a transfer someone cashed out — no customer paid it, so the journal
+              has nothing to match it with (the owner, 07.11). */}
+          <div className="aps-recv-kind" role="radiogroup" aria-label="Нал қайдан келді">
+            <button type="button" role="radio" aria-checked={!obnal} className={!obnal ? "is-active" : ""}
+              onClick={() => setKind("customer")}>
+              Клиенттен
+            </button>
+            <button type="button" role="radio" aria-checked={obnal} className={obnal ? "is-active" : ""}
+              onClick={() => { setKind("obnal"); setPhone(""); }}>
+              Обнал
+            </button>
           </div>
+          {obnal ? (
+            <div className="form-group">
+              <label htmlFor="aps-recv-who">Кім берді (міндетті емес)</label>
+              <input id="aps-recv-who" className="form-input" value={name} maxLength={60}
+                onChange={(e) => setName(e.target.value)} placeholder="Мысалы: Ақжол" />
+              <p className="aps-recv-hint is-obnal">Обнал журналмен салыстырылмайды — тек жазылып қалады.</p>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>Кімнен (клиент)</label>
+              <CustomerNameInput
+                value={name}
+                directory={directory}
+                placeholder="Журналдағы аты"
+                ariaLabel="Клиенттің аты"
+                onChange={(v) => {
+                  setName(v);
+                  setPhone("");
+                }}
+                onPick={(c) => {
+                  setName(c.name);
+                  setPhone(c.phone);
+                }}
+              />
+            </div>
+          )}
           {hint.length > 0 && (
             <div className="aps-recv-hint" aria-label="Журналдағы нал">
               <span>Журналда:</span>
@@ -237,7 +270,7 @@ export function CashReceivedView({
               ))}
             </div>
           )}
-          {name.trim() && hint.length === 0 && (
+          {!obnal && name.trim() && hint.length === 0 && (
             <p className="aps-recv-hint is-empty">Журналда бұл клиенттің {LOOKBACK_DAYS} күндегі налы жоқ</p>
           )}
           <div className="aps-recv-pair">
@@ -276,6 +309,7 @@ export function CashReceivedView({
       {!loading && recent.length > 0 && (
         <p className="aps-recv-sum">
           {recent.length} жазба · <b>{formatMoney(recentTiyn)}</b>
+          {obnalTiyn > 0 && <> · оның обнал <b>{formatMoney(obnalTiyn)}</b></>}
           {toCheck > 0 ? <> · <span className="is-warn">{toCheck} тексеру керек</span></> : <> · ✓ бәрі сәйкес</>}
         </p>
       )}
@@ -285,7 +319,7 @@ export function CashReceivedView({
           {shown.map((c) => (
             <li key={c.receipt.id} className={`aps-recv-row is-${c.status}`}>
               <div className="aps-recv-top">
-                <span className="aps-recv-name">{c.receipt.customerName}</span>
+                <span className="aps-recv-name">{entryTitle(c.receipt)}</span>
                 <strong>{formatMoney(c.receipt.amountTiyn)}</strong>
               </div>
               <div className="aps-recv-meta">
@@ -293,7 +327,9 @@ export function CashReceivedView({
                 {c.receipt.comment ? <> · 💬 {c.receipt.comment}</> : null}
               </div>
               <div className="aps-recv-check">
-                {c.status === "ok"
+                {c.status === "obnal"
+                  ? <>Обнал — журналмен салыстырылмайды</>
+                  : c.status === "ok"
                   ? <>✓ Журналмен сәйкес · {numbers(c.payments)}{c.payments.length === 1 ? `, ${dayLabel(c.payments[0].day).slice(0, 5)}` : ""}</>
                   : c.status === "diff"
                     ? <>≠ Журналда {formatMoney(c.journalTiyn)} ({numbers(c.payments)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.journalTiyn))}</>
@@ -308,7 +344,7 @@ export function CashReceivedView({
                   </div>
                 ) : (
                   <button type="button" className="aps-recv-del" onClick={() => setConfirmId(c.receipt.id)}
-                    aria-label={`${c.receipt.customerName}, ${formatMoney(c.receipt.amountTiyn)} — өшіру`}>
+                    aria-label={`${entryTitle(c.receipt)}, ${formatMoney(c.receipt.amountTiyn)} — өшіру`}>
                     Өшіру
                   </button>
                 )

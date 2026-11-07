@@ -33,9 +33,15 @@ export interface JournalCash {
 
 /**
  * ok — the journal has this customer's cash for exactly this sum (one payment, or several taken
- *      together); diff — it has their cash nearby, but for another sum; none — it has none.
+ *      together); diff — it has their cash nearby, but for another sum; none — it has none;
+ * obnal — cash from «обнал», which no journal row stands for: written down, never checked.
  */
-export type ReceiptStatus = "ok" | "diff" | "none";
+export type ReceiptStatus = "ok" | "diff" | "none" | "obnal";
+
+/** Cash from «обнал» — not a customer's payment, so not matched against the journal. */
+export function isObnal(receipt: Pick<CashReceipt, "kind">): boolean {
+  return receipt.kind === "obnal";
+}
 
 export interface ReceiptCheck {
   receipt: CashReceipt;
@@ -192,6 +198,11 @@ export function checkCashReceipts(receipts: readonly CashReceipt[], cash: readon
   const used = new Set<string>();
   const checks: ReceiptCheck[] = [];
   for (const receipt of order) {
+    if (isObnal(receipt)) {
+      // Never takes a journal payment — a customer who happens to share the name keeps theirs.
+      checks.push({ receipt, status: "obnal", payments: [], journalTiyn: 0 });
+      continue;
+    }
     const near = nearbyCash(receipt, cash, used);
     const picked = pickPayments(near, receipt.amountTiyn, dayNumber(receipt.date));
     if (picked) {

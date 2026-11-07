@@ -863,6 +863,16 @@ describe("cash receipts (Нал ақша алдым) are the Admin's alone", () 
     await assertFails(setDoc(doc(db, "cashReceipts", "cr-5"), receipt(ADMIN_UID, { amountTiyn: 12.5 })));
   });
 
+  it("an «обнал» entry may leave the name empty; a customer's may not, and no other kind is taken", async () => {
+    const db = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(setDoc(doc(db, "cashReceipts", "cr-6"), receipt(ADMIN_UID, { kind: "obnal", customerName: "" })));
+    await assertSucceeds(setDoc(doc(db, "cashReceipts", "cr-7"), receipt(ADMIN_UID, { kind: "obnal", customerName: "Ақжол" })));
+    await assertSucceeds(setDoc(doc(db, "cashReceipts", "cr-8"), receipt(ADMIN_UID, { kind: "customer" })));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-9"), receipt(ADMIN_UID, { kind: "customer", customerName: "" })));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-10"), receipt(ADMIN_UID, { kind: "gift" })));
+    await assertFails(setDoc(doc(db, "cashReceipts", "cr-11"), receipt(ADMIN_UID, { kind: "obnal", amountTiyn: 0 })));
+  });
+
   it("a manager, a worker and a customer can neither read nor write it", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "cashReceipts", "cr-1"), receipt(ADMIN_UID));

@@ -201,13 +201,17 @@ service cloud.firestore {
       // checked against the journal's cash payments by the customer's name (src/lib/cashReceipts.ts).
       // Not money of its own — the journal already counted it — so nothing reads it but the Admin.
       // Written under one's own name with a positive whole-tiyn sum; deleted to correct a typo.
+      // A customer's cash names the customer; «обнал» (cash for a transfer someone cashed out,
+      // 07.11) is not matched to anyone, so its name — who handed it over — may be left empty.
       allow read: if isAdmin();
       allow create: if isAdmin()
         && request.resource.data.createdByUid == uid()
         && request.resource.data.amountTiyn is int
         && request.resource.data.amountTiyn > 0
+        && request.resource.data.get('kind', 'customer') in ['customer', 'obnal']
         && request.resource.data.customerName is string
-        && request.resource.data.customerName.size() > 0;
+        && (request.resource.data.customerName.size() > 0
+          || request.resource.data.get('kind', 'customer') == 'obnal');
       allow update: if false;
       allow delete: if isAdmin();
     }

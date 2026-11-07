@@ -173,7 +173,8 @@
 }
 
 /* «Нал ақша алдым» (CashReceivedCard) — cash the Admin took, each entry over the journal's answer.
-   Green — the journal has it; amber — another sum, or none at all: something to ask about. */
+   Green — the journal has it; amber — another sum, or none at all: something to ask about;
+   violet — обнал, which the journal is not asked about. */
 .aps-recv { display: grid; gap: 10px; }
 .aps-recv-lead { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
 .aps-recv .btn { min-height: 46px; padding: 10px 14px; font-size: 14px; }
@@ -182,11 +183,34 @@
 .aps-recv .btn-outline:hover { color: #fff; background: var(--primary-dark); }
 .aps-recv-form { display: grid; gap: 4px; padding: 12px; border-radius: 12px; background: #f5f6fa; scroll-margin-top: 72px; }
 .aps-recv-form .form-group { margin-bottom: 8px; }
+.aps-recv-kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e4e7ef;
+}
+.aps-recv-kind button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.aps-recv-kind button.is-active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+.aps-recv-kind button:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 1px; }
 /* Side by side only where the date field has room for «06.11.2026» and its picker icon. */
 .aps-recv-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 10px; }
 .aps-recv-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
 .aps-recv-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 8px; font-size: 12px; color: var(--text-secondary); }
 .aps-recv-hint.is-empty { display: block; color: #7c3d06; }
+.aps-recv-hint.is-obnal { display: block; margin: 6px 0 0; color: #5b21b6; }
 .aps-recv-chip {
   min-height: 32px;
   padding: 4px 10px;
@@ -225,6 +249,8 @@
 .aps-recv-meta { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .aps-recv-check { font-size: 12px; font-weight: 600; color: #92400e; }
 .aps-recv-row.is-ok .aps-recv-check { color: var(--aps-in); }
+.aps-recv-row.is-obnal { border-left-color: #7c3aed; }
+.aps-recv-row.is-obnal .aps-recv-check { color: #5b21b6; }
 .aps-recv-del {
   justify-self: start;
   min-height: 32px;
