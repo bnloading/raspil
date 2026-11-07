@@ -1,4 +1,4 @@
-import type { CashReceipt, Order, Payment, PaymentMethodDef } from "../types/domain";
+import type { CashReceipt, Department, Expense, Order, Payment, PaymentMethodDef } from "../types/domain";
 import { accountForMethod } from "./cashbox";
 import { dayKey } from "./dates";
 import { normalizePhone } from "./phone";
@@ -12,8 +12,13 @@ import { paymentNote } from "./payments";
  * customer: the same name (or the same phone, when both have one) and the same money, so each of
  * his entries reads as either «журналмен сәйкес» or as something to ask about.
  *
- * Nothing here moves money. The cash was counted on Касса when the journal took it; an entry only
- * says which of that cash reached him.
+ * Обнал is the other way cash reaches him: Нұр sends a transfer from his account and the one who
+ * took it hands over cash. No customer paid that, so the journal has nothing to say about it — it
+ * is checked instead against the «Обнал» expense Нұр writes on Касса for the transfer (the owner,
+ * 07.11), by the sum, the day and, when both name one, who handed it over.
+ *
+ * Nothing here moves money. The cash was counted on Касса when the journal took it, or when Касса
+ * booked the transfer; an entry only says which of that cash reached him.
  */
 
 /** One cash payment from the journal, as the check reads it. */
@@ -31,14 +36,27 @@ export interface JournalCash {
   note: string;
 }
 
-/**
- * ok — the journal has this customer's cash for exactly this sum (one payment, or several taken
- *      together); diff — it has their cash nearby, but for another sum; none — it has none;
- * obnal — cash from «обнал», which no journal row stands for: written down, never checked.
- */
-export type ReceiptStatus = "ok" | "diff" | "none" | "obnal";
+/** One «Обнал» expense on Касса — the transfer an обнал entry's cash came for. */
+export interface KassaObnal {
+  expenseId: string;
+  /** As Нұр wrote it: «Акжол 100 000 · Обнал». */
+  label: string;
+  /** Who took the transfer, read out of the label — «Акжол»; empty when the label names no one. */
+  who: string;
+  amountTiyn: number;
+  /** "YYYY-MM-DD", as Касса dates it. */
+  day: string;
+  byName: string;
+}
 
-/** Cash from «обнал» — not a customer's payment, so not matched against the journal. */
+/**
+ * For a customer's cash, against the journal; for обнал, against Касса's «Обнал» expenses.
+ * ok — the record has it for exactly this sum (for a customer, one payment or several taken
+ *      together); diff — it has something nearby, but for another sum; none — it has nothing.
+ */
+export type ReceiptStatus = "ok" | "diff" | "none";
+
+/** Cash from «обнал» — not a customer's payment: checked against Касса, never the journal. */
 export function isObnal(receipt: Pick<CashReceipt, "kind">): boolean {
   return receipt.kind === "obnal";
 }
@@ -46,11 +64,14 @@ export function isObnal(receipt: Pick<CashReceipt, "kind">): boolean {
 export interface ReceiptCheck {
   receipt: CashReceipt;
   status: ReceiptStatus;
-  /** ok: the journal payments it came to. diff: the customer's journal cash nearby that no other
-   *  entry took. none: empty. */
+  /** A customer's entry. ok: the journal payments it came to. diff: the customer's journal cash
+   *  nearby that no other entry took. none, or обнал: empty. */
   payments: JournalCash[];
-  /** Sum of `payments`. */
-  journalTiyn: number;
+  /** An обнал entry. ok: the Касса expense it came for. diff: the nearest one, of another sum.
+   *  none, or a customer's: empty. */
+  obnal: KassaObnal[];
+  /** What the record says: the sum of `payments`, or of `obnal`. */
+  recordTiyn: number;
 }
 
 export interface CashReceiptsCheck {
@@ -59,6 +80,8 @@ export interface CashReceiptsCheck {
   /** Journal cash from the first entry's day on that no entry accounts for — still at the counter,
    *  or taken without being written down. Newest first. */
   unclaimed: JournalCash[];
+  /** Касса's «Обнал» from the first entry's day on that no обнал entry accounts for. Newest first. */
+  unclaimedObnal: KassaObnal[];
 }
 
 /**
@@ -70,6 +93,11 @@ export const LOOKBACK_DAYS = 31;
 const LOOKAHEAD_DAYS = 1;
 /** Above this many candidate payments the "taken together" search stops (2^n subsets). */
 const MAX_SUBSET = 12;
+/**
+ * How far apart an обнал entry and its Касса expense may be dated, either way. The cash changes
+ * hands when the transfer is made, but either of the two may be written down a few days late.
+ */
+export const OBNAL_DAYS = 7;
 
 const FOLD: Record<string, string> = {
   ә: "а", ғ: "г", қ: "к", ң: "н", ө: "о", ұ: "у", ү: "у", һ: "х", і: "и", ё: "е",
@@ -145,6 +173,62 @@ export function journalCash({
   return out;
 }
 
+const OBNAL_WORD = /обнал|обнол|абнал/i;
+/** Words in an «Обнал» label that are not a name: the word itself, how much, «здачамен 43320». */
+const NOT_A_NAME = /(?<!\p{L})(?:обнал|обнол|абнал|миллион|млн|мың|тенге|тг|здачамен|сдачамен|сдача)\p{L}*/giu;
+
+/** «40000 обнал Динко» → «Динко»; «Миллион обнал» → "". */
+function whoIn(text: string): string {
+  return text.replace(NOT_A_NAME, " ").replace(/[^\p{L}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Касса's «Обнал» expenses on this line — any expense whose name or note says обнал, the way Нұр
+ * writes them: «Обнал», «Аман обнал», «Акжол 100 000» with «Обнал» in the note.
+ */
+export function kassaObnal(expenses: readonly Expense[], department: Department): KassaObnal[] {
+  const out: KassaObnal[] = [];
+  for (const e of expenses) {
+    if ((e.department ?? "ldsp") !== department || e.amountTiyn <= 0) continue;
+    const name = (e.name || "").trim();
+    const comment = (e.comment || "").trim();
+    if (!OBNAL_WORD.test(`${name} ${comment}`)) continue;
+    out.push({
+      expenseId: e.id,
+      label: comment ? `${name} · ${comment}` : name,
+      who: whoIn(name) || whoIn(comment),
+      amountTiyn: e.amountTiyn,
+      day: e.date,
+      byName: e.createdByName,
+    });
+  }
+  return out;
+}
+
+/** «Ақжол» and «Акжол Болат» are the same hand: one name holds the other, word for word. */
+function sameWho(a: string, b: string): boolean {
+  const ka = nameKey(a);
+  const kb = nameKey(b);
+  if (!ka || !kb) return false;
+  return ka === kb || ` ${kb} `.includes(` ${ka} `) || ` ${ka} `.includes(` ${kb} `);
+}
+
+/**
+ * Касса's обнал an entry may stand for: not yet taken by another entry, within OBNAL_DAYS of its day.
+ * The ones naming the same hand come first, then the nearest.
+ */
+export function nearbyObnal(
+  receipt: Pick<CashReceipt, "customerName" | "date">,
+  obnal: readonly KassaObnal[],
+  used: ReadonlySet<string> = new Set(),
+): KassaObnal[] {
+  const d = dayNumber(receipt.date);
+  const rank = (k: KassaObnal) => (sameWho(receipt.customerName, k.who) ? 0 : 100) + Math.abs(dayNumber(k.day) - d);
+  return obnal
+    .filter((k) => !used.has(k.expenseId) && Math.abs(dayNumber(k.day) - d) <= OBNAL_DAYS)
+    .sort((a, b) => rank(a) - rank(b) || b.day.localeCompare(a.day));
+}
+
 /** The journal's cash an entry may stand for: this customer's, not yet taken by another entry, near its day. */
 export function nearbyCash(
   receipt: Pick<CashReceipt, "customerName" | "customerPhone" | "date">,
@@ -188,32 +272,52 @@ function pickPayments(near: readonly JournalCash[], amountTiyn: number, day: num
 }
 
 /**
- * Every entry against the journal. Entries are matched oldest first, and a payment matched once is
- * never matched again — two hand-overs of 50 000 ₸ need two payments of it in the journal.
+ * Every entry against its record: a customer's against the journal, обнал against Касса. Entries
+ * are matched oldest first, and a payment or an expense matched once is never matched again — two
+ * hand-overs of 50 000 ₸ need two payments of it in the journal.
  */
-export function checkCashReceipts(receipts: readonly CashReceipt[], cash: readonly JournalCash[]): CashReceiptsCheck {
+export function checkCashReceipts(
+  receipts: readonly CashReceipt[],
+  cash: readonly JournalCash[],
+  obnal: readonly KassaObnal[] = [],
+): CashReceiptsCheck {
   const order = receipts.slice().sort(
     (a, b) => a.date.localeCompare(b.date) || (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0),
   );
   const used = new Set<string>();
+  const usedObnal = new Set<string>();
   const checks: ReceiptCheck[] = [];
   for (const receipt of order) {
     if (isObnal(receipt)) {
       // Never takes a journal payment — a customer who happens to share the name keeps theirs.
-      checks.push({ receipt, status: "obnal", payments: [], journalTiyn: 0 });
+      const near = nearbyObnal(receipt, obnal, usedObnal);
+      const exact = near.find((k) => k.amountTiyn === receipt.amountTiyn);
+      if (exact) {
+        usedObnal.add(exact.expenseId);
+        checks.push({ receipt, status: "ok", payments: [], obnal: [exact], recordTiyn: exact.amountTiyn });
+        continue;
+      }
+      // Another sum is only worth showing when it is plainly the same обнал: the same hand, or
+      // the day itself (or the next) — not any transfer of the week.
+      const d = dayNumber(receipt.date);
+      const close = near.find((k) => sameWho(receipt.customerName, k.who) || Math.abs(dayNumber(k.day) - d) <= 1);
+      checks.push(close
+        ? { receipt, status: "diff", payments: [], obnal: [close], recordTiyn: close.amountTiyn }
+        : { receipt, status: "none", payments: [], obnal: [], recordTiyn: 0 });
       continue;
     }
     const near = nearbyCash(receipt, cash, used);
     const picked = pickPayments(near, receipt.amountTiyn, dayNumber(receipt.date));
     if (picked) {
       picked.forEach((j) => used.add(j.paymentId));
-      checks.push({ receipt, status: "ok", payments: picked, journalTiyn: receipt.amountTiyn });
+      checks.push({ receipt, status: "ok", payments: picked, obnal: [], recordTiyn: receipt.amountTiyn });
     } else {
       checks.push({
         receipt,
         status: near.length > 0 ? "diff" : "none",
         payments: near,
-        journalTiyn: near.reduce((s, j) => s + j.amountTiyn, 0),
+        obnal: [],
+        recordTiyn: near.reduce((s, j) => s + j.amountTiyn, 0),
       });
     }
   }
@@ -223,7 +327,12 @@ export function checkCashReceipts(receipts: readonly CashReceipt[], cash: readon
   const unclaimed = first
     ? cash.filter((j) => j.day >= first && !used.has(j.paymentId) && !beside.has(j.paymentId)).sort((a, b) => b.atMs - a.atMs)
     : [];
+  const besideObnal = new Set(checks.filter((c) => c.status === "diff").flatMap((c) => c.obnal.map((k) => k.expenseId)));
+  const unclaimedObnal = first
+    ? obnal.filter((k) => k.day >= first && !usedObnal.has(k.expenseId) && !besideObnal.has(k.expenseId))
+      .sort((a, b) => b.day.localeCompare(a.day))
+    : [];
   checks.sort((a, b) => b.receipt.date.localeCompare(a.receipt.date)
     || (b.receipt.createdAt?.seconds ?? 0) - (a.receipt.createdAt?.seconds ?? 0));
-  return { checks, unclaimed };
+  return { checks, unclaimed, unclaimedObnal };
 }

@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { Timestamp } from "firebase/firestore";
-import type { CashReceipt, Order, Payment, PaymentMethodDef } from "../types/domain";
-import { checkCashReceipts, isObnal, journalCash, nameKey, nearbyCash, sameCustomer, type JournalCash } from "./cashReceipts";
+import type { CashReceipt, Expense, Order, Payment, PaymentMethodDef } from "../types/domain";
+import {
+  checkCashReceipts, isObnal, journalCash, kassaObnal, nameKey, nearbyCash, nearbyObnal, sameCustomer,
+  type JournalCash, type KassaObnal,
+} from "./cashReceipts";
 import { cashReceiptErrorText } from "./cashReceiptsWrite";
 
 const at = (iso: string) => ({ seconds: Math.floor(new Date(iso).getTime() / 1000), nanoseconds: 0 }) as unknown as Timestamp;
@@ -72,7 +75,7 @@ describe("checkCashReceipts", () => {
   it("reads an entry with the journal's cash for that customer and sum as «сәйкес»", () => {
     const j = cash({});
     const { checks, unclaimed } = checkCashReceipts([receipt({})], [j, cash({ customerName: "Дархан", day: "2026-11-04" })]);
-    expect(checks[0]).toMatchObject({ status: "ok", payments: [j], journalTiyn: T(50000) });
+    expect(checks[0]).toMatchObject({ status: "ok", payments: [j], recordTiyn: T(50000) });
     expect(unclaimed.map((u) => u.customerName)).toEqual(["Дархан"]);
   });
 
@@ -86,7 +89,7 @@ describe("checkCashReceipts", () => {
   it("says «басқа сома» when the journal has that customer's cash for another sum", () => {
     const j = cash({ amountTiyn: T(45000) });
     const { checks, unclaimed } = checkCashReceipts([receipt({})], [j]);
-    expect(checks[0]).toMatchObject({ status: "diff", journalTiyn: T(45000), payments: [j] });
+    expect(checks[0]).toMatchObject({ status: "diff", recordTiyn: T(45000), payments: [j] });
     // Shown beside the entry, so not counted again as unclaimed.
     expect(unclaimed).toEqual([]);
   });
@@ -116,8 +119,8 @@ describe("checkCashReceipts", () => {
     const obnal = receipt({ kind: "obnal", customerName: "Мейрам", date: "2026-11-03" });
     const own = receipt({ date: "2026-11-04", createdAt: at("2026-11-04T18:00:00+05:00") });
     const { checks, unclaimed } = checkCashReceipts([obnal, own], [j]);
-    expect(checks.map((c) => [c.receipt.id, c.status])).toEqual([[own.id, "ok"], [obnal.id, "obnal"]]);
-    expect(checks[1]).toMatchObject({ payments: [], journalTiyn: 0 });
+    expect(checks.map((c) => [c.receipt.id, c.status])).toEqual([[own.id, "ok"], [obnal.id, "none"]]);
+    expect(checks[1]).toMatchObject({ payments: [], obnal: [], recordTiyn: 0 });
     expect(unclaimed).toEqual([]);
     expect(isObnal(obnal)).toBe(true);
     expect(isObnal(own)).toBe(false);
@@ -126,7 +129,7 @@ describe("checkCashReceipts", () => {
   it("an «обнал» entry with no name is still listed, and its day still starts the unclaimed list", () => {
     const after = cash({ customerName: "Дархан", day: "2026-11-04" });
     const { checks, unclaimed } = checkCashReceipts([receipt({ kind: "obnal", customerName: "" })], [after]);
-    expect(checks[0].status).toBe("obnal");
+    expect(checks[0].status).toBe("none");
     expect(unclaimed).toEqual([after]);
   });
 
@@ -142,5 +145,53 @@ describe("cashReceiptErrorText", () => {
     expect(cashReceiptErrorText({ code: "permission-denied", message: "Missing or insufficient permissions." }))
       .toMatch(/Firestore ережелері әлі жаңартылмаған/);
     expect(cashReceiptErrorText(new Error("network down"))).toBe("network down");
+  });
+});
+
+describe("обнал against Касса's «Обнал» expenses", () => {
+  const expense = (over: Partial<Expense>): Expense => ({
+    id: `e${++seq}`, name: "Обнал", amountTiyn: T(100000), date: "2026-11-07", account: "deposit", department: "ldsp",
+    comment: "", createdByUid: "nur", createdByName: "Нур", ...over,
+  });
+  const obnalEntry = (over: Partial<CashReceipt>) => receipt({ kind: "obnal", customerName: "", date: "2026-11-07", amountTiyn: T(100000), ...over });
+
+  it("reads Касса's обнал the way Нұр writes it, with who took the transfer", () => {
+    const rows = kassaObnal([
+      expense({ id: "a", name: "Акжол 100 000", comment: "Обнал" }),
+      expense({ id: "b", name: "172000  Обнал", comment: "Акжол" }),
+      expense({ id: "c", name: "40000 обнал Динко", comment: "Здачамен 43320\\" }),
+      expense({ id: "d", name: "Миллион обнал" }),
+      expense({ id: "e", name: "Акжол Болат Обнал" }),
+      expense({ id: "f", name: "Мусор" }),
+      expense({ id: "g", name: "Аман обнал", department: "mdf" }),
+    ], "ldsp");
+    expect(rows.map((k) => [k.expenseId, k.who])).toEqual([["a", "Акжол"], ["b", "Акжол"], ["c", "Динко"], ["d", ""], ["e", "Акжол Болат"]]);
+    expect(rows[0].label).toBe("Акжол 100 000 · Обнал");
+  });
+
+  it("matches the Касса обнал of the same sum, the same hand first, within a week either way", () => {
+    const [far, other, akzhol] = kassaObnal([
+      expense({ id: "far", name: "Акжол обнал", date: "2026-10-25" }),
+      expense({ id: "other", name: "Аман обнал", date: "2026-11-07" }),
+      expense({ id: "ak", name: "Акжол обнал", date: "2026-11-05" }),
+    ], "ldsp");
+    // «Ақжол» on the phone, «Акжол» on Касса — one name.
+    const { checks, unclaimedObnal } = checkCashReceipts([obnalEntry({ customerName: "Ақжол" })], [], [far, other, akzhol]);
+    expect(checks[0]).toMatchObject({ status: "ok", obnal: [akzhol], recordTiyn: T(100000) });
+    expect(unclaimedObnal).toEqual([other]);
+    expect(nearbyObnal({ customerName: "", date: "2026-11-07" }, [far, other, akzhol]).map((k) => k.expenseId)).toEqual(["other", "ak"]);
+  });
+
+  it("shows another sum only when it is plainly the same обнал, and takes one expense once", () => {
+    const [dinko] = kassaObnal([expense({ name: "40000 обнал Динко", amountTiyn: T(43320), date: "2026-10-15" })], "ldsp");
+    const named = checkCashReceipts([obnalEntry({ customerName: "Динко", amountTiyn: T(40000), date: "2026-10-12" })], [], [dinko]);
+    expect(named.checks[0]).toMatchObject({ status: "diff", obnal: [dinko], recordTiyn: T(43320) });
+    expect(named.unclaimedObnal).toEqual([]);
+    // No name, three days off, another sum: not this one.
+    expect(checkCashReceipts([obnalEntry({ amountTiyn: T(40000), date: "2026-10-12" })], [], [dinko]).checks[0].status).toBe("none");
+    // Two hand-overs, one transfer: the second finds nothing left.
+    const [k] = kassaObnal([expense({})], "ldsp");
+    const two = checkCashReceipts([obnalEntry({}), obnalEntry({ createdAt: at("2026-11-07T19:00:00+05:00") })], [], [k as KassaObnal]);
+    expect(two.checks.map((c) => c.status).sort()).toEqual(["none", "ok"]);
   });
 });

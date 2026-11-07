@@ -173,8 +173,8 @@
 }
 
 /* «Нал ақша алдым» (CashReceivedCard) — cash the Admin took, each entry over the journal's answer.
-   Green — the journal has it; amber — another sum, or none at all: something to ask about;
-   violet — обнал, which the journal is not asked about. */
+   Green — the journal (or, for обнал, Касса) has it; amber — another sum, or none at all:
+   something to ask about. */
 .aps-recv { display: grid; gap: 10px; }
 .aps-recv-lead { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
 .aps-recv .btn { min-height: 46px; padding: 10px 14px; font-size: 14px; }
@@ -210,7 +210,6 @@
 .aps-recv-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
 .aps-recv-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 8px; font-size: 12px; color: var(--text-secondary); }
 .aps-recv-hint.is-empty { display: block; color: #7c3d06; }
-.aps-recv-hint.is-obnal { display: block; margin: 6px 0 0; color: #5b21b6; }
 .aps-recv-chip {
   min-height: 32px;
   padding: 4px 10px;
@@ -249,8 +248,6 @@
 .aps-recv-meta { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .aps-recv-check { font-size: 12px; font-weight: 600; color: #92400e; }
 .aps-recv-row.is-ok .aps-recv-check { color: var(--aps-in); }
-.aps-recv-row.is-obnal { border-left-color: #7c3aed; }
-.aps-recv-row.is-obnal .aps-recv-check { color: #5b21b6; }
 .aps-recv-del {
   justify-self: start;
   min-height: 32px;

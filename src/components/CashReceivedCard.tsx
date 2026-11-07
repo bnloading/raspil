@@ -2,10 +2,14 @@ import { useMemo, useState, type FormEvent } from "react";
 import { db } from "../firebase";
 import { useAuth } from "../AuthContext";
 import { useCashReceipts } from "../hooks/useCashReceipts";
+import { useExpenses } from "../hooks/useExpenses";
 import { CustomerNameInput } from "./CustomerNameInput";
 import { NumberField } from "./NumberField";
 import { customerDirectory } from "../lib/customerSuggest";
-import { checkCashReceipts, journalCash, nearbyCash, LOOKBACK_DAYS, type JournalCash, type ReceiptCheck } from "../lib/cashReceipts";
+import {
+  checkCashReceipts, journalCash, kassaObnal, nearbyCash, nearbyObnal, LOOKBACK_DAYS, OBNAL_DAYS,
+  type JournalCash, type KassaObnal, type ReceiptCheck,
+} from "../lib/cashReceipts";
 import { addCashReceipt, cashReceiptErrorText, deleteCashReceipt } from "../lib/cashReceiptsWrite";
 import { formatMoney } from "../lib/money";
 import { dayKey, formatDateDMY } from "../lib/dates";
@@ -13,6 +17,7 @@ import type { CashReceipt, CashReceiptKind, Department, Order, Payment, PaymentM
 
 /** How many days the list opens on; older entries are one tap away. */
 const DAYS_SHOWN = 30;
+const NO_OBNAL: readonly KassaObnal[] = [];
 
 /** "ORD-2026-000558" → "558". */
 function shortNumber(orderNumber: string): string {
@@ -65,6 +70,9 @@ export function CashReceivedCard({
 }) {
   const { user, userData } = useAuth();
   const { receipts: allReceipts, loading, error } = useCashReceipts();
+  // Касса's «Обнал» expenses, which an обнал entry is checked against (the owner, 07.11).
+  const { expenses } = useExpenses();
+  const obnal = useMemo(() => kassaObnal(expenses, department), [expenses, department]);
   const receipts = useMemo(
     () => allReceipts.filter((r) => (r.department ?? "ldsp") === department),
     [allReceipts, department],
@@ -75,6 +83,7 @@ export function CashReceivedCard({
       orders={orders}
       payments={payments}
       methods={methods}
+      obnal={obnal}
       receipts={receipts}
       loading={loading}
       error={error}
@@ -87,14 +96,16 @@ export function CashReceivedCard({
 
 /**
  * The card itself. The form takes who it came from, the sum and the day; under every entry is the
- * journal's answer — the customer's cash payment it matches, a different sum, or nothing at all.
- * Below the entries is the other direction: cash the journal took since the first entry that
- * nobody has written down here. Nothing on this card moves money (lib/cashReceipts.ts).
+ * record's answer — for a customer the journal's cash payment it matches, for обнал Касса's
+ * «Обнал» expense; a different sum, or nothing at all. Below the entries is the other direction:
+ * cash the journal took, and обнал Касса booked, since the first entry that nobody has written
+ * down here. Nothing on this card moves money (lib/cashReceipts.ts).
  */
 export function CashReceivedView({
   orders,
   payments,
   methods,
+  obnal = NO_OBNAL,
   receipts,
   loading,
   error,
@@ -105,6 +116,8 @@ export function CashReceivedView({
   orders: readonly Order[];
   payments: readonly Payment[];
   methods: readonly PaymentMethodDef[];
+  /** This line's «Обнал» expenses on Касса (lib/cashReceipts.ts kassaObnal). */
+  obnal?: readonly KassaObnal[];
   /** This line's entries. */
   receipts: readonly CashReceipt[];
   loading: boolean;
@@ -116,13 +129,13 @@ export function CashReceivedView({
   onDelete: ((receipt: CashReceipt) => Promise<void>) | null;
 }) {
   const cash = useMemo(() => journalCash({ payments, orders, methods }), [payments, orders, methods]);
-  const { checks, unclaimed } = useMemo(() => checkCashReceipts(receipts, cash), [receipts, cash]);
+  const { checks, unclaimed, unclaimedObnal } = useMemo(() => checkCashReceipts(receipts, cash, obnal), [receipts, cash, obnal]);
   const directory = useMemo(() => customerDirectory(orders), [orders]);
 
   const today = dayKey(new Date());
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<CashReceiptKind>("customer");
-  const obnal = kind === "obnal";
+  const isObnal = kind === "obnal";
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [amountTenge, setAmountTenge] = useState(0);
@@ -140,15 +153,25 @@ export function CashReceivedView({
     [checks],
   );
   const hint = useMemo(
-    () => (!obnal && name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, cash, matched).slice(0, 4) : []),
-    [obnal, name, phone, date, today, cash, matched],
+    () => (!isObnal && name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, cash, matched).slice(0, 4) : []),
+    [isObnal, name, phone, date, today, cash, matched],
+  );
+  // The same for обнал: Касса's «Обнал» around the day that no entry took — the same hand first.
+  const matchedObnal = useMemo(
+    () => new Set(checks.filter((c) => c.status === "ok").flatMap((c) => c.obnal.map((k) => k.expenseId))),
+    [checks],
+  );
+  const obnalHint = useMemo(
+    () => (isObnal ? nearbyObnal({ customerName: name, date: date || today }, obnal, matchedObnal).slice(0, 4) : []),
+    [isObnal, name, date, today, obnal, matchedObnal],
   );
 
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - DAYS_SHOWN * 86_400_000).toISOString().slice(0, 10);
   const recent = checks.filter((c) => c.receipt.date >= since);
   const shown = showAll ? checks : recent;
   const recentTiyn = recent.reduce((s, c) => s + c.receipt.amountTiyn, 0);
-  const obnalTiyn = recent.filter((c) => c.status === "obnal").reduce((s, c) => s + c.receipt.amountTiyn, 0);
+  const obnalTiyn = recent.filter((c) => c.receipt.kind === "obnal").reduce((s, c) => s + c.receipt.amountTiyn, 0);
+  const unclaimedObnalTiyn = unclaimedObnal.reduce((s, k) => s + k.amountTiyn, 0);
   const toCheck = recent.filter((c) => c.status === "diff" || c.status === "none").length;
   const unclaimedTiyn = unclaimed.reduce((s, j) => s + j.amountTiyn, 0);
 
@@ -174,16 +197,29 @@ export function CashReceivedView({
     requestAnimationFrame(() => document.getElementById("aps-recv-form")?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
 
+  // Обнал changes hands when the transfer is made, so the entry takes Касса's day, not today's.
+  const startFromObnal = (k: KassaObnal) => {
+    setKind("obnal");
+    setName(k.who);
+    setPhone("");
+    setAmountTenge(k.amountTiyn / 100);
+    setDate(k.day > today ? today : k.day);
+    setComment("");
+    setStatus(null);
+    setOpen(true);
+    requestAnimationFrame(() => document.getElementById("aps-recv-form")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!onAdd) return;
     const amountTiyn = Math.round(amountTenge * 100);
-    if (!obnal && !name.trim()) return setStatus("Клиенттің атын жазыңыз");
+    if (!isObnal && !name.trim()) return setStatus("Клиенттің атын жазыңыз");
     if (amountTiyn <= 0) return setStatus("Соманы жазыңыз");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return setStatus("Күнін тексеріңіз");
     setSaving(true);
     try {
-      await onAdd({ kind, customerName: name, customerPhone: obnal ? "" : phone, amountTiyn, date, comment });
+      await onAdd({ kind, customerName: name, customerPhone: isObnal ? "" : phone, amountTiyn, date, comment });
       setStatus(`✅ Жазылды: ${entryTitle({ kind, customerName: name })} — ${formatMoney(amountTiyn)}`);
       reset();
       setOpen(false);
@@ -212,7 +248,8 @@ export function CashReceivedView({
       </div>
       <p className="aps-recv-lead">
         Алған налыңызды клиентімен жазыңыз — журналдағы сол клиенттің нал төлемімен салыстырылады.
-        Обналды «Обнал» деп белгілеңіз — ол журналмен салыстырылмайды. Кассаға екінші рет қосылмайды.
+        Обналды «Обнал» деп белгілеңіз — ол Кассадағы «Обнал» шығынымен салыстырылады. Кассаға екінші
+        рет қосылмайды.
       </p>
 
       {error && (
@@ -221,25 +258,42 @@ export function CashReceivedView({
 
       {open ? (
         <form id="aps-recv-form" className="aps-recv-form" onSubmit={submit}>
-          {/* Обнал is cash for a transfer someone cashed out — no customer paid it, so the journal
-              has nothing to match it with (the owner, 07.11). */}
+          {/* Обнал is cash for a transfer someone cashed out — no customer paid it, so it is
+              checked against Касса's «Обнал» expense, not the journal (the owner, 07.11). */}
           <div className="aps-recv-kind" role="radiogroup" aria-label="Нал қайдан келді">
-            <button type="button" role="radio" aria-checked={!obnal} className={!obnal ? "is-active" : ""}
+            <button type="button" role="radio" aria-checked={!isObnal} className={!isObnal ? "is-active" : ""}
               onClick={() => setKind("customer")}>
               Клиенттен
             </button>
-            <button type="button" role="radio" aria-checked={obnal} className={obnal ? "is-active" : ""}
+            <button type="button" role="radio" aria-checked={isObnal} className={isObnal ? "is-active" : ""}
               onClick={() => { setKind("obnal"); setPhone(""); }}>
               Обнал
             </button>
           </div>
-          {obnal ? (
-            <div className="form-group">
-              <label htmlFor="aps-recv-who">Кім берді (міндетті емес)</label>
-              <input id="aps-recv-who" className="form-input" value={name} maxLength={60}
-                onChange={(e) => setName(e.target.value)} placeholder="Мысалы: Ақжол" />
-              <p className="aps-recv-hint is-obnal">Обнал журналмен салыстырылмайды — тек жазылып қалады.</p>
-            </div>
+          {isObnal ? (
+            <>
+              <div className="form-group">
+                <label htmlFor="aps-recv-who">Кім берді (міндетті емес)</label>
+                <input id="aps-recv-who" className="form-input" value={name} maxLength={60}
+                  onChange={(e) => setName(e.target.value)} placeholder="Мысалы: Ақжол" />
+              </div>
+              {obnalHint.length > 0 ? (
+                <div className="aps-recv-hint" aria-label="Кассадағы обнал">
+                  <span>Кассада:</span>
+                  {obnalHint.map((k) => (
+                    <button key={k.expenseId} type="button" className="aps-recv-chip"
+                      onClick={() => {
+                        setAmountTenge(k.amountTiyn / 100);
+                        if (!name.trim() && k.who) setName(k.who);
+                      }}>
+                      {k.who || "Обнал"} · {formatMoney(k.amountTiyn)} · {dayLabel(k.day).slice(0, 5)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="aps-recv-hint is-empty">Кассада {OBNAL_DAYS} күн ішінде «Обнал» жазылмаған</p>
+              )}
+            </>
           ) : (
             <div className="form-group">
               <label>Кімнен (клиент)</label>
@@ -270,7 +324,7 @@ export function CashReceivedView({
               ))}
             </div>
           )}
-          {!obnal && name.trim() && hint.length === 0 && (
+          {!isObnal && name.trim() && hint.length === 0 && (
             <p className="aps-recv-hint is-empty">Журналда бұл клиенттің {LOOKBACK_DAYS} күндегі налы жоқ</p>
           )}
           <div className="aps-recv-pair">
@@ -327,12 +381,16 @@ export function CashReceivedView({
                 {c.receipt.comment ? <> · 💬 {c.receipt.comment}</> : null}
               </div>
               <div className="aps-recv-check">
-                {c.status === "obnal"
-                  ? <>Обнал — журналмен салыстырылмайды</>
+                {c.receipt.kind === "obnal"
+                  ? c.status === "ok"
+                    ? <>✓ Кассамен сәйкес · «{c.obnal[0].label}», {dayLabel(c.obnal[0].day).slice(0, 5)}</>
+                    : c.status === "diff"
+                      ? <>≠ Кассада {formatMoney(c.recordTiyn)} («{c.obnal[0].label}», {dayLabel(c.obnal[0].day).slice(0, 5)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.recordTiyn))}</>
+                      : <>Кассада бұл обнал жазылмаған</>
                   : c.status === "ok"
                   ? <>✓ Журналмен сәйкес · {numbers(c.payments)}{c.payments.length === 1 ? `, ${dayLabel(c.payments[0].day).slice(0, 5)}` : ""}</>
                   : c.status === "diff"
-                    ? <>≠ Журналда {formatMoney(c.journalTiyn)} ({numbers(c.payments)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.journalTiyn))}</>
+                    ? <>≠ Журналда {formatMoney(c.recordTiyn)} ({numbers(c.payments)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.recordTiyn))}</>
                     : <>Журналда бұл клиенттің налы жоқ</>}
               </div>
               {myUid && c.receipt.createdByUid === myUid && onDelete && (
@@ -375,6 +433,28 @@ export function CashReceivedView({
                   {dayLabel(j.day)} · {j.byName}{j.note ? <> · 💬 {j.note}</> : null}
                 </div>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => startFrom(j)}>Алдым деп жазу</button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {unclaimedObnal.length > 0 && (
+        <details className="aps-recv-unclaimed">
+          <summary>
+            Кассада бар, мұнда жазылмаған обнал: {unclaimedObnal.length} · <b>{formatMoney(unclaimedObnalTiyn)}</b>
+          </summary>
+          <ul>
+            {unclaimedObnal.map((k) => (
+              <li key={k.expenseId}>
+                <div className="aps-recv-top">
+                  <span className="aps-recv-name">{k.who ? `Обнал · ${k.who}` : "Обнал"}</span>
+                  <strong>{formatMoney(k.amountTiyn)}</strong>
+                </div>
+                <div className="aps-recv-meta">
+                  {dayLabel(k.day)} · {k.byName} · 💬 {k.label}
+                </div>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => startFromObnal(k)}>Алдым деп жазу</button>
               </li>
             ))}
           </ul>
