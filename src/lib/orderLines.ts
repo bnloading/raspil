@@ -40,6 +40,7 @@ export function buildLineJobs(order: Order): OrderLineJob[] {
     index,
     materialId: line.materialId,
     materialName: line.materialName,
+    ...(line.externalName ? { externalName: line.externalName } : {}),
     sheetQty: line.sheetQty,
     pvcMeters: line.pvcMeters,
     ...(line.pvcJointed ? { pvcJointed: true } : {}),
@@ -102,6 +103,8 @@ export function sheetsKeptOnCancel(order: Order): OrderLineJob[] {
 export interface LineWork {
   materialId: string;
   materialName: string;
+  /** A customer's own sheet's name — see OrderMaterialLine.externalName. */
+  externalName?: string;
   sheetQty: number;
   pvcMeters: number;
   pvcJointed?: boolean;
@@ -130,11 +133,17 @@ export function syncLineJobs(existing: OrderLineJob[], lines: LineWork[]): Order
   const synced = lines.map((line, index) => {
     const job = existing[index];
     const cut = job && isCuttingDone(job);
+    // The name of a customer's own sheet follows the line the way its count does — written,
+    // changed or cleared in the journal — and is dropped rather than left as undefined, which
+    // Firestore refuses.
+    const base = { ...job };
+    delete base.externalName;
     return {
-      ...job,
+      ...base,
       index,
       ...(cut ? {} : { materialId: line.materialId }),
       materialName: line.materialName,
+      ...(line.externalName ? { externalName: line.externalName } : {}),
       sheetQty: line.sheetQty,
       pvcMeters: line.pvcMeters,
       ...(line.pvcJointed ? { pvcJointed: true } : {}),

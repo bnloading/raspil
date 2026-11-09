@@ -23,9 +23,11 @@ import { departmentOf, departmentOfOrder, methodVisibleTo } from "../../lib/rbac
 import {
   cuttingCostForLines,
   externalCountertopPriceTiyn,
+  isExternalSheet,
   isHdfMaterial,
   pvcDefaultsFor,
 } from "../../lib/journalPricing";
+import { materialLabel } from "../../lib/materialLabel";
 import {
   JOURNAL_QUICK_FILTERS,
   journalCutState,
@@ -1065,7 +1067,7 @@ export default function ManagerJournal() {
     const owed = Math.max(0, order.totalTiyn - netPaidTiyn(livePaymentsFor(order.id)));
     const sheets = linesOf(order)
       .filter((l) => l.sheetQty > 0)
-      .map((l) => `${l.materialName || "материал"} — ${l.sheetQty} лист`)
+      .map((l) => `${materialLabel(l) || "материал"} — ${l.sheetQty} лист`)
       .join("\n");
     if (!confirm(
       `${order.orderNumber} — ${order.customerName}\n\nРаспилға жібермей, қоймадан шегеріледі:\n${sheets}`
@@ -1235,7 +1237,7 @@ export default function ManagerJournal() {
         "№": o.orderNumber,
         "Клиент аты": o.customerName,
         Телефон: o.customerPhone,
-        "Лист түрі": line.materialName || o.materialSnapshot.name,
+        "Лист түрі": materialLabel(line) || o.materialSnapshot.name,
         "Лист саны": line.sheetQty,
         "Лист бағасы": line.sheetPriceTiyn / 100,
         "ПВХ, м": line.pvcMeters,
@@ -2155,6 +2157,10 @@ function JournalRow({
   // Summarised from the draft, not the saved order, so a sheet count typed in the panel shows in
   // the cell before the autosave has landed.
   const sheets = sheetSummary(draft.lines);
+  // A customer's own sheet with nothing saying which sheet it is (the owner, 09.11).
+  const unnamedOwnSheet = draft.lines.some(
+    (l) => l.sheetQty > 0 && isExternalSheet(materialsById.get(l.materialId)) && !(l.externalName ?? "").trim(),
+  );
   const pvc = pvcSummary(draft.lines, pvcTypesById);
   const steps = journalProgress(order, paid);
   const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
@@ -2228,11 +2234,12 @@ function JournalRow({
           <button className="jt-fact" onClick={onOpenPanel} title="Материалдарды ашу"
             aria-label={`Лист саны — ${sheets.headline}`}>
             <span className="jt-fact-value">{sheets.headline}</span>
-            <span className="jt-fact-note">
+            <span className="jt-fact-note" title={sheets.detail || undefined}>
               {sheets.detail
                 || materialsById.get(draft.lines[0]?.materialId ?? "")?.name
                 || "материал таңдау"}
             </span>
+            {unnamedOwnSheet && <span className="jt-fact-warn">⚠ листтің аты жазылмаған</span>}
           </button>
         </td>
       )}
@@ -2379,7 +2386,7 @@ function JournalRow({
         <tr key={index} className={`jt-subrow${groupClass}`}>
           <td className="jt-w-pick" />
           <td className="jt-w-who">
-            <span className="jt-sub-material">{line.materialName || "материал таңдалмаған"}</span>
+            <span className="jt-sub-material">{materialLabel(line) || "материал таңдалмаған"}</span>
             {line.sourceOrderNumber && line.sourceOrderNumber !== order.orderNumber && (
               <span className="jt-sub-source" title={line.sourceOrderNumber}>
                 №{shortOrderNumber(line.sourceOrderNumber)} ішінен
@@ -2536,6 +2543,8 @@ function JournalDetailPanel({
           ...line,
           materialId,
           materialName: m?.name ?? "",
+          // The name belongs to a customer's own sheet; re-picked to anything else, it goes.
+          externalName: isExternalSheet(m) ? line.externalName ?? "" : "",
           // A customer's own countertop is not sold, so its catalogue price is 0 — which left the
           // "Лист бағасы" cell reading zero for a job the shop very much charges for, and every
           // manager typed the 2 000/3 000 in by hand. The кесу fee was then added on top of what
@@ -2627,6 +2636,17 @@ function JournalDetailPanel({
                     title="Материалды өшіру" aria-label={`${index + 1}-материалды өшіру`}>✕</button>
                 )}
               </div>
+
+              {/* «Сырттан келетін лист» says whose board it is, never which — the owner, 09.11:
+                  «аты жазылатын болсын». Shown to the cutter on the job. */}
+              {isExternalSheet(materialsById.get(line.materialId)) && (
+                <label className={`journal-line-ext${(line.externalName ?? "").trim() ? "" : " is-empty"}`}>
+                  <span>Сырттан келген листтің аты</span>
+                  <input className="form-input" value={line.externalName ?? ""} maxLength={80}
+                    placeholder="Мысалы: Эггер Дуб Галифакс"
+                    onChange={(e) => patchLine(index, { externalName: e.target.value })} />
+                </label>
+              )}
 
               <div className="journal-line-grid">
                 <label>
@@ -2937,6 +2957,7 @@ function NewJournalRow({
                 ...line,
                 materialId,
                 materialName: m?.name ?? "",
+                externalName: isExternalSheet(m) ? line.externalName ?? "" : "",
                 // Same standing-rate fill as the detail panel — see pickMaterial there.
                 sheetPriceTiyn: m?.sellingPriceTiyn || externalCountertopPriceTiyn(m) || line.sheetPriceTiyn,
                 pvcTypeId: pvc.pvcTypeId,
@@ -2954,6 +2975,12 @@ function NewJournalRow({
             });
           }}
         />
+        {/* What the customer's own sheet is — see the detail panel's «Сырттан келген листтің аты». */}
+        {isExternalSheet(materials.find((x) => x.id === line.materialId)) && (
+          <input className="jt-input jt-ext-name" value={line.externalName ?? ""} maxLength={80}
+            aria-label="Сырттан келген листтің аты" placeholder="Листтің аты: Эггер Дуб Галифакс"
+            onChange={(e) => patchLine({ externalName: e.target.value })} />
+        )}
         <div className="jt-new-grid">
           <NumberField className="jt-input jt-input-num" value={line.sheetQty} min={0} ariaLabel="Лист саны"
             placeholder="лист" onChange={(v) => patchLine({ sheetQty: v })} />

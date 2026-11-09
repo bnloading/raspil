@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Material, Order, OrderLineJob } from "../types/domain";
 import { isEmptyJob, jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
+import { materialLabel } from "../lib/materialLabel";
 import { cutCountsOfJobs, jobQuantities, workerJobs, type FloorStage } from "../lib/workerQuantities";
 
 const number = (n: number) => n.toLocaleString("kk-KZ", { maximumFractionDigits: 2 });
@@ -45,7 +46,7 @@ export function WorkerMaterialSummary({ order, materials, stage, uid, history = 
       const status = done ? ["✓ Орындалды", areaWarning].filter(Boolean).join(" · ") : areaWarning;
       return <div className="worker-material" key={job.index}>
         <div className="worker-material-head">
-          <strong>{job.materialName || "Материал"}</strong>
+          <strong>{materialLabel(job) || "Материал"}</strong>
           <span className="worker-quantities">
             <span><b>{number(q.sheets)}</b> лист</span>
             {showArea && <span><b>{q.area === null ? "—" : number(q.area)}</b> м²</span>}

@@ -152,6 +152,9 @@ export interface OrderLineJob {
   index: number;
   materialId: string;
   materialName: string;
+  /** What a customer's own sheet is — «Эггер Дуб Галифакс» — copied from the journal line
+   *  (OrderMaterialLine.externalName) so the cutter reads it on the job. */
+  externalName?: string;
   sheetQty: number;
   pvcMeters: number;
   /** Sheets taken out of the warehouse for this line when the order was queued. */
@@ -181,6 +184,12 @@ export interface OrderLineJob {
 export interface OrderMaterialLine {
   materialId: string;
   materialName: string;
+  /**
+   * What a customer's own sheet actually is — «Эггер Дуб Галифакс» — typed beside the
+   * «Сырттан келетін лист» placeholder (the owner, 09.11: «аты жазылатын болсын»). Only ever set
+   * on such a line (lib/journalPricing.ts isExternalSheet); read through lib/materialLabel.ts.
+   */
+  externalName?: string;
   sheetQty: number;
   sheetPriceTiyn: number;
   pvcMeters: number;

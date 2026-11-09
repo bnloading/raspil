@@ -1,4 +1,5 @@
 import type { PaymentMethodDef, PvcType } from "../types/domain";
+import { materialLabel } from "./materialLabel";
 
 /**
  * What each ledger column shows, and which of them a manager is allowed to hide.
@@ -57,6 +58,8 @@ export function journalColumnCount(hidden: ReadonlySet<JournalColumnId>): number
 /** The shape both a saved order line and an unsaved draft line share. */
 export interface LineSummaryInput {
   materialName: string;
+  /** A customer's own sheet's name — the cell reads «Сырттан: Эггер Дуб Галифакс». */
+  externalName?: string;
   sheetQty: number;
   pvcMeters: number;
   pvcTypeId?: string;
@@ -84,7 +87,7 @@ export function sheetSummary(lines: readonly LineSummaryInput[]): CellSummary {
   const byMaterial = new Map<string, number>();
   for (const line of lines) {
     if (line.sheetQty <= 0) continue;
-    const name = line.materialName.trim() || "Материал";
+    const name = materialLabel(line, { compact: true }) || "Материал";
     byMaterial.set(name, (byMaterial.get(name) ?? 0) + line.sheetQty);
   }
 

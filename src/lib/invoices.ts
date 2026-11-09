@@ -14,6 +14,7 @@ import type { User } from "firebase/auth";
 import type { Invoice, InvoiceLine, Order, Payment, UserDoc } from "../types/domain";
 import { computeLineTotals, netPaidTiyn, PVC_JOINTING_SURCHARGE_TIYN } from "./journal";
 import { logAudit } from "./audit";
+import { materialLabel } from "./materialLabel";
 
 type Actor = { user: User; userData: UserDoc };
 
@@ -68,7 +69,7 @@ export function buildInvoiceLines(order: Order): InvoiceLine[] {
       const totals = computeLineTotals(item);
       if (totals.materialCostTiyn > 0) {
         lines.push({
-          name: item.materialName || "Материал",
+          name: materialLabel(item) || "Материал",
           qty: item.sheetQty,
           unit: /столешниц/i.test(item.materialName ?? "") ? "дана" : "лист",
           unitPriceTiyn: item.sheetPriceTiyn,

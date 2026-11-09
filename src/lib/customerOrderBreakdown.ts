@@ -2,6 +2,7 @@ import { computeLineTotals } from "./journal";
 import { formatMdfArea, mdfPatternOf } from "./mdfJournal";
 import { formatMoney } from "./money";
 import { linesOf } from "./orderMerge";
+import { materialLabel } from "./materialLabel";
 import { MDF_FINISH_LABELS } from "../types/domain";
 import type { Order } from "../types/domain";
 
@@ -45,7 +46,7 @@ export function customerOrderBreakdown(order: Order): { lines: BreakdownRow[]; e
       if (line.sheetQty > 0 || totals.materialCostTiyn > 0) {
         lines.push({
           key: `sheets-${index}`,
-          title: line.materialName || "Материал",
+          title: materialLabel(line) || "Материал",
           detail: `${line.sheetQty} лист × ${formatMoney(line.sheetPriceTiyn)}`,
           quantity: `${line.sheetQty} лист`,
           amountTiyn: totals.materialCostTiyn,

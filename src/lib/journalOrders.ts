@@ -4,6 +4,7 @@ import { computeJournalRowTotals, computeLineTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
 import { linesOf } from "./orderMerge";
 import { syncLineJobs } from "./orderLines";
+import { isExternalSheet } from "./journalPricing";
 import { consumeLineForCutting, settleUncutLines } from "./warehouse";
 import { generateOrderNumber } from "./orderNumber";
 import { logAudit } from "./audit";
@@ -20,6 +21,8 @@ type Actor = { user: User; userData: UserDoc };
 export interface JournalDraftLine {
   materialId: string;
   materialName: string;
+  /** What a customer's own sheet is, typed beside «Сырттан келетін лист» (OrderMaterialLine.externalName). */
+  externalName?: string;
   sheetQty: number;
   sheetPriceTiyn: number;
   pvcMeters: number;
@@ -74,6 +77,7 @@ export function emptyJournalLine(): JournalDraftLine {
   return {
     materialId: "",
     materialName: "",
+    externalName: "",
     sheetQty: 0,
     sheetPriceTiyn: 0,
     pvcMeters: 0,
@@ -146,6 +150,7 @@ export function draftFromOrder(order: Order): JournalDraft {
   const lines = linesOf(order).map((line, index) => ({
     materialId: line.materialId ?? "",
     materialName: line.materialName ?? "",
+    externalName: line.externalName ?? "",
     sheetQty: line.sheetQty ?? 0,
     sheetPriceTiyn: line.sheetPriceTiyn ?? 0,
     pvcMeters: line.pvcMeters ?? 0,
@@ -177,22 +182,29 @@ export function draftFromOrder(order: Order): JournalDraft {
 
 /** The draft's lines in the shape an order stores them (`Order.items`). */
 export function itemsFromDraft(draft: JournalDraft, materials: Map<string, Material>): OrderMaterialLine[] {
-  return draft.lines.map((line) => ({
-    materialId: line.materialId,
-    materialName: materials.get(line.materialId)?.name || line.materialName || "",
-    sheetQty: line.sheetQty,
-    sheetPriceTiyn: line.sheetPriceTiyn,
-    pvcMeters: line.pvcMeters,
-    pvcPricePerMeterTiyn: line.pvcPricePerMeterTiyn,
-    pvcTypeId: line.pvcTypeId,
-    pvcColorName: line.pvcColorName,
-    ...(line.pvcJointed ? { pvcJointed: true } : {}),
-    // Defaulted, never passed through: Firestore rejects an undefined value outright, so a draft
-    // line built without this field would fail the whole save rather than just missing an
-    // attribution. TypeScript requires it, but the field is newer than some of the code that
-    // builds lines, and a write that throws is far worse than a line that says nothing.
-    sourceOrderNumber: line.sourceOrderNumber ?? "",
-  }));
+  return draft.lines.map((line) => {
+    const material = materials.get(line.materialId);
+    const externalName = (line.externalName ?? "").trim();
+    return {
+      materialId: line.materialId,
+      materialName: material?.name || line.materialName || "",
+      // Kept only on a customer's-own-sheet line, so a line re-picked to the shop's own board does
+      // not carry a stale name onto the cutter's card.
+      ...(externalName && isExternalSheet(material ?? { name: line.materialName }) ? { externalName } : {}),
+      sheetQty: line.sheetQty,
+      sheetPriceTiyn: line.sheetPriceTiyn,
+      pvcMeters: line.pvcMeters,
+      pvcPricePerMeterTiyn: line.pvcPricePerMeterTiyn,
+      pvcTypeId: line.pvcTypeId,
+      pvcColorName: line.pvcColorName,
+      ...(line.pvcJointed ? { pvcJointed: true } : {}),
+      // Defaulted, never passed through: Firestore rejects an undefined value outright, so a draft
+      // line built without this field would fail the whole save rather than just missing an
+      // attribution. TypeScript requires it, but the field is newer than some of the code that
+      // builds lines, and a write that throws is far worse than a line that says nothing.
+      sourceOrderNumber: line.sourceOrderNumber ?? "",
+    };
+  });
 }
 
 /**

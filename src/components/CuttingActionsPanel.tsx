@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { db } from "../firebase";
 import { completeCuttingLine, startCuttingLine, updateCuttingEstimateLine } from "../lib/orderStatus";
 import { isEmptyJob, jobsOf, needsPvc as jobNeedsPvc } from "../lib/orderLines";
+import { materialLabel } from "../lib/materialLabel";
 import { formatDateTimeDMY } from "../lib/dates";
 import { formatClock, readCuttingTimer } from "../lib/cuttingTimer";
 import { useServerClockOffset } from "../hooks/useServerClock";
@@ -73,7 +74,7 @@ export function CuttingLineActions({
   const meta = `${job.sheetQty} лист${jobNeedsPvc(job) ? ` · ${job.pvcMeters} м ПВХ` : ""}`;
   const label = showLabel ? (
     <span className="cutting-line-material">
-      {job.materialName}
+      {materialLabel(job)}
       {job.cuttingCompletedAt ? "" : ` · ${meta}`}
     </span>
   ) : null;

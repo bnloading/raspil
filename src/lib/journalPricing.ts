@@ -171,6 +171,17 @@ export function isExternalMaterial(material: Pick<Material, "name"> | undefined)
 }
 
 /**
+ * A customer's own SHEET — «Сырттан келетін лист», «…лист Эггер» — as opposed to their own ХДФ or
+ * countertop. The line the journal asks to name (the owner, 09.11): the placeholder says whose
+ * board it is, never which board.
+ */
+export function isExternalSheet(material: (Pick<Material, "name"> & Partial<Pick<Material, "category">>) | undefined): boolean {
+  if (!material || !isExternalMaterial(material)) return false;
+  if (material.category === "hdf" || material.category === "countertop") return false;
+  return !isHdfMaterial(material) && !/столешниц/i.test(material.name ?? "");
+}
+
+/**
  * True for the white finish, which is priced below the rest of the range.
  *
  * Compares whole words rather than substrings, so "Бежевый" is not read as white and "Ақсай" is

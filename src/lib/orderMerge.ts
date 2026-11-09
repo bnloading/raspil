@@ -1,4 +1,5 @@
 import type { Order, OrderMaterialLine, Payment } from "../types/domain";
+import { materialLabel } from "./materialLabel";
 
 /**
  * Merging several journal rows into one order.
@@ -145,7 +146,7 @@ export function planMerge(orders: Order[]): { plan: MergePlan } | { refusal: Mer
 export function describeLines(lines: OrderMaterialLine[]): string {
   return lines
     .filter((l) => l.sheetQty > 0 || l.materialName)
-    .map((l) => `${l.sheetQty} лист ${l.materialName}`.trim())
+    .map((l) => `${l.sheetQty} лист ${materialLabel(l)}`.trim())
     .join(" · ");
 }
 

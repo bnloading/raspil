@@ -8884,6 +8884,18 @@ a.kpi-card:hover { border-color: var(--primary-light); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A customer's own sheet nobody has named yet (the owner, 09.11) — not quiet. */
+.jt-fact-warn {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--jt-font-sm);
+  font-weight: 600;
+  color: #b45309;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jt-ext-name { margin-top: 4px; }
 
 /* ── Клиент аты: completing the name from the shop's own history ────────────────────────────── */
 
@@ -10067,6 +10079,17 @@ a.kpi-card:hover { border-color: var(--primary-light); }
   margin-bottom: 8px;
 }
 .journal-line-top .form-input { flex: 1 1 auto; min-width: 0; padding: 7px 9px; font-size: 0.84rem; }
+.journal-line-ext { display: flex; flex-direction: column; gap: 3px; margin: -2px 0 8px; }
+.journal-line-ext span { font-size: 0.7rem; color: var(--text-light); }
+.journal-line-ext .form-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+}
+.journal-line-ext.is-empty .form-input { border-color: #f59e0b; }
 .journal-line-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
