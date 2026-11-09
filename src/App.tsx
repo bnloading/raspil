@@ -30,6 +30,7 @@ const AdminCsvSettings = lazy(() => import("./pages/admin/AdminCsvSettings"));
 const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance"));
 const AdminSalary = lazy(() => import("./pages/admin/AdminSalary"));
 const MySalary = lazy(() => import("./pages/MySalary"));
+const AdvanceRequestPage = lazy(() => import("./pages/AdvanceRequestPage"));
 const MyAttendance = lazy(() => import("./pages/MyAttendance"));
 const InvoicePage = lazy(() => import("./pages/InvoicePage"));
 const AdminOversightManager = lazy(() => import("./pages/admin/AdminOversightManager"));
@@ -283,6 +284,16 @@ export default function App() {
             />
             {/* Every employee sees their OWN salary/attendance; the queries are uid-scoped and
                 firestore.rules refuses anyone else's documents. */}
+            <Route
+              path="/advance"
+              element={
+                // «Аванс сұрау» — every worker of both lines asks here; their line's Manager
+                // answers on Касса (lib/advanceRequests.ts).
+                <RouteGuard roles={["raspil", "pvh", "cnc", "sanding", "painting", "vacuum"]}>
+                  <AdvanceRequestPage />
+                </RouteGuard>
+              }
+            />
             <Route
               path="/salary"
               element={

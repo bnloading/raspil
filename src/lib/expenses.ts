@@ -69,25 +69,43 @@ export async function addExpense(
  * which went on reading 232 800 ₸ still to pay. Each record names the other, and deleting the
  * expense reverses the advance (deleteExpense).
  */
-export async function payWorkerFromCashbox(
-  db: Firestore,
-  actor: Actor,
-  data: {
-    name: string;
-    amountTiyn: number;
-    date: string;
-    comment: string;
-    account: CashAccount;
-    department: Department;
-    worker: { uid: string; name: string };
-    /** The pay period it comes off — this week/month for an advance, the last one for its pay. */
-    periodKey: string;
-  },
-): Promise<string> {
+export async function payWorkerFromCashbox(db: Firestore, actor: Actor, data: WorkerPayment): Promise<string> {
+  const { expenseRef, advanceRef, expense, advance } = workerPaymentDocs(db, actor, data);
+  const batch = writeBatch(db);
+  batch.set(expenseRef, expense);
+  batch.set(advanceRef, advance);
+  await batch.commit();
+  await logAudit(db, actor, {
+    action: "expense.create",
+    entityType: "expense",
+    entityId: expenseRef.id,
+    after: { name: data.name, amountTiyn: data.amountTiyn, date: data.date, paidTo: data.worker.name, periodKey: data.periodKey },
+  });
+  return expenseRef.id;
+}
+
+/** Money handed to a worker out of a Касса pot — see payWorkerFromCashbox. */
+export interface WorkerPayment {
+  name: string;
+  amountTiyn: number;
+  date: string;
+  comment: string;
+  account: CashAccount;
+  department: Department;
+  worker: { uid: string; name: string };
+  /** The pay period it comes off — this week/month for an advance, the last one for its pay. */
+  periodKey: string;
+}
+
+/**
+ * The two records money handed to a worker is written as, each naming the other — for the caller
+ * to write together: a batch at the Касса counter (payWorkerFromCashbox), a transaction when a
+ * Manager says «Иә, беремін» to an «Аванс сұрау» (lib/advanceRequests.ts).
+ */
+export function workerPaymentDocs(db: Firestore, actor: Actor, data: WorkerPayment) {
   const expenseRef = doc(collection(db, "expenses"));
   const advanceRef = doc(collection(db, "advances"));
-  const batch = writeBatch(db);
-  batch.set(expenseRef, {
+  const expense = {
     name: data.name,
     amountTiyn: data.amountTiyn,
     date: data.date,
@@ -101,8 +119,8 @@ export async function payWorkerFromCashbox(
     createdByUid: actor.user.uid,
     createdByName: actor.userData.name,
     createdAt: serverTimestamp(),
-  });
-  batch.set(advanceRef, {
+  };
+  const advance = {
     userId: data.worker.uid,
     userName: data.worker.name,
     periodKey: data.periodKey,
@@ -114,15 +132,8 @@ export async function payWorkerFromCashbox(
     reversed: false,
     expenseId: expenseRef.id,
     createdAt: serverTimestamp(),
-  });
-  await batch.commit();
-  await logAudit(db, actor, {
-    action: "expense.create",
-    entityType: "expense",
-    entityId: expenseRef.id,
-    after: { name: data.name, amountTiyn: data.amountTiyn, date: data.date, paidTo: data.worker.name, periodKey: data.periodKey },
-  });
-  return expenseRef.id;
+  };
+  return { expenseRef, advanceRef, expense, advance };
 }
 
 /**

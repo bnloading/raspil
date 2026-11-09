@@ -1701,3 +1701,78 @@ describe("personal history for all workers on a merged order", () => {
     await assertFails(updateDoc(doc(db, "orders", "order-cutting-queue"), { pvcWorkerIds: [PVC_UID] }));
   });
 });
+
+/**
+ * «Аванс сұрау» (the owner, 09.11): a worker asks, a Manager of their own line answers once, and
+ * «Иә, беремін» writes the Касса expense and the advance with the answer (lib/advanceRequests.ts).
+ */
+describe("advance requests: the worker asks, their own line's Manager answers", () => {
+  const MDF_MANAGER_UID = "manager-mdf-adv";
+  const ask = (uid: string, over: Record<string, unknown> = {}) => ({
+    userId: uid, userName: "Cutter", role: "raspil", department: "ldsp", amountTiyn: 5000000, comment: "", status: "pending", ...over,
+  });
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, "users", MDF_MANAGER_UID), { name: "Ахжол", role: "manager", department: "mdf", blocked: false, phone: "" });
+      await setDoc(doc(db, "advanceRequests", "req-1"), ask(CUTTER_UID));
+    });
+  });
+
+  it("a worker asks for themselves only, for a whole positive sum, and sees only their own", async () => {
+    const cutter = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertSucceeds(setDoc(doc(cutter, "advanceRequests", "req-2"), ask(CUTTER_UID)));
+    await assertFails(setDoc(doc(cutter, "advanceRequests", "req-3"), ask(PVC_UID)));
+    await assertFails(setDoc(doc(cutter, "advanceRequests", "req-4"), ask(CUTTER_UID, { amountTiyn: 0 })));
+    await assertFails(setDoc(doc(cutter, "advanceRequests", "req-5"), ask(CUTTER_UID, { status: "approved" })));
+    await assertFails(setDoc(doc(cutter, "advanceRequests", "req-6"), ask(CUTTER_UID, { approvedTiyn: 5000000 })));
+    await assertSucceeds(getDocs(query(collection(cutter, "advanceRequests"), where("userId", "==", CUTTER_UID))));
+    const pvc = testEnv.authenticatedContext(PVC_UID).firestore();
+    await assertFails(getDoc(doc(pvc, "advanceRequests", "req-1")));
+    const customer = testEnv.authenticatedContext(CUSTOMER_A_UID).firestore();
+    await assertFails(setDoc(doc(customer, "advanceRequests", "req-7"), ask(CUSTOMER_A_UID)));
+  });
+
+  it("the worker can take it back while it waits, but never answer it", async () => {
+    const cutter = testEnv.authenticatedContext(CUTTER_UID).firestore();
+    await assertFails(updateDoc(doc(cutter, "advanceRequests", "req-1"), { status: "approved", decidedByUid: CUTTER_UID, approvedTiyn: 5000000 }));
+    await assertSucceeds(updateDoc(doc(cutter, "advanceRequests", "req-1"), { status: "cancelled" }));
+    const manager = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(manager, "advanceRequests", "req-1"), { status: "declined", decidedByUid: MANAGER_UID }));
+  });
+
+  it("«Иә, беремін»: the ЛДСП Manager writes the expense, the advance and the answer together — once", async () => {
+    const manager = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertSucceeds(runTransaction(manager, async (tx) => {
+      await tx.get(doc(manager, "advanceRequests", "req-1"));
+      tx.set(doc(manager, "expenses", "exp-adv"), {
+        name: "Cutter — аванс", amountTiyn: 4000000, date: "2026-11-09", account: "cash", department: "ldsp", comment: "",
+        paidToUid: CUTTER_UID, paidToName: "Cutter", payPeriodKey: "2026-W46", advanceId: "adv-1", createdByUid: MANAGER_UID, createdByName: "Manager",
+      });
+      tx.set(doc(manager, "advances", "adv-1"), {
+        userId: CUTTER_UID, userName: "Cutter", periodKey: "2026-W46", amountTiyn: 4000000, recordedByUid: MANAGER_UID,
+        recordedByName: "Manager", reversed: false, expenseId: "exp-adv",
+      });
+      tx.update(doc(manager, "advanceRequests", "req-1"), {
+        status: "approved", approvedTiyn: 4000000, account: "cash", periodKey: "2026-W46", expenseId: "exp-adv", advanceId: "adv-1",
+        decidedByUid: MANAGER_UID, decidedByName: "Manager",
+      });
+    }));
+    // Answered once: a second answer is refused.
+    await assertFails(updateDoc(doc(manager, "advanceRequests", "req-1"), { status: "declined", decidedByUid: MANAGER_UID }));
+  });
+
+  it("the other line's Manager cannot answer it, nor can anyone answer in someone else's name or for nothing", async () => {
+    const mdf = testEnv.authenticatedContext(MDF_MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(mdf, "advanceRequests", "req-1"), { status: "declined", decidedByUid: MDF_MANAGER_UID }));
+    const manager = testEnv.authenticatedContext(MANAGER_UID).firestore();
+    await assertFails(updateDoc(doc(manager, "advanceRequests", "req-1"), { status: "declined", decidedByUid: ADMIN_UID }));
+    await assertFails(updateDoc(doc(manager, "advanceRequests", "req-1"), { status: "approved", decidedByUid: MANAGER_UID, approvedTiyn: 0 }));
+    await assertFails(updateDoc(doc(manager, "advanceRequests", "req-1"), { status: "declined", decidedByUid: MANAGER_UID, amountTiyn: 1 }));
+    // The Admin answers any line.
+    const admin = testEnv.authenticatedContext(ADMIN_UID).firestore();
+    await assertSucceeds(updateDoc(doc(admin, "advanceRequests", "req-1"), { status: "declined", decidedByUid: ADMIN_UID, declineReason: "" }));
+    await assertFails(deleteDoc(doc(admin, "advanceRequests", "req-1")));
+  });
+});

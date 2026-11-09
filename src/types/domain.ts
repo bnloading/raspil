@@ -980,6 +980,45 @@ export interface SalaryAdvance {
   createdAt?: Timestamp;
 }
 
+/** pending — waiting on the Manager; approved — paid out of Касса; declined — «Жоқ»; cancelled — taken back by the worker. */
+export type AdvanceRequestStatus = "pending" | "approved" | "declined" | "cancelled";
+
+/**
+ * «Аванс сұрау» — a worker asking for an advance from their phone (the owner, 09.11: «МДФ-тен
+ * ЛДСП-де жұмысшылар аванс сұрау; менеджерлер "иә, беремін" деп қабылдаған соң автомат шығынға
+ * жазылып, кассадан минус етілсін»).
+ *
+ * The request moves no money. «Иә, беремін» writes, in one transaction, the same two records the
+ * Касса's «Шығын жазу» writes for money handed to a worker — the expense that takes it off the pot,
+ * and the SalaryAdvance that takes it off their pay (lib/expenses.ts workerPaymentDocs) — and
+ * stamps their ids here. See lib/advanceRequests.ts.
+ */
+export interface AdvanceRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  /** The worker's role when they asked — decides the pay period it comes off (lib/advances.ts). */
+  role: UserRole;
+  /** Whose Касса pays it — ЛДСП's or МДФ's (lib/rbac.ts departmentOf). */
+  department: Department;
+  /** What they asked for. */
+  amountTiyn: number;
+  comment: string;
+  status: AdvanceRequestStatus;
+  createdAt?: Timestamp;
+  decidedByUid?: string;
+  decidedByName?: string;
+  decidedAt?: Timestamp;
+  declineReason?: string;
+  /** What was handed over — the Manager may give less than asked. */
+  approvedTiyn?: number;
+  account?: CashAccount;
+  periodKey?: string;
+  expenseId?: string;
+  advanceId?: string;
+  cancelledAt?: Timestamp;
+}
+
 export interface StatusHistoryEntry {
   id: string;
   field: "production" | "payment";

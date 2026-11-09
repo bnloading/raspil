@@ -50,3 +50,17 @@ describe("navConfig — the two lines keep to their own pages", () => {
     expect(phoneBar("manager", "mdf")).not.toContain("МДФ тарифтері");
   });
 });
+
+describe("navConfig — «Аванс сұрау» on every worker's phone bar (the owner, 09.11)", () => {
+  it("is on the bar for every worker role of both lines, even with «Айлығым» hidden", () => {
+    for (const role of ["raspil", "pvh", "cnc", "sanding", "painting", "vacuum"] as const) {
+      for (const hideSalary of [false, true]) {
+        const bar = getNavForRole(role, "ldsp", hideSalary).filter((item) => item.mobile).slice(0, 6);
+        expect(bar.map((item) => item.path), `${role}${hideSalary ? " (айлықсыз)" : ""}`).toContain("/advance");
+      }
+    }
+    // Not a Manager's or the Admin's — they answer it on Касса.
+    expect(getNavForRole("manager", "ldsp").map((item) => item.path)).not.toContain("/advance");
+    expect(getNavForRole("admin", "mdf").map((item) => item.path)).not.toContain("/advance");
+  });
+});

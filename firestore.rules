@@ -671,6 +671,42 @@ service cloud.firestore {
       allow delete: if false; // money records are never deleted
     }
 
+    match /advanceRequests/{id} {
+      // «Аванс сұрау» (the owner, 09.11): a worker asks from their phone; the Admin or a Manager of
+      // that worker's line answers. «Иә, беремін» writes the Касса expense and the advance in the
+      // same transaction as the answer (src/lib/advanceRequests.ts), each under the expense and
+      // advance rules above — this document itself moves no money. A worker reads only their own.
+      allow get, list: if isAdminOrManager() || (isSignedIn() && resource.data.userId == uid());
+      allow create: if isStaff()
+        && request.resource.data.userId == uid()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amountTiyn is int
+        && request.resource.data.amountTiyn > 0
+        && request.resource.data.department in ['ldsp', 'mdf']
+        && request.resource.data.keys().hasOnly([
+          'userId', 'userName', 'role', 'department', 'amountTiyn', 'comment', 'status', 'createdAt']);
+      allow update: if (
+          // The answer — once, by someone of the request's own line (ЛДСП and МДФ are kept apart).
+          isAdminOrManager()
+          && (isAdmin() || userDoc().get('department', 'ldsp') == resource.data.department)
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'declined']
+          && request.resource.data.decidedByUid == uid()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'decidedByUid', 'decidedByName', 'decidedAt', 'declineReason',
+            'approvedTiyn', 'account', 'periodKey', 'expenseId', 'advanceId'])
+          && (request.resource.data.status != 'approved'
+            || (request.resource.data.approvedTiyn is int && request.resource.data.approvedTiyn > 0))
+        ) || (
+          // Taken back by the worker while it still waits.
+          isSignedIn() && resource.data.userId == uid()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+        );
+      allow delete: if false;
+    }
+
     // Historical note: this app briefly had a раздспил-only self-serve `weeklyPayouts` +
     // `advanceRepaymentRequests` pair (worker presses "Алдым" themself, requests an advance
     // deduction, a Manager accepts it). That let one bad tap zero out a real week's pay by

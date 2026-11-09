@@ -171,6 +171,9 @@ function mdfWorkerNav(role: UserRole): NavItem[] {
     { key: "mdf-home", label: "Тапсырмалар", short: "Тапсырмалар", path: roleHome(role), icon: IconLayers, group: "main", mobile: true },
     { key: "mdf-history", label: "Тарих", path: `${roleHome(role)}?view=history`, icon: IconAudit, group: "main", mobile: true },
     { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
+    // Every worker of both lines, even one whose «Айлығым» is hidden — asking needs no payslip
+    // (the owner, 09.11). Answered by their line's Manager on Касса.
+    { key: "advance", label: "Аванс сұрау", short: "Аванс", path: "/advance", icon: IconCash, group: "main", mobile: true },
     { key: "mdf-profile", label: "Профиль", path: "/profile", icon: IconUsers, group: "main", mobile: true },
     { key: "attendance", label: "Қатысуым", short: "Қатысу", path: "/my-attendance", icon: IconAudit, group: "secondary" },
     { key: "assortment", label: "Листтар", short: "Лист", path: "/assortment", icon: IconLayers, group: "secondary" },

@@ -20,6 +20,7 @@ import { addOutsideIncome, deleteRentPayment } from "../../lib/rent";
 import { advancePeriodKey } from "../../lib/advances";
 import { periodLabel, shiftPeriod } from "../../lib/salaryPeriod";
 import { useStaff } from "../../hooks/useStaff";
+import { AdvanceRequestsCard } from "../../components/AdvanceRequestsCard";
 import {
   accountForExpense,
   computeCashbox,
@@ -313,6 +314,9 @@ export default function ManagerCashbox() {
         <Spinner />
       ) : (
         <>
+          {/* Workers' «Аванс сұрау» from their phones — first, because someone is waiting on it. */}
+          <AdvanceRequestsCard department={myDepartment} onToast={showToast} />
+
           {myDepartment === "ldsp" ? (
             <CutMonthPanel
               monthTitle={monthLabel(cutMonth)}
