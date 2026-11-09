@@ -8884,18 +8884,15 @@ a.kpi-card:hover { border-color: var(--primary-light); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A customer's own sheet nobody has named yet (the owner, 09.11) — not quiet. */
-.jt-fact-warn {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--jt-font-sm);
-  font-weight: 600;
-  color: #b45309;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.jt-ext-name { margin-top: 4px; }
+/* The name of a customer's own sheet, typed under its «Лист» cell (the owner, 09.11) — amber
+   until something is written in it. */
+.jt-ext-name { display: block; width: 100%; margin-top: 4px; }
+.jt-w-sheets .jt-ext-name { width: 100%; min-width: 0; padding: 3px 6px; font-size: var(--jt-font-sm); }
+/* Boxed, unlike the table's other cells (.journal-table .jt-input is borderless until hovered):
+   a field nobody can see is a name nobody writes. */
+.journal-table .jt-ext-name { border-color: var(--border); background: var(--card); }
+.journal-table .jt-ext-name.is-empty { border-color: #f59e0b; background: #fffbeb; }
+.journal-table .jt-ext-name:focus { border-color: var(--primary); background: var(--card); }
 
 /* «Аванс сұрау» — the worker's page (AdvanceRequestPage) and the Manager's card on Касса
    (AdvanceRequestsCard). Amber while it waits, green once paid, muted when it was not. */

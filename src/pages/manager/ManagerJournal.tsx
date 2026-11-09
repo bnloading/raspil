@@ -2109,6 +2109,12 @@ function JournalRow({
     setSaveState("dirty");
     setDraft((prev) => ({ ...prev, ...p }));
   };
+  // One line of the row — the name of a customer's own sheet, typed right in the «Лист» cell.
+  const patchLine = (index: number, p: Partial<JournalDraftLine>) => {
+    dirtyRef.current = true;
+    setSaveState("dirty");
+    setDraft((prev) => ({ ...prev, lines: prev.lines.map((l, i) => (i === index ? { ...l, ...p } : l)) }));
+  };
 
   const preview = computeJournalRowTotals(totalsInputFor(draft, paid));
 
@@ -2157,10 +2163,11 @@ function JournalRow({
   // Summarised from the draft, not the saved order, so a sheet count typed in the panel shows in
   // the cell before the autosave has landed.
   const sheets = sheetSummary(draft.lines);
-  // A customer's own sheet with nothing saying which sheet it is (the owner, 09.11).
-  const unnamedOwnSheet = draft.lines.some(
-    (l) => l.sheetQty > 0 && isExternalSheet(materialsById.get(l.materialId)) && !(l.externalName ?? "").trim(),
-  );
+  // Lines on a customer's own sheet — «Сырттан келетін лист», «…лист Эггер». Each gets its name
+  // typed right under the cell (the owner, 09.11: «атын астына жазатын қыл»), not only in the panel.
+  const ownSheetLines = draft.lines
+    .map((line, index) => ({ line, index, material: materialsById.get(line.materialId) }))
+    .filter(({ material }) => isExternalSheet(material));
   const pvc = pvcSummary(draft.lines, pvcTypesById);
   const steps = journalProgress(order, paid);
   const onGate = QUEUE_STAGE_STATUSES.includes(order.productionStatus);
@@ -2239,8 +2246,19 @@ function JournalRow({
                 || materialsById.get(draft.lines[0]?.materialId ?? "")?.name
                 || "материал таңдау"}
             </span>
-            {unnamedOwnSheet && <span className="jt-fact-warn">⚠ листтің аты жазылмаған</span>}
           </button>
+          {ownSheetLines.map(({ line, index, material }) => {
+            // «Сырттан келетін лист Эггер» → «Эггер»: which of the customer's sheets this box is for.
+            const kind = (material?.name ?? "").replace(/^сырттан\s+келетін\s+лист\s*/iu, "").trim();
+            return (
+              <input key={index} className={`jt-input jt-ext-name${(line.externalName ?? "").trim() ? "" : " is-empty"}`}
+                value={line.externalName ?? ""} maxLength={80}
+                placeholder={kind ? `${kind}: листтің аты` : "Сырттан листтің аты"}
+                aria-label={`${material?.name ?? "Сырттан келетін лист"} — аты`}
+                title="Клиент әкелген листтің аты — арашыға көрінеді"
+                onChange={(e) => patchLine(index, { externalName: e.target.value })} />
+            );
+          })}
         </td>
       )}
 
@@ -2977,7 +2995,8 @@ function NewJournalRow({
         />
         {/* What the customer's own sheet is — see the detail panel's «Сырттан келген листтің аты». */}
         {isExternalSheet(materials.find((x) => x.id === line.materialId)) && (
-          <input className="jt-input jt-ext-name" value={line.externalName ?? ""} maxLength={80}
+          <input className={`jt-input jt-ext-name${(line.externalName ?? "").trim() ? "" : " is-empty"}`}
+            value={line.externalName ?? ""} maxLength={80}
             aria-label="Сырттан келген листтің аты" placeholder="Листтің аты: Эггер Дуб Галифакс"
             onChange={(e) => patchLine({ externalName: e.target.value })} />
         )}
