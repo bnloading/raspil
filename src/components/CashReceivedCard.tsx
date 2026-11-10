@@ -7,8 +7,8 @@ import { CustomerNameInput } from "./CustomerNameInput";
 import { NumberField } from "./NumberField";
 import { customerDirectory } from "../lib/customerSuggest";
 import {
-  checkCashReceipts, journalCash, kassaObnal, nearbyCash, nearbyObnal, LOOKBACK_DAYS, OBNAL_DAYS,
-  type JournalCash, type KassaObnal, type ReceiptCheck,
+  cashHandOvers, checkCashReceipts, journalCash, kassaObnal, nearbyCash, nearbyObnal, LOOKBACK_DAYS, OBNAL_DAYS,
+  type CashHandOver, type JournalCash, type KassaObnal, type ReceiptCheck,
 } from "../lib/cashReceipts";
 import { addCashReceipt, cashReceiptErrorText, deleteCashReceipt } from "../lib/cashReceiptsWrite";
 import { formatMoney } from "../lib/money";
@@ -31,6 +31,25 @@ function dayLabel(day: string): string {
 
 function numbers(list: readonly JournalCash[]): string {
   return [...new Set(list.map((j) => `№${shortNumber(j.orderNumber)}`))].join(", ");
+}
+
+/** A chip's worth of order numbers: «№630, №608 +4». */
+function fewNumbers(list: readonly JournalCash[]): string {
+  const all = [...new Set(list.map((j) => `№${shortNumber(j.orderNumber)}`))];
+  return all.length > 2 ? `${all.slice(0, 2).join(", ")} +${all.length - 2}` : all.join(", ");
+}
+
+/**
+ * What the journal's comment after «Нал» said, when the sum came from it — «💬 600000», and what
+ * the orders took of it when that differs: «заказдарға 594 500».
+ */
+function noteSaid(list: readonly CashHandOver[]): string {
+  const noted = list.filter((h) => h.fromNote);
+  if (noted.length === 0) return "";
+  const note = [...new Set(noted.map((h) => h.note))].join(" · ");
+  const paid = list.reduce((s, h) => s + h.paidTiyn, 0);
+  const handed = list.reduce((s, h) => s + h.handedTiyn, 0);
+  return ` · 💬 ${note}${paid !== handed ? ` · заказдарға ${formatMoney(paid)}` : ""}`;
 }
 
 /** An entry's heading: the customer, or «Обнал · Ақжол». */
@@ -129,6 +148,8 @@ export function CashReceivedView({
   onDelete: ((receipt: CashReceipt) => Promise<void>) | null;
 }) {
   const cash = useMemo(() => journalCash({ payments, orders, methods }), [payments, orders, methods]);
+  // Cash as it changed hands — the sum the counter wrote after «Нал» (the owner, 10.11).
+  const handOvers = useMemo(() => cashHandOvers(cash), [cash]);
   const { checks, unclaimed, unclaimedObnal } = useMemo(() => checkCashReceipts(receipts, cash, obnal), [receipts, cash, obnal]);
   const directory = useMemo(() => customerDirectory(orders), [orders]);
 
@@ -149,12 +170,12 @@ export function CashReceivedView({
   // The journal's cash for the customer being typed that no entry has matched yet — shown under
   // the name, and a tap fills the sum, so the common case is "pick the name, tap the sum".
   const matched = useMemo(
-    () => new Set(checks.filter((c) => c.status === "ok").flatMap((c) => c.payments.map((j) => j.paymentId))),
+    () => new Set(checks.filter((c) => c.status === "ok").flatMap((c) => c.handOvers.map((h) => h.key))),
     [checks],
   );
   const hint = useMemo(
-    () => (!isObnal && name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, cash, matched).slice(0, 4) : []),
-    [isObnal, name, phone, date, today, cash, matched],
+    () => (!isObnal && name.trim() ? nearbyCash({ customerName: name, customerPhone: phone, date: date || today }, handOvers, matched).slice(0, 4) : []),
+    [isObnal, name, phone, date, today, handOvers, matched],
   );
   // The same for обнал: Касса's «Обнал» around the day that no entry took — the same hand first.
   const matchedObnal = useMemo(
@@ -173,7 +194,7 @@ export function CashReceivedView({
   const obnalTiyn = recent.filter((c) => c.receipt.kind === "obnal").reduce((s, c) => s + c.receipt.amountTiyn, 0);
   const unclaimedObnalTiyn = unclaimedObnal.reduce((s, k) => s + k.amountTiyn, 0);
   const toCheck = recent.filter((c) => c.status === "diff" || c.status === "none").length;
-  const unclaimedTiyn = unclaimed.reduce((s, j) => s + j.amountTiyn, 0);
+  const unclaimedTiyn = unclaimed.reduce((s, h) => s + h.handedTiyn, 0);
 
   const reset = () => {
     setKind("customer");
@@ -184,11 +205,11 @@ export function CashReceivedView({
     setComment("");
   };
 
-  const startFrom = (j: JournalCash) => {
+  const startFrom = (h: CashHandOver) => {
     setKind("customer");
-    setName(j.customerName);
-    setPhone(j.customerPhone);
-    setAmountTenge(j.amountTiyn / 100);
+    setName(h.customerName);
+    setPhone(h.customerPhone);
+    setAmountTenge(h.handedTiyn / 100);
     setDate(today);
     setComment("");
     setStatus(null);
@@ -247,7 +268,8 @@ export function CashReceivedView({
         <span>{DAYS_SHOWN} күн</span>
       </div>
       <p className="aps-recv-lead">
-        Алған налыңызды клиентімен жазыңыз — журналдағы сол клиенттің нал төлемімен салыстырылады.
+        Алған налыңызды клиентімен жазыңыз — журналда сол клиенттің «Нал» төлемінен кейін жазылған
+        сомамен салыстырылады (сома жазылмаса — төлемнің өзімен).
         Обналды «Обнал» деп белгілеңіз — ол Кассадағы «Обнал» шығынымен салыстырылады. Кассаға екінші
         рет қосылмайды.
       </p>
@@ -316,10 +338,10 @@ export function CashReceivedView({
           {hint.length > 0 && (
             <div className="aps-recv-hint" aria-label="Журналдағы нал">
               <span>Журналда:</span>
-              {hint.map((j) => (
-                <button key={j.paymentId} type="button" className="aps-recv-chip"
-                  onClick={() => setAmountTenge(j.amountTiyn / 100)}>
-                  №{shortNumber(j.orderNumber)} · {formatMoney(j.amountTiyn)} · {dayLabel(j.day).slice(0, 5)}
+              {hint.map((h) => (
+                <button key={h.key} type="button" className="aps-recv-chip"
+                  onClick={() => setAmountTenge(h.handedTiyn / 100)}>
+                  {fewNumbers(h.payments)} · {formatMoney(h.handedTiyn)} · {dayLabel(h.day).slice(0, 5)}
                 </button>
               ))}
             </div>
@@ -388,9 +410,9 @@ export function CashReceivedView({
                       ? <>≠ Кассада {formatMoney(c.recordTiyn)} («{c.obnal[0].label}», {dayLabel(c.obnal[0].day).slice(0, 5)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.recordTiyn))}</>
                       : <>Кассада бұл обнал жазылмаған</>
                   : c.status === "ok"
-                  ? <>✓ Журналмен сәйкес · {numbers(c.payments)}{c.payments.length === 1 ? `, ${dayLabel(c.payments[0].day).slice(0, 5)}` : ""}</>
+                  ? <>✓ Журналмен сәйкес · {numbers(c.payments)}{c.handOvers.length === 1 ? `, ${dayLabel(c.handOvers[0].day).slice(0, 5)}` : ""}{noteSaid(c.handOvers)}</>
                   : c.status === "diff"
-                    ? <>≠ Журналда {formatMoney(c.recordTiyn)} ({numbers(c.payments)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.recordTiyn))}</>
+                    ? <>≠ Журналда {formatMoney(c.recordTiyn)} ({numbers(c.payments)}{noteSaid(c.handOvers)}) · айырма {formatMoney(Math.abs(c.receipt.amountTiyn - c.recordTiyn))}</>
                     : <>Журналда бұл клиенттің налы жоқ</>}
               </div>
               {myUid && c.receipt.createdByUid === myUid && onDelete && (
@@ -423,16 +445,18 @@ export function CashReceivedView({
             Журналда бар, мұнда жазылмаған нал: {unclaimed.length} · <b>{formatMoney(unclaimedTiyn)}</b>
           </summary>
           <ul>
-            {unclaimed.map((j) => (
-              <li key={j.paymentId}>
+            {unclaimed.map((h) => (
+              <li key={h.key}>
                 <div className="aps-recv-top">
-                  <span className="aps-recv-name">№{shortNumber(j.orderNumber)} · {j.customerName}</span>
-                  <strong>{formatMoney(j.amountTiyn)}</strong>
+                  <span className="aps-recv-name">{numbers(h.payments)} · {h.customerName}</span>
+                  <strong>{formatMoney(h.handedTiyn)}</strong>
                 </div>
                 <div className="aps-recv-meta">
-                  {dayLabel(j.day)} · {j.byName}{j.note ? <> · 💬 {j.note}</> : null}
+                  {dayLabel(h.day)} · {h.byName}
+                  {h.note ? <> · 💬 {h.note}</> : null}
+                  {h.fromNote && h.paidTiyn !== h.handedTiyn ? <> · заказдарға {formatMoney(h.paidTiyn)}</> : null}
                 </div>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => startFrom(j)}>Алдым деп жазу</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => startFrom(h)}>Алдым деп жазу</button>
               </li>
             ))}
           </ul>

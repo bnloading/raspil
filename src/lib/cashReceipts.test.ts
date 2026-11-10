@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Timestamp } from "firebase/firestore";
 import type { CashReceipt, Expense, Order, Payment, PaymentMethodDef } from "../types/domain";
 import {
-  checkCashReceipts, isObnal, journalCash, kassaObnal, nameKey, nearbyCash, nearbyObnal, sameCustomer,
-  type JournalCash, type KassaObnal,
+  cashHandOvers, checkCashReceipts, isObnal, journalCash, kassaObnal, nameKey, nearbyCash, nearbyObnal, noteSumTiyn,
+  sameCustomer, type JournalCash, type KassaObnal,
 } from "./cashReceipts";
 import { cashReceiptErrorText } from "./cashReceiptsWrite";
 
@@ -67,7 +67,8 @@ describe("matching an entry to the journal by the customer", () => {
 
   it("looks a month back and a day ahead, never at cash another entry already took", () => {
     const old = cash({ day: "2026-09-20" }), late = cash({ day: "2026-11-05" }), near = cash({ day: "2026-11-01" }), taken = cash({ day: "2026-11-02" });
-    expect(nearbyCash(receipt({}), [old, late, near, taken], new Set([taken.paymentId]))).toEqual([near]);
+    const handOvers = cashHandOvers([old, late, near, taken]);
+    expect(nearbyCash(receipt({}), handOvers, new Set([taken.paymentId])).map((h) => h.payments)).toEqual([[near]]);
   });
 });
 
@@ -130,13 +131,98 @@ describe("checkCashReceipts", () => {
     const after = cash({ customerName: "Дархан", day: "2026-11-04" });
     const { checks, unclaimed } = checkCashReceipts([receipt({ kind: "obnal", customerName: "" })], [after]);
     expect(checks[0].status).toBe("none");
-    expect(unclaimed).toEqual([after]);
+    expect(unclaimed.map((h) => h.payments)).toEqual([[after]]);
   });
 
   it("lists as unclaimed only the journal's cash from the first entry's day on", () => {
     const before = cash({ customerName: "Дархан", day: "2026-11-01" }), after = cash({ customerName: "Дархан", day: "2026-11-04" });
-    expect(checkCashReceipts([receipt({})], [cash({}), before, after]).unclaimed).toEqual([after]);
+    expect(checkCashReceipts([receipt({})], [cash({}), before, after]).unclaimed.map((h) => h.payments)).toEqual([[after]]);
     expect(checkCashReceipts([], [before, after]).unclaimed).toEqual([]);
+  });
+});
+
+describe("the sum written after «Нал» in the journal (the owner, 10.11)", () => {
+  it("reads the sum a comment starts with, a bare number under 1 000 as thousands", () => {
+    expect(noteSumTiyn("600000")).toBe(T(600000));
+    expect(noteSumTiyn("600 000")).toBe(T(600000));
+    expect(noteSumTiyn("670000 мен бірге")).toBe(T(670000));
+    expect(noteSumTiyn("670")).toBe(T(670000));
+    expect(noteSumTiyn("72к")).toBe(T(72000));
+    expect(noteSumTiyn("50 мың")).toBe(T(50000));
+    expect(noteSumTiyn("97120тг")).toBe(T(97120));
+    expect(noteSumTiyn("Ерболға берілді")).toBeNull();
+    expect(noteSumTiyn("2 лист")).toBeNull();
+    expect(noteSumTiyn("")).toBeNull();
+  });
+
+  it("takes six orders paid together, «600000» on each, as one hand-over of 600 000", () => {
+    // Заказ Цех, 31.10: the orders took 594 500 of it.
+    const six = [123000, 41000, 102500, 143500, 102500, 82000].map((t, i) =>
+      cash({ customerName: "Заказ Цех", orderNumber: `ORD-2026-00063${i}`, amountTiyn: T(t), day: "2026-10-31", note: "600000" }));
+    const [h] = cashHandOvers(six);
+    expect(h).toMatchObject({ handedTiyn: T(600000), paidTiyn: T(594500), fromNote: true, note: "600000" });
+    expect(h.payments).toHaveLength(6);
+    const { checks, unclaimed } = checkCashReceipts(
+      [receipt({ customerName: "Заказ Цех", amountTiyn: T(600000), date: "2026-10-31" })], six);
+    expect(checks[0]).toMatchObject({ status: "ok", recordTiyn: T(600000) });
+    expect(checks[0].payments).toHaveLength(6);
+    expect(unclaimed).toEqual([]);
+  });
+
+  it("joins «670», «670000» and «670000 мен бірге» on one customer's day into one hand-over", () => {
+    // Ринат Алишер, 22.10: nine orders, 670 040 in the journal, 670 000 handed over.
+    const rinat = [
+      cash({ customerName: "Ринат Алишер", amountTiyn: T(245800), day: "2026-10-22", note: "670000 мен бірге" }),
+      cash({ customerName: "Ринат Алишер", amountTiyn: T(424240), day: "2026-10-22", note: "670" }),
+    ];
+    const ok = checkCashReceipts([receipt({ customerName: "Ринат Алишер", amountTiyn: T(670000), date: "2026-10-22" })], rinat);
+    expect(ok.checks[0]).toMatchObject({ status: "ok" });
+    expect(ok.checks[0].handOvers[0]).toMatchObject({ handedTiyn: T(670000), paidTiyn: T(670040) });
+  });
+
+  it("adds that day's payment with nothing written on it when it is what makes the sum add up", () => {
+    // Ринат, 22.10: №248's 23 500 had only the app's tag; 646 540 + 23 500 = 670 040 ≈ «670000».
+    const noted = cash({ customerName: "Ринат Алишер", amountTiyn: T(646540), day: "2026-10-22", note: "670000" });
+    const n248 = cash({ customerName: "Ринат Алишер", amountTiyn: T(23500), day: "2026-10-22", note: "" });
+    const [h] = cashHandOvers([noted, n248]);
+    expect(h).toMatchObject({ handedTiyn: T(670000), paidTiyn: T(670040) });
+    expect(h.payments).toHaveLength(2);
+    // Бахытжан, 29.10: 84 000 with «91500», 7 500 with nothing — exactly 91 500 together.
+    const b = cashHandOvers([
+      cash({ customerName: "Бахытжан", amountTiyn: T(84000), day: "2026-10-29", note: "91500" }),
+      cash({ customerName: "Бахытжан", amountTiyn: T(7500), day: "2026-10-29", note: "" }),
+    ]);
+    expect(b.map((x) => [x.handedTiyn, x.paidTiyn])).toEqual([[T(91500), T(91500)]]);
+    // A payment that does not close the gap stays its own: 45 000 «50000» and 2 000 → still 3 000 short.
+    expect(cashHandOvers([cash({ amountTiyn: T(45000), note: "50000" }), cash({ amountTiyn: T(2000), note: "" })])).toHaveLength(2);
+  });
+
+  it("checks against the comment, not the payment: 380 700 in the journal, «380000» after «Нал»", () => {
+    const j = cash({ customerName: "Алмат", amountTiyn: T(380700), note: "380000" });
+    expect(checkCashReceipts([receipt({ customerName: "Алмат", amountTiyn: T(380000) })], [j]).checks[0].status).toBe("ok");
+    // The payment's own sum is not what changed hands.
+    expect(checkCashReceipts([receipt({ customerName: "Алмат", amountTiyn: T(380700) })], [j]).checks[0])
+      .toMatchObject({ status: "diff", recordTiyn: T(380000) });
+  });
+
+  it("reads a payment with no sum in its comment by its own sum", () => {
+    const j = cash({ note: "Ерболға берілді", amountTiyn: T(45000) });
+    expect(cashHandOvers([j])[0]).toMatchObject({ handedTiyn: T(45000), fromNote: false });
+    expect(checkCashReceipts([receipt({ amountTiyn: T(45000) })], [j]).checks[0].status).toBe("ok");
+  });
+
+  it("keeps two orders of 50 000, «50000» on each, as two hand-overs, not one", () => {
+    const a = cash({ note: "50000" }), b = cash({ note: "50000" });
+    expect(cashHandOvers([a, b]).map((h) => h.handedTiyn)).toEqual([T(50000), T(50000)]);
+    const two = checkCashReceipts([receipt({}), receipt({ createdAt: at("2026-11-03T19:00:00+05:00") })], [a, b]);
+    expect(two.checks.map((c) => c.status)).toEqual(["ok", "ok"]);
+  });
+
+  it("never joins two customers, or two days, under one sum", () => {
+    const a = cash({ customerName: "Мейрам", note: "50000", amountTiyn: T(30000) });
+    const b = cash({ customerName: "Дархан", note: "50000", amountTiyn: T(20000) });
+    const c = cash({ customerName: "Мейрам", note: "50000", amountTiyn: T(20000), day: "2026-11-04" });
+    expect(cashHandOvers([a, b, c])).toHaveLength(3);
   });
 });
 
