@@ -11,17 +11,30 @@ const all = { tracked: () => true };
 const asObject = (m: Map<string, number>) => Object.fromEntries(m);
 
 describe("planUncutSettlement — the rack after a journal edit to an order already queued", () => {
-  it("changes nothing when an uncut line keeps its material, even with a new count — the cut settles that", () => {
-    const plan = planUncutSettlement([job(0, "kash", 8, 8)], [job(0, "kash", 10)], { withoutCutting: false, ...all });
+  it("settles a new count on a queued line at once (№806: Вотан 6 → 5 gives one back)", () => {
+    const less = planUncutSettlement([job(0, "votan", 6, 6), job(1, "hdf", 2, 2)], [job(0, "votan", 5, 6), job(1, "hdf", 2, 2)], { withoutCutting: false, ...all });
+    expect(asObject(less.deltas)).toEqual({ votan: -1 });
+    expect(less.jobs.map((j) => j.consumedQty)).toEqual([5, 2]);
+    const more = planUncutSettlement([job(0, "kash", 8, 8)], [job(0, "kash", 10, 8)], { withoutCutting: false, ...all });
+    expect(asObject(more.deltas)).toEqual({ kash: 2 });
+    expect(more.jobs[0].consumedQty).toBe(10);
+  });
+
+  it("changes nothing when nothing about the sheets changed", () => {
+    const plan = planUncutSettlement([job(0, "kash", 8, 8)], [job(0, "kash", 8, 8)], { withoutCutting: false, ...all });
     expect(asObject(plan.deltas)).toEqual({});
     expect(plan.jobs[0].consumedQty).toBe(8);
   });
 
-  it("gives the sheets back to the old material when an uncut line's material is changed", () => {
+  it("moves the sheets from the old material to the new one when an uncut line's material is changed", () => {
     const plan = planUncutSettlement([job(0, "kash", 8, 8)], [job(0, "votan", 8)], { withoutCutting: false, ...all });
-    expect(asObject(plan.deltas)).toEqual({ kash: -8 });
-    // Nothing held for Вотан yet: the cut charges it in full.
-    expect(plan.jobs[0].consumedQty).toBe(0);
+    expect(asObject(plan.deltas)).toEqual({ kash: -8, votan: 8 });
+    expect(plan.jobs[0].consumedQty).toBe(8);
+  });
+
+  it("takes a line added to a queued row at once", () => {
+    const plan = planUncutSettlement([job(0, "kash", 8, 8)], [job(0, "kash", 8, 8), job(1, "hdf", 3)], { withoutCutting: false, ...all });
+    expect(asObject(plan.deltas)).toEqual({ hdf: 3 });
   });
 
   it("gives back the sheets of an uncut line deleted from the row", () => {

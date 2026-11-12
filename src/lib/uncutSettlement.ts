@@ -5,15 +5,19 @@ import type { OrderLineJob } from "../types/domain";
  * — the lines not cut yet (the owner, 06.11: «қайтару кезінде bug-тар болып минус етілмей қалды
  * ма, артық қосылды ма — бәрін тексеріп көр»).
  *
- * A line the saw has cut is settled by lib/journalOrders.ts resettleCorrectedCuts. A line still in
- * the queue was left for the cut to settle — the cutter's confirmed count against what was taken —
- * and that is right while it stays the same material. It is not right for:
+ * A line the saw has cut is settled by lib/journalOrders.ts resettleCorrectedCuts. A line not cut
+ * yet holds what its row says, exactly as the queue took it (consumeStockOnQueue) — so an edit
+ * settles it at once, and the rack never shows sheets the journal no longer asks for:
  *
- *   - a line whose material was changed (Кашемир → Вотан): the sheets were taken from Кашемир, and
- *     the cut would settle only the difference against Вотан, so Кашемир never got them back;
- *   - a line deleted from the row: the sheets it held went with it and never came back;
- *   - an order handed over whole («распилсіз берілді»): it never reaches the saw, so a count
- *     corrected afterwards (№533, 4 → 5 листов МДФ бізден) never reached the rack at all.
+ *   - a new count (№806, Вотан 6 → 5, 12.11): the sixth sheet goes back now, not when the cutter
+ *     confirms the cut («6 лист минус етілген қалпында қалып қойып тұр»);
+ *   - a line whose material was changed (Кашемир → Вотан): Кашемир gets its sheets back, Вотан
+ *     gives them;
+ *   - a line deleted from the row: the sheets it held go back;
+ *   - an order handed over whole («распилсіз берілді»): it never reaches the saw, so this is the
+ *     only place a corrected count (№533, 4 → 5 листов МДФ бізден) reaches the rack.
+ *
+ * The cut then settles only what the cutter's count differs from the row by.
  *
  * `before` is the order's lines as they were before the edit, `after` as the edit left them
  * (lib/orderLines.ts syncLineJobs, which keeps a line's place by its index).
@@ -45,21 +49,10 @@ export function planUncutSettlement(
     add(j.materialId, -(j.consumedQty ?? 0));
   }
 
-  // …and each uncut line takes what it holds now.
+  // …and each uncut line takes what its row says now — what the queue would have taken for it.
   const jobs = after.map((j) => {
     if (cut(j)) return j;
-    const prev = before[j.index];
-    let holds: number;
-    if (opts.withoutCutting) {
-      // Handed over whole: what the row says is what left the rack — there is no cut to settle it.
-      holds = opts.tracked(j.materialId) ? j.sheetQty : 0;
-    } else if (prev && !cut(prev) && prev.materialId === j.materialId) {
-      // Same material, still in the queue: the cut settles any change of count, as before.
-      holds = prev.consumedQty ?? 0;
-    } else {
-      // A new material on this line (or a line added): nothing is held for it; the cut takes it.
-      holds = 0;
-    }
+    const holds = j.materialId && j.sheetQty > 0 && opts.tracked(j.materialId) ? j.sheetQty : 0;
     add(j.materialId, holds);
     return { ...j, consumedQty: holds };
   });

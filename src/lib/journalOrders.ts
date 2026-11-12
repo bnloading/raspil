@@ -1,4 +1,4 @@
-import { collection, doc, serverTimestamp, setDoc, Timestamp, updateDoc, type Firestore } from "firebase/firestore";
+import { collection, doc, getDoc, serverTimestamp, setDoc, Timestamp, updateDoc, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { computeJournalRowTotals, computeLineTotals } from "./journal";
 import { findCustomerIdByPhone } from "./customerLink";
@@ -390,9 +390,17 @@ export async function saveJournalRow(
    * upstream of the saw derives its jobs from `items` anyway (see jobsOf), and writing the field
    * early would freeze a plan that is still being typed.
    */
+  // An order whose sheets were taken is settled against its lines as the server holds them, not as
+  // this page last saw them: the previous keystroke's save may have just settled a count, and the
+  // page's older copy would give the same sheet back twice (or take it twice).
+  const storedJobs = order.lineJobs && order.lineJobs.length > 0 && order.cuttingConsumedAt
+    ? await getDoc(doc(db, "orders", order.id))
+      .then((snap) => (snap.data() as Order | undefined)?.lineJobs ?? order.lineJobs)
+      .catch(() => order.lineJobs)
+    : order.lineJobs;
   const lineJobs =
-    order.lineJobs && order.lineJobs.length > 0
-      ? syncLineJobs(order.lineJobs, itemsFromDraft(draft, catalog.materials))
+    storedJobs && storedJobs.length > 0
+      ? syncLineJobs(storedJobs, itemsFromDraft(draft, catalog.materials))
       : null;
 
   // Re-checked on every save, not just at creation: the phone is often typed a moment after the
@@ -425,11 +433,11 @@ export async function saveJournalRow(
   });
 
   await resettleCorrectedCuts(db, actor, order, draft);
-  // …and the lines not cut yet: a changed material or a deleted line gives its sheets back, and an
-  // order handed over whole («распилсіз») takes a corrected count at once (lib/uncutSettlement.ts).
+  // …and the lines not cut yet hold what their row now says: a new count, a changed material or a
+  // deleted line moves the rack at once (lib/uncutSettlement.ts; №806, 12.11).
   // Swallowed for the same reason as above: the edit itself is already saved.
   if (lineJobs && order.cuttingConsumedAt) {
-    await settleUncutLines(db, actor, { orderId: order.id, before: order.lineJobs ?? [] }).catch(() => {});
+    await settleUncutLines(db, actor, { orderId: order.id, before: storedJobs ?? [] }).catch(() => {});
   }
 }
 

@@ -530,13 +530,41 @@ describe("журнал → төлем → распил → ПВХ → дайын
     draft.lines[0].materialName = "ЛДСП Кашемир";
     await saveJournalRow(asManager(), manager, order, draft, withOther);
     expect(await readQty(MATERIAL_ID)).toBe(START_SHEETS_ON_HAND); // Ақ got its 6 back
-    expect(await readQty(OTHER)).toBe(20); // Кашемир is charged when it is cut
+    expect(await readQty(OTHER)).toBe(20 - SHEETS); // …and Кашемир gave them, at once
 
     const seen = (await cutterQueue()).find((o) => o.id === orderId)!;
     await startCuttingLine(asCutter(), cutter, seen, 0, 30);
     await completeCuttingLine(asCutter(), cutter, await readOrder(asCutter(), orderId), 0, SHEETS);
-    expect(await readQty(OTHER)).toBe(20 - SHEETS);
+    expect(await readQty(OTHER)).toBe(20 - SHEETS); // the cut confirmed the row: nothing more moves
     expect(await readQty(MATERIAL_ID)).toBe(START_SHEETS_ON_HAND);
+  });
+
+  it("a queued row's count corrected in the journal moves the rack at once (№806: 6 → 5)", async () => {
+    const orderId = await createJournalOrder(asManager(), manager, journalDraft(), catalog);
+    let order = await readOrder(asManager(), orderId);
+    await recordPayment(asManager(), manager, { orderId, amountTiyn: order.totalTiyn, methodId: "nur", methodName: "Нұр" });
+    order = await readOrder(asManager(), orderId);
+    await enterCuttingQueue(asManager(), manager, order, { isAdmin: false, queuePosition: 1 });
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - SHEETS);
+
+    order = await readOrder(asManager(), orderId);
+    const less = draftFromOrder(order);
+    less.lines[0].sheetQty = SHEETS - 1;
+    await saveJournalRow(asManager(), manager, order, less, catalog);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - (SHEETS - 1));
+    // The page has not seen that save yet, and the next keystroke saves the same count again:
+    // the sheet must not go back twice.
+    await saveJournalRow(asManager(), manager, order, less, catalog);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - (SHEETS - 1));
+    expect((await readOrder(asManager(), orderId)).lineJobs?.[0].consumedQty).toBe(SHEETS - 1);
+
+    // The cutter confirms what the row says: nothing more moves.
+    const seen = (await cutterQueue()).find((o) => o.id === orderId)!;
+    await startCuttingLine(asCutter(), cutter, seen, 0, 30);
+    await completeCuttingLine(asCutter(), cutter, await readOrder(asCutter(), orderId), 0, SHEETS - 1);
+    expect(await readMaterialQty()).toBe(START_SHEETS_ON_HAND - (SHEETS - 1));
+    const moves = await getDocs(query(collection(asManager(), "inventoryMovements"), where("orderId", "==", orderId)));
+    expect(moves.docs.reduce((s, d) => s + (d.data() as { qty: number }).qty, 0)).toBe(-(SHEETS - 1));
   });
 
   it("striking a row off before распил leaves the rack untouched", async () => {
