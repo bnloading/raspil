@@ -55,6 +55,17 @@ export function IconLayers({ className }: IconProps) {
   );
 }
 
+/** A countertop slab, seen from the front edge — the cutter's «Столешница» page. */
+export function IconCountertop({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M2 9h20v4H2z" />
+      <path d="M5 13v7" />
+      <path d="M19 13v7" />
+    </svg>
+  );
+}
+
 export function IconCamera({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

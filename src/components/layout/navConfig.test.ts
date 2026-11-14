@@ -64,3 +64,21 @@ describe("navConfig — «Аванс сұрау» on every worker's phone bar (t
     expect(getNavForRole("admin", "mdf").map((item) => item.path)).not.toContain("/advance");
   });
 });
+
+describe("navConfig — the saw's «Столешница» page (the owner, 14.11)", () => {
+  it("puts «Лист» and «Столеш» first on the cutter's phone bar, with every other item still on it", () => {
+    for (const hideSalary of [false, true]) {
+      const bar = getNavForRole("raspil", "ldsp", hideSalary).filter((item) => item.mobile).slice(0, 6);
+      expect(bar.slice(0, 2).map((item) => item.path)).toEqual(["/cutting", "/cutting/countertops"]);
+      expect(bar.map((item) => item.short ?? item.label)).toEqual(
+        hideSalary ? ["Лист", "Столеш", "Тарих", "Аванс", "Профиль"] : ["Лист", "Столеш", "Тарих", "Айлық", "Аванс", "Профиль"],
+      );
+    }
+  });
+
+  it("is the cutter's alone", () => {
+    for (const role of ["pvh", "cnc", "sanding", "painting", "vacuum"] as const) {
+      expect(getNavForRole(role, "ldsp").map((item) => item.path)).not.toContain("/cutting/countertops");
+    }
+  });
+});

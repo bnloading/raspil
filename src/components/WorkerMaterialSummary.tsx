@@ -20,8 +20,10 @@ export function WorkerHistorySummary({ orders, materials, stage, uid }: { orders
   const pvc = jobsWithQuantities.reduce((sum, { q }) => sum + q.pvcMeters, 0);
   return <section className="worker-history-summary"><h2>Мен орындаған жұмыс</h2><p>{orders.filter(o => workerJobs(o, stage, uid, true).length).length} тапсырыс · {jobsWithQuantities.length} материал</p><div className="worker-quantities"><span><b>{number(cut.sheets)}</b> лист</span>{cut.hdf > 0 && <span><b>{number(cut.hdf)}</b> ХДФ</span>}{cut.countertop > 0 && <span><b>{number(cut.countertop)}</b> столеш</span>}{showArea && <span><b>{area === null ? "—" : number(area)}</b> м² лист</span>}<span><b>{number(pvc)}</b> м ПВХ</span></div>{showArea && area === null && <small>Кейбір материалдардың лист өлшемі көрсетілмеген</small>}</section>;
 }
-export function WorkerMaterialSummary({ order, materials, stage, uid, history = false, action }: {
+export function WorkerMaterialSummary({ order, materials, stage, uid, history = false, action, only }: {
   order: Order; materials: readonly Material[]; stage: FloorStage; uid: string; history?: boolean;
+  /** Just these lines — the cutter's «Лист» and «Столешница» pages each show their own kind. */
+  only?: (job: OrderLineJob) => boolean;
   /** Per-material control (e.g. the cutter's "Бастау" button) rendered inside that material's own card. */
   action?: (job: OrderLineJob) => ReactNode;
 }) {
@@ -30,9 +32,10 @@ export function WorkerMaterialSummary({ order, materials, stage, uid, history = 
   // that were never their job, and left them looking for tape to stick on a sheet that needs none.
   // The cutter, by contrast, cuts every line — except a blank one (isEmptyJob), which is nobody's
   // work and only ever showed as a "0 лист" card that could not be confirmed.
-  const jobs = history
+  const lines = history
     ? workerJobs(order, stage, uid, true)
     : jobsOf(order).filter((job) => !isEmptyJob(job) && (stage !== "pvc" || jobNeedsPvc(job)));
+  const jobs = only ? lines.filter(only) : lines;
   // Raspil is paid per sheet, not per m² — area only matters (and is only shown) on the ПВХ station.
   const showArea = stage !== "cutting";
   return <div className="worker-materials" aria-label="Материалдар мен жұмыс көлемі">

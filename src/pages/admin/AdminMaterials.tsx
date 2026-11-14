@@ -31,6 +31,7 @@ import { formatMoney, parseMoneyInput } from "../../lib/money";
 import { logAudit } from "../../lib/audit";
 import { canManageWarehouse, departmentOf } from "../../lib/rbac";
 import { recordInventoryMovement } from "../../lib/warehouse";
+import { materialKind } from "../../lib/lineCategory";
 import { MATERIAL_CATEGORY_LABELS } from "../../types/domain";
 import type {
   InventoryMovement,
@@ -41,7 +42,10 @@ import type {
   PvcType,
 } from "../../types/domain";
 
-type Tab = "materials" | "pvc" | "leftovers";
+// «ЛДСП» and «Столешница» are two tabs of the one catalogue (the owner, 14.11: «Қоймада лист,
+// столештер жеке көрінсін — ЛДСП-ны басқанда ЛДСП, столешті басқанда столеш»). ХДФ, МДФ бізден and
+// черновой are sheets too, so they stay with ЛДСП.
+type Tab = "materials" | "countertops" | "pvc" | "leftovers";
 
 export default function AdminMaterials() {
   const auth = useAuth();
@@ -56,10 +60,17 @@ export default function AdminMaterials() {
     () => (isMdf ? allMaterials.filter((m) => m.category === "mdf" && m.stockTracked !== false) : allMaterials),
     [allMaterials, isMdf],
   );
+  // What the open tab shows, and what the figures above it count: the countertops on «Столешница»,
+  // everything else on «ЛДСП». The МДФ line has the one tab and only its own board.
+  const kind = tab === "countertops" ? "countertop" : "sheet";
+  const shown = useMemo(
+    () => (isMdf ? materials : materials.filter((m) => materialKind(m) === kind)),
+    [materials, isMdf, kind],
+  );
   const { pvcTypes, loading: pvcLoading } = usePvcTypes(false);
   const { movements, loading: movementsLoading } = useAllInventoryMovements();
-  // Every «+ Қабылдау» on this line's materials, for «Қабылдау тарихы» under the table.
-  const receipts = useMemo(() => stockReceipts(movements, materials), [movements, materials]);
+  // Every «+ Қабылдау» on this tab's materials, for «Қабылдау тарихы» under the table.
+  const receipts = useMemo(() => stockReceipts(movements, shown), [movements, shown]);
   const [ledgerFor, setLedgerFor] = useState<Material | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<Material | "new" | null>(null);
   const [editingPvc, setEditingPvc] = useState<PvcType | "new" | null>(null);
@@ -71,16 +82,20 @@ export default function AdminMaterials() {
   // Only shop stock: a customer's own board or an offcut has no balance, and the МДФ row's frozen
   // qtyOnHand of 50 was being added into «Қоймада N лист» as if it were on the rack.
   const stockTotals = useMemo(() => {
-    const stocked = materials.filter((m) => m.stockTracked !== false);
+    const stocked = shown.filter((m) => m.stockTracked !== false);
     return {
       materials: stocked.length,
       sheets: stocked.reduce((s, m) => s + (m.qtyOnHand ?? 0), 0),
       reserved: stocked.reduce((s, m) => s + (m.reservedQty ?? 0), 0),
       low: lowStockCount(stocked),
     };
-  }, [materials]);
-  // "Нақты" — real cuts (cutting_consumption movements), not orders merely sitting in a queue.
-  const sheetsCut = useMemo(() => computeSheetsCutByPeriod(movements), [movements]);
+  }, [shown]);
+  // "Нақты" — real cuts (cutting_consumption movements), not orders merely sitting in a queue —
+  // of this tab's materials, so a countertop is never added into the sheets' figure.
+  const sheetsCut = useMemo(
+    () => computeSheetsCutByPeriod(movements, new Date(), new Set(shown.map((m) => m.id))),
+    [movements, shown],
+  );
 
   if (!auth.userData) return <Spinner />;
 
@@ -95,7 +110,7 @@ export default function AdminMaterials() {
             type="button"
             onClick={() => (tab === "pvc" ? setEditingPvc("new") : setEditingMaterial("new"))}
           >
-            {tab === "pvc" ? "+ ПВХ түрі қосу" : "+ Материал қосу"}
+            {tab === "pvc" ? "+ ПВХ түрі қосу" : tab === "countertops" ? "+ Столешница қосу" : "+ Материал қосу"}
           </button>
         ) : undefined
       }
@@ -154,7 +169,10 @@ export default function AdminMaterials() {
       {!isMdf && (
         <div className="tab-pill-row">
           <button className={`tab-pill${tab === "materials" ? " active" : ""}`} onClick={() => setTab("materials")}>
-            Материалдар
+            ЛДСП
+          </button>
+          <button className={`tab-pill${tab === "countertops" ? " active" : ""}`} onClick={() => setTab("countertops")}>
+            Столешница
           </button>
           <button className={`tab-pill${tab === "pvc" ? " active" : ""}`} onClick={() => setTab("pvc")}>
             ПВХ түрлері
@@ -167,9 +185,9 @@ export default function AdminMaterials() {
         </div>
       )}
 
-      {tab === "materials" && (
+      {(tab === "materials" || tab === "countertops") && (
         <MaterialsTab
-          materials={materials}
+          materials={shown}
           movements={movements}
           loading={materialsLoading}
           canEdit={canEdit}
@@ -178,7 +196,7 @@ export default function AdminMaterials() {
           showToast={showToast}
         />
       )}
-      {tab === "materials" && (
+      {(tab === "materials" || tab === "countertops") && (
         <StockReceiptHistory
           receipts={receipts}
           loading={movementsLoading}
@@ -196,7 +214,7 @@ export default function AdminMaterials() {
       {editingMaterial && (
         <MaterialModal
           material={editingMaterial === "new" ? null : editingMaterial}
-          defaultCategory={isMdf ? "mdf" : "ldsp"}
+          defaultCategory={isMdf ? "mdf" : tab === "countertops" ? "countertop" : "ldsp"}
           onClose={() => setEditingMaterial(null)}
           showToast={showToast}
         />

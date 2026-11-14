@@ -17,6 +17,7 @@ import {
   IconProfit,
   IconKey,
   IconCash,
+  IconCountertop,
 } from "./icons";
 
 export interface NavItem {
@@ -167,8 +168,16 @@ function pvcNav(): NavItem[] { return mdfWorkerNav("pvh"); }
 
 /** Same shape for all 4 МДФ worker roles — only the home path/label differ, matching roleHome(). */
 function mdfWorkerNav(role: UserRole): NavItem[] {
+  // The saw's sheets and countertops are two pages (the owner, 14.11: «столеш жеке бетте тұрсын,
+  // navbar-ға қос столешті») — so its home is «Лист», and «Столешница» sits right beside it.
+  const home: NavItem[] = role === "raspil"
+    ? [
+      { key: "mdf-home", label: "Лист", short: "Лист", path: roleHome(role), icon: IconLayers, group: "main", mobile: true },
+      { key: "cutting-countertops", label: "Столешница", short: "Столеш", path: "/cutting/countertops", icon: IconCountertop, group: "main", mobile: true },
+    ]
+    : [{ key: "mdf-home", label: "Тапсырмалар", short: "Тапсырмалар", path: roleHome(role), icon: IconLayers, group: "main", mobile: true }];
   return [
-    { key: "mdf-home", label: "Тапсырмалар", short: "Тапсырмалар", path: roleHome(role), icon: IconLayers, group: "main", mobile: true },
+    ...home,
     { key: "mdf-history", label: "Тарих", path: `${roleHome(role)}?view=history`, icon: IconAudit, group: "main", mobile: true },
     { key: "salary", label: "Айлығым", short: "Айлық", path: "/salary", icon: IconReports, group: "main", mobile: true },
     // Every worker of both lines, even one whose «Айлығым» is hidden — asking needs no payslip

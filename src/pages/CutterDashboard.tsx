@@ -8,9 +8,11 @@ import { WorkerHistoryCard } from "../components/WorkerHistoryCard";
 import { IconUsers } from "../components/layout/icons";
 import { WorkerDashboardHeader } from "../components/WorkerDashboardHeader";
 import { creditsFloorWork, jobsOf } from "../lib/orderLines";
+import { cutterBoard, jobsOfKind } from "../lib/cutterBoard";
+import { lineKind, type StockKind } from "../lib/lineCategory";
 import { WorkerMaterialSummary, WorkerHistorySummary } from "../components/WorkerMaterialSummary";
 import { useMaterials } from "../hooks/useMaterials";
-import type { Material } from "../types/domain";
+import type { Material, OrderLineJob } from "../types/domain";
 import { useCutterOrders } from "../hooks/useOrders";
 import { useToast } from "../hooks";
 import { dayKey } from "../lib/dates";
@@ -29,39 +31,46 @@ import type { Order } from "../types/domain";
  * Payment status is deliberately withheld here, at the owner's request: the cutter's job is the
  * material and the sheet count, not whether the office has been paid yet. Customer contact details
  * and other roles' controls stay out too.
+ *
+ * Sheets and countertops are two pages (the owner, 14.11: «листтар бір бөлек, столеш бөлек
+ * көрінсін»): «Лист» at /cutting, «Столешница» at /cutting/countertops. An order with both — Динко,
+ * 4 листа Ақ and 2 столешницы — is on each page with only that page's lines (lib/cutterBoard.ts).
  */
-export default function CutterDashboard() {
+export default function CutterDashboard({ kind = "sheet" }: { kind?: StockKind }) {
   const { user, userData } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const view = params.get("view") ?? "queue";
-  const { materials } = useMaterials(false);
-  const { orders, loading } = useCutterOrders(user?.uid);
+  const { materials, loading: materialsLoading } = useMaterials(false);
+  const { orders, loading: ordersLoading } = useCutterOrders(user?.uid);
+  // A line is put on its page by the catalogue's category, so the board waits for the catalogue:
+  // «Дуб Кера» says nothing of a countertop in its name.
+  const loading = ordersLoading || materialsLoading;
   const { message, visible, showToast } = useToast();
   const [search, setSearch] = useState("");
 
-  const queued = useMemo(
-    () => orders.filter((o) => o.productionStatus === "cutting_queue").sort((a, b) => a.priority - b.priority),
-    [orders],
+  const categoryByMaterialId = useMemo(
+    () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
+    [materials],
   );
-  const inProgress = useMemo(() => orders.filter((o) => o.productionStatus === "cutting_started"), [orders]);
+  // Whatever is already started surfaces first — that is the actual work in hand — then the
+  // queue in its own priority order. Both by this page's own lines.
+  const { queued, inProgress } = useMemo(
+    () => cutterBoard(orders, kind, categoryByMaterialId),
+    [orders, kind, categoryByMaterialId],
+  );
   const doneToday = useMemo(() => {
     const today = dayKey(new Date());
-    return orders.filter(o => creditsFloorWork(o) && jobsOf(o).some(j => j.cuttingByUid === user?.uid && j.cuttingCompletedAt && dayKey(j.cuttingCompletedAt.toDate()) === today));
-  }, [orders, user?.uid]);
-
-  // Whatever is already started surfaces first — that is the actual work in hand — then the
-  // queue in its own priority order.
+    return orders.filter(o => creditsFloorWork(o) && jobsOfKind(o, kind, categoryByMaterialId).some(j => j.cuttingByUid === user?.uid && j.cuttingCompletedAt && dayKey(j.cuttingCompletedAt.toDate()) === today));
+  }, [orders, user?.uid, kind, categoryByMaterialId]);
   const active = useMemo(() => [...inProgress, ...queued], [inProgress, queued]);
+  const atWork = useMemo(() => new Set(inProgress.map((o) => o.id)), [inProgress]);
+  const isThisKind = (job: OrderLineJob) => lineKind(job, categoryByMaterialId) === kind;
 
   // This week's sheets by kind, at the owner's request (02.10): the count the week's pay is made
   // of (lib/salary.ts measureWork), so it reads line for line against Айлығым — but no money, so
   // it needs no reveal.
   const week = currentPeriodKey("week");
-  const categoryByMaterialId = useMemo(
-    () => new Map(materials.map((m) => [m.id, m.category ?? "ldsp"] as const)),
-    [materials],
-  );
   const weekCut = useMemo(
     () => cutCounts(measureWork(orders, [], user?.uid ?? "", week, categoryByMaterialId)),
     [orders, user?.uid, week, categoryByMaterialId],
@@ -69,7 +78,7 @@ export default function CutterDashboard() {
 
   if (!user || !userData) return <Spinner />;
   const actor = { user, userData };
-  const byView = view === "mine" ? active.filter((o) => jobsOf(o).some((j) => j.cuttingByUid === user.uid && !j.cuttingCompletedAt)) : view === "history" ? orders.filter((o) => creditsFloorWork(o) && jobsOf(o).some((j) => j.cuttingByUid === user.uid && j.cuttingCompletedAt)) : active;
+  const byView = view === "mine" ? active.filter((o) => jobsOfKind(o, kind, categoryByMaterialId).some((j) => j.cuttingByUid === user.uid && !j.cuttingCompletedAt)) : view === "history" ? orders.filter((o) => creditsFloorWork(o) && jobsOf(o).some((j) => j.cuttingByUid === user.uid && j.cuttingCompletedAt)) : active;
   const q = search.trim().toLocaleLowerCase();
   const shown = q
     ? byView.filter((o) => o.customerName.toLocaleLowerCase().includes(q) || o.orderNumber.toLocaleLowerCase().includes(q))
@@ -77,7 +86,7 @@ export default function CutterDashboard() {
 
   return (
     <AppShell
-      title="Распил"
+      title={kind === "countertop" ? "Столешница" : "Распил"}
       subtitle={userData.name}
       contentWidth="narrow"
       variant="station"
@@ -107,7 +116,7 @@ export default function CutterDashboard() {
       ) : shown.length === 0 ? (
         <div className="empty-state">
           <div className="icon">📭</div>
-          <p>{view === "history" ? "Орындалған жұмыс жоқ" : "Бұл тізімде тапсырма жоқ"}</p>
+          <p>{view === "history" ? "Орындалған жұмыс жоқ" : kind === "countertop" ? "Кесетін столешница жоқ" : "Бұл тізімде тапсырма жоқ"}</p>
         </div>
       ) : (
         <div className={view === "history" ? "station-history-list" : "station-job-list"}>
@@ -117,6 +126,8 @@ export default function CutterDashboard() {
               order={o}
               materials={materials}
               history={view === "history"}
+              atWork={atWork.has(o.id)}
+              only={isThisKind}
               actor={actor}
               onToast={showToast}
               onOpen={() => navigate(`/cutting/order/${o.id}`)}
@@ -144,17 +155,22 @@ function JobCard({
   onOpen,
   materials,
   history,
+  atWork,
+  only,
 }: {
   order: Order;
   materials: Material[];
   history: boolean;
+  /** A line of this page's kind is started — the order's own status says only that some line is. */
+  atWork: boolean;
+  only: (job: OrderLineJob) => boolean;
   actor: { user: import("firebase/auth").User; userData: import("../types/domain").UserDoc };
   onToast: (m: string) => void;
   onOpen: () => void;
 }) {
   return (
-    <article className={`station-job ${order.productionStatus === "cutting_started" ? "is-active" : ""}`}>
-      <div className="station-job-status"><span className={`station-state ${history ? "is-done" : order.productionStatus === "cutting_started" ? "is-active" : ""}`}>{history ? "ОРЫНДАЛДЫ" : order.productionStatus === "cutting_started" ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{(order.priority ?? 0) + 1}</span></div>
+    <article className={`station-job ${atWork ? "is-active" : ""}`}>
+      <div className="station-job-status"><span className={`station-state ${history ? "is-done" : atWork ? "is-active" : ""}`}>{history ? "ОРЫНДАЛДЫ" : atWork ? "ЖҰМЫСТА" : "КЕЗЕКТЕ"}</span><span>№{(order.priority ?? 0) + 1}</span></div>
       <button className="station-order-link" onClick={onOpen}>{order.orderNumber}</button>
       <div className="station-customer"><IconUsers />{order.customerName}</div>
       <WorkerMaterialSummary
@@ -163,6 +179,7 @@ function JobCard({
         stage="cutting"
         uid={actor.user.uid}
         history={history}
+        only={only}
         action={history ? undefined : (job) => <CuttingLineActions order={order} job={job} actor={actor} onToast={onToast} />}
       />
     </article>

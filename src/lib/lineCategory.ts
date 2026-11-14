@@ -21,3 +21,23 @@ export function lineCategory(
   if (isHdfMaterial({ name })) return "hdf";
   return "ldsp";
 }
+
+/**
+ * The two things the shop keeps apart on Қойма and at the saw: sheets (ЛДСП, ХДФ, МДФ, черновой)
+ * and countertops. The owner, 14.11: «Қоймада лист, столештер жеке көрінсін… Динкода 4 лист Ақ,
+ * 2 столеш болса, бөлініп Ақ заказ ретінде көрінсін, столеш жеке бетте тұрсын».
+ */
+export type StockKind = "sheet" | "countertop";
+
+/** A catalogue row's kind — what Қойма's «ЛДСП» / «Столешница» tabs split on. */
+export function materialKind(material: { category?: MaterialCategory }): StockKind {
+  return material.category === "countertop" ? "countertop" : "sheet";
+}
+
+/** A cut line's kind, read the same way it is paid (lineCategory). */
+export function lineKind(
+  line: { materialId: string; materialName?: string },
+  categoryByMaterialId: ReadonlyMap<string, MaterialCategory>,
+): StockKind {
+  return lineCategory(line, categoryByMaterialId) === "countertop" ? "countertop" : "sheet";
+}

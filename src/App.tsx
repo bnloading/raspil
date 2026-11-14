@@ -466,6 +466,15 @@ export default function App() {
                 </RouteGuard>
               }
             />
+            {/* The countertops' own page at the saw (the owner, 14.11) — the sheets stay on /cutting. */}
+            <Route
+              path="/cutting/countertops"
+              element={
+                <RouteGuard roles={["raspil"]}>
+                  <CutterDashboard key="countertop" kind="countertop" />
+                </RouteGuard>
+              }
+            />
             <Route
               path="/cutting/history"
               element={
